@@ -14,12 +14,13 @@ function getAssistantText(message: AssistantMessage): string {
 }
 
 // POST /api/agents-md/optimize
-// body: { content: string, cwd?: string, instruction?: string }
+// body: { content: string, file?: "agents"|"system"|"append", cwd?: string, instruction?: string }
 // → { optimized: string }
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { content?: string; cwd?: string; instruction?: string };
+    const body = await req.json() as { content?: string; file?: string; cwd?: string; instruction?: string };
     const content = body.content ?? "";
+    const fileType = body.file ?? "agents";
     if (!content.trim()) {
       return NextResponse.json({ error: "Content is empty — nothing to optimize." }, { status: 400 });
     }
@@ -51,10 +52,15 @@ export async function POST(req: NextRequest) {
     }
 
     const customInstruction = body.instruction?.trim();
+    const promptContext = fileType === "system"
+      ? "This is a SYSTEM.md file that COMPLETELY REPLACES the agent's default system prompt. It should define the agent's core identity, available tools, and operating guidelines."
+      : fileType === "append"
+      ? "This is an APPEND_SYSTEM.md file that is APPENDED to the system prompt. It should contain supplementary instructions without repeating the base prompt."
+      : "This is an AGENTS.md file that provides project-specific instructions and guidelines injected as project context.";
     const systemPrompt = [
-      "You are an expert at writing AGENTS.md files for AI coding agents.",
-      "Optimize the following AGENTS.md for clarity, completeness, and structure.",
-      "Keep it concise and actionable — this file guides an AI agent working in a codebase.",
+      `You are an expert at writing prompt instruction files for AI coding agents. ${promptContext}`,
+      "Optimize the following content for clarity, completeness, and structure.",
+      "Keep it concise and actionable.",
       "Preserve all important technical details, conventions, and warnings.",
       customInstruction ? `Additional instruction: ${customInstruction}` : "",
       "Respond with ONLY the optimized markdown. No explanation, no code fences around the whole thing.",

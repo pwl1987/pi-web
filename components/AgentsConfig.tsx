@@ -9,12 +9,20 @@ interface Props {
   onClose: () => void;
 }
 
+type FileType = "agents" | "system" | "append";
 type Level = "user" | "project";
 type Mode = "edit" | "preview" | "compare";
 
-/** AGENTS.md management modal — user-level + project-level, with AI optimization. */
+const FILE_META: Record<FileType, { name: string; descKey: string }> = {
+  agents: { name: "AGENTS.md", descKey: "prompts.agentsDesc" },
+  system: { name: "SYSTEM.md", descKey: "prompts.systemDesc" },
+  append: { name: "APPEND_SYSTEM.md", descKey: "prompts.appendDesc" },
+};
+
+/** Prompt file management — AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md. */
 export function AgentsConfig({ cwd, onClose }: Props) {
   const { t } = useI18n();
+  const [fileType, setFileType] = useState<FileType>("agents");
   const [level, setLevel] = useState<Level>("project");
   const [mode, setMode] = useState<Mode>("edit");
   const [content, setContent] = useState("");
@@ -27,12 +35,13 @@ export function AgentsConfig({ cwd, onClose }: Props) {
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
 
-  // Load AGENTS.md when level changes.
+  // Load file when type/level changes.
   useEffect(() => {
     setLoading(true);
     setError("");
     setDirty(false);
-    const params = new URLSearchParams({ level });
+    setMode("edit");
+    const params = new URLSearchParams({ file: fileType, level });
     if (level === "project") params.set("cwd", cwd);
     fetch(`/api/agents-md?${params}`)
       .then(r => r.json())
@@ -42,7 +51,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       })
       .catch(() => setError("Failed to load"))
       .finally(() => setLoading(false));
-  }, [level, cwd]);
+  }, [fileType, level, cwd]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -51,7 +60,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       const res = await fetch("/api/agents-md", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ level, cwd: level === "project" ? cwd : undefined, content }),
+        body: JSON.stringify({ file: fileType, level, cwd: level === "project" ? cwd : undefined, content }),
       });
       if (!res.ok) {
         const d = await res.json();
@@ -65,7 +74,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       setError(e instanceof Error ? e.message : String(e));
     }
     setSaving(false);
-  }, [level, cwd, content]);
+  }, [fileType, level, cwd, content]);
 
   const handleOptimize = useCallback(async () => {
     setOptimizing(true);
@@ -74,7 +83,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       const res = await fetch("/api/agents-md/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, cwd: level === "project" ? cwd : undefined }),
+        body: JSON.stringify({ content, file: fileType, cwd: level === "project" ? cwd : undefined }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Optimization failed");
@@ -84,7 +93,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       setError(e instanceof Error ? e.message : String(e));
     }
     setOptimizing(false);
-  }, [content, cwd, level]);
+  }, [content, fileType, cwd, level]);
 
   const applyOptimized = () => {
     setContent(optimizedContent);
@@ -110,32 +119,41 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{t("agents.title")}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{t("prompts.title")}</span>
+            {/* File type tabs */}
+            <div style={{ display: "flex", borderRadius: 6, border: "1px solid var(--border)", overflow: "hidden" }}>
+              {(["agents", "system", "append"] as FileType[]).map(ft => (
+                <button key={ft} onClick={() => setFileType(ft)} style={tabBtn(fileType === ft)}>
+                  {FILE_META[ft].name}
+                </button>
+              ))}
+            </div>
             {/* Level tabs */}
             <div style={{ display: "flex", borderRadius: 6, border: "1px solid var(--border)", overflow: "hidden" }}>
-              <button onClick={() => setLevel("user")} style={tabBtn(level === "user")}>{t("agents.userLevel")}</button>
-              <button onClick={() => setLevel("project")} style={tabBtn(level === "project")}>{t("agents.projectLevel")}</button>
+              <button onClick={() => setLevel("user")} style={tabBtn(level === "user")}>{t("prompts.userLevel")}</button>
+              <button onClick={() => setLevel("project")} style={tabBtn(level === "project")}>{t("prompts.projectLevel")}</button>
             </div>
-            {/* Edit/Preview tabs (hidden in compare mode) */}
+            {/* Edit/Preview tabs */}
             {mode !== "compare" && (
               <div style={{ display: "flex", borderRadius: 6, border: "1px solid var(--border)", overflow: "hidden" }}>
-                <button onClick={() => setMode("edit")} style={tabBtn(mode === "edit")}>{t("agents.edit")}</button>
-                <button onClick={() => setMode("preview")} style={tabBtn(mode === "preview")}>{t("agents.preview")}</button>
+                <button onClick={() => setMode("edit")} style={tabBtn(mode === "edit")}>{t("prompts.edit")}</button>
+                <button onClick={() => setMode("preview")} style={tabBtn(mode === "preview")}>{t("prompts.preview")}</button>
               </div>
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {saving && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("agents.saving")}</span>}
-            {savedFlash && <span style={{ fontSize: 11, color: "var(--accent)" }}>✓ {t("agents.saved")}</span>}
+            {saving && <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("prompts.saving")}</span>}
+            {savedFlash && <span style={{ fontSize: 11, color: "var(--accent)" }}>✓ {t("prompts.saved")}</span>}
             <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}>×</button>
           </div>
         </div>
 
-        {/* Not-exists hint */}
-        {!loading && !exists && mode === "edit" && (
-          <div style={{ padding: "6px 18px", fontSize: 11, color: "var(--text-dim)", background: "var(--bg-subtle)", borderBottom: "1px solid var(--border)" }}>
-            {t("agents.notExists")}
+        {/* Description + not-exists hint */}
+        {!loading && (
+          <div style={{ padding: "4px 18px", fontSize: 11, color: "var(--text-dim)", background: "var(--bg-subtle)", borderBottom: "1px solid var(--border)" }}>
+            {t(FILE_META[fileType].descKey)}
+            {!exists && <span style={{ color: "var(--accent)", marginLeft: 8 }}>· {t("prompts.notExists")}</span>}
           </div>
         )}
         {error && (
@@ -166,13 +184,13 @@ export function AgentsConfig({ cwd, onClose }: Props) {
             /* Compare mode: side-by-side */
             <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
               <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", borderRight: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8 }}>{t("agents.original")}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8 }}>{t("prompts.original")}</div>
                 <MarkdownBody cwd={cwd}>{content}</MarkdownBody>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", marginBottom: 8 }}>{t("agents.optimized")}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", marginBottom: 8 }}>{t("prompts.optimized")}</div>
                 {optimizing ? (
-                  <div style={{ color: "var(--text-dim)", fontSize: 13 }}>{t("agents.optimizing")}</div>
+                  <div style={{ color: "var(--text-dim)", fontSize: 13 }}>{t("prompts.optimizing")}</div>
                 ) : (
                   <MarkdownBody cwd={cwd}>{optimizedContent}</MarkdownBody>
                 )}
@@ -184,13 +202,15 @@ export function AgentsConfig({ cwd, onClose }: Props) {
         {/* Footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
           <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            {level === "user" ? "~/.pi/agent/AGENTS.md" : `${cwd}/AGENTS.md`}
+            {level === "user"
+              ? fileType === "agents" ? "~/.pi/agent/AGENTS.md" : `~/.pi/agent/${FILE_META[fileType].name}`
+              : fileType === "agents" ? `${cwd}/AGENTS.md` : `${cwd}/.pi/${FILE_META[fileType].name}`}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {mode === "compare" ? (
               <>
-                <button onClick={discardOptimized} style={btnSecondary}>{t("agents.discard")}</button>
-                <button onClick={applyOptimized} style={btnPrimary}>{t("agents.apply")}</button>
+                <button onClick={discardOptimized} style={btnSecondary}>{t("prompts.discard")}</button>
+                <button onClick={applyOptimized} style={btnPrimary}>{t("prompts.apply")}</button>
               </>
             ) : (
               <>
@@ -199,14 +219,14 @@ export function AgentsConfig({ cwd, onClose }: Props) {
                   disabled={optimizing || !content.trim()}
                   style={optimizing || !content.trim() ? btnDisabled : btnSecondary}
                 >
-                  {optimizing ? t("agents.optimizing") : `✨ ${t("agents.optimize")}`}
+                  {optimizing ? t("prompts.optimizing") : `✨ ${t("prompts.optimize")}`}
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saving || !dirty}
                   style={saving || !dirty ? btnDisabled : btnPrimary}
                 >
-                  {t("agents.save")}
+                  {t("prompts.save")}
                 </button>
               </>
             )}

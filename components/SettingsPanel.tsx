@@ -382,7 +382,7 @@ export function SettingsPanel({ onClose, onOpenModels, onOpenSkills, onOpenPlugi
           <ManagementButton label={t("settings.openSkills")} onClick={() => { onClose(); onOpenSkills(); }} />
           <ManagementButton label={t("settings.openPlugins")} onClick={() => { onClose(); onOpenPlugins(); }} />
           <ManagementButton label={t("settings.openExtensions")} onClick={() => { onClose(); onOpenExtensions(); }} />
-          <ManagementButton label={t("settings.openAgents")} onClick={() => { onClose(); onOpenAgents(); }} />
+          <ManagementButton label={t("settings.openPrompts")} onClick={() => { onClose(); onOpenAgents(); }} />
 
           {/* ===== Section: Preferences ===== */}
           <SectionHeader label={t("settings.preferences")} />
