@@ -941,14 +941,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : null;
   const currentName = displayModelName;
 
-  const compactSavedTokens = compactResult
+  const compactSavedTokens = compactResult && compactResult.estimatedTokensAfter !== undefined
     ? Math.max(0, compactResult.tokensBefore - compactResult.estimatedTokensAfter)
     : 0;
   const compactVerb = compactResult?.reason && compactResult.reason !== "manual"
     ? t("input.compactedReason", { reason: `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)}` })
     : t("input.compacted");
   const compactResultText = compactResult
-    ? t("input.compactResult", { verb: compactVerb, before: formatTokenCount(compactResult.tokensBefore), after: formatTokenCount(compactResult.estimatedTokensAfter), saved: formatTokenCount(compactSavedTokens) })
+    ? t("input.compactResult", {
+        verb: compactVerb,
+        before: formatTokenCount(compactResult.tokensBefore),
+        after: compactResult.estimatedTokensAfter !== undefined ? formatTokenCount(compactResult.estimatedTokensAfter) : "...",
+        saved: compactSavedTokens > 0 ? formatTokenCount(compactSavedTokens) : "0"
+      })
     : null;
   const thinkingDisplayLabel = (() => {
     const lvl = thinkingLevel ?? "auto";

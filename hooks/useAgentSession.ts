@@ -60,8 +60,8 @@ interface AgentEvent {
 }
 
 interface CompactCommandResult {
-  tokensBefore?: number;
-  estimatedTokensAfter?: number;
+  tokensBefore: number;           // required per SDK CompactionResult
+  estimatedTokensAfter?: number;  // optional per SDK CompactionResult
 }
 
 interface LastAssistantTextResponse {
@@ -119,7 +119,7 @@ export type AgentPhase =
 export interface CompactResultInfo {
   reason: "manual" | "threshold" | "overflow" | "auto" | string;
   tokensBefore: number;
-  estimatedTokensAfter: number;
+  estimatedTokensAfter?: number;  // optional per SDK CompactionResult
 }
 
 export interface SlashCommandInfo {
@@ -294,7 +294,8 @@ function userMessageKey(message: Partial<AgentMessage>): string {
 function readCompactResult(result: unknown, reason: string): CompactResultInfo | null {
   if (!result || typeof result !== "object") return null;
   const r = result as CompactCommandResult;
-  if (typeof r.tokensBefore !== "number" || typeof r.estimatedTokensAfter !== "number") return null;
+  // tokensBefore is required; estimatedTokensAfter is optional in SDK
+  if (typeof r.tokensBefore !== "number") return null;
   return { reason, tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter };
 }
 
@@ -1006,7 +1007,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "compaction_end":
         setIsCompacting(false);
         if (event.errorMessage) {
-          setCompactError(event.errorMessage as string);
+          let errorMessage = event.errorMessage as string;
+          // Improve error messages for common compact failures
+          if (errorMessage.includes("model_context") || errorMessage.includes("finish_reason")) {
+            errorMessage = "Compaction failed: model context exceeded. Try switching to a model with a larger context window.";
+          } else if (errorMessage.includes("Summarization failed")) {
+            errorMessage = "Compaction failed: unable to generate summary. The session may be too large for the current model.";
+          }
+          setCompactError(errorMessage);
           setCompactResult(null);
         } else if (!event.aborted) {
           setCompactResult(readCompactResult(event.result, (event.reason as string | undefined) ?? "auto"));
@@ -1186,7 +1194,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setCompactResult(readCompactResult(result, "manual"));
       await loadSession(sid, true);
     } catch (e) {
-      setCompactError(e instanceof Error ? e.message : String(e));
+      let errorMessage = e instanceof Error ? e.message : String(e);
+      // Improve error messages for common compact failures
+      if (errorMessage.includes("model_context") || errorMessage.includes("finish_reason")) {
+        errorMessage = "Compaction failed: model context exceeded. Try switching to a model with a larger context window.";
+      } else if (errorMessage.includes("Summarization failed")) {
+        errorMessage = "Compaction failed: unable to generate summary. The session may be too large for the current model.";
+      }
+      setCompactError(errorMessage);
       setCompactResult(null);
     } finally {
       setIsCompacting(false);
@@ -1238,13 +1253,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setIsCompacting(true);
           setCompactError(null);
           setCompactResult(null);
-          const result = await sendAgentCommand<CompactCommandResult>(sid, {
-            type: "compact",
-            ...(args ? { customInstructions: args } : {}),
-          });
-          setCompactResult(readCompactResult(result, "manual"));
-          if (await loadSession(sid, true)) promoteNewSession();
-          return complete({ handled: true, message: "Compacted context" });
+          try {
+            const result = await sendAgentCommand<CompactCommandResult>(sid, {
+              type: "compact",
+              ...(args ? { customInstructions: args } : {}),
+            });
+            setCompactResult(readCompactResult(result, "manual"));
+            if (await loadSession(sid, true)) promoteNewSession();
+            return complete({ handled: true, message: "Compacted context" });
+          } catch (e) {
+            let errorMessage = e instanceof Error ? e.message : String(e);
+            // Improve error messages for common compact failures
+            if (errorMessage.includes("model_context") || errorMessage.includes("finish_reason")) {
+              errorMessage = "Compaction failed: model context exceeded. Try switching to a model with a larger context window.";
+            } else if (errorMessage.includes("Summarization failed")) {
+              errorMessage = "Compaction failed: unable to generate summary. The session may be too large for the current model.";
+            }
+            setCompactError(errorMessage);
+            return complete({ handled: true, error: errorMessage });
+          }
         }
 
         case "reload": {
