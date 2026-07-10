@@ -46,6 +46,12 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
   const { t } = useI18n();
   const runtime = useAgentRuntime();
   const [gitData, setGitData] = useState<GitDiffData | null>(null);
+  // Timestamp of the last successful git fetch — drives the "Xs ago"
+  // indicator shown next to the change stats.
+  const [lastGitFetchAt, setLastGitFetchAt] = useState<number | null>(null);
+  // Tick counter, incremented every 5s, used to re-render the relative-time
+  // label so "3s ago" advances without needing a real git refresh.
+  const [nowTick, setNowTick] = useState(0);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
   // True while the initial fetch is in flight. Flips to false after the
   // first response (success or failure). Used to drive the skeleton
@@ -103,6 +109,7 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
       const res = await fetch(`/api/git-diff?cwd=${encodeURIComponent(cwd)}`);
       if (!res.ok) { setGitLoading(false); return; }
       setGitData(await res.json());
+      setLastGitFetchAt(Date.now());
     } catch { /* best-effort */ }
     setGitLoading(false);
   }, [cwd]);
@@ -125,6 +132,13 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
     const interval = setInterval(() => void reloadGit(), 10_000);
     return () => clearInterval(interval);
   }, [reloadGit]);
+
+  // Tick every 5s so the "Xs ago" label advances visually between real
+  // git refreshes. Cheap — no network, just one setState every 5s.
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((t) => t + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Todo load + refresh on agent end
   useEffect(() => { void reloadTodos(); }, [reloadTodos]);
@@ -293,43 +307,44 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 14px",
+              flexDirection: "column",
+              gap: cwd ? 2 : 0,
+              padding: "10px 14px 8px",
               borderBottom: "1px solid var(--border)",
               flexShrink: 0,
               minHeight: 38,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)", flexShrink: 0 }}>
-                <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M6 9v6" />
-                <path d="M18 9a3 3 0 1 0-3-3" /><path d="M15 21h6" /><path d="M18 18v3" />
-              </svg>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t("inspector.title")}</span>
-              {pinned && (
-                <span
-                  title={t("inspector.pinned")}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    padding: "1px 6px",
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: "var(--accent)",
-                    background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-                    borderRadius: 999,
-                  }}
-                >
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z" /></svg>
-                  {t("inspector.pinned")}
-                </span>
-              )}
-            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, flex: 1 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)", flexShrink: 0 }}>
+                  <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M6 9v6" />
+                  <path d="M18 9a3 3 0 1 0-3-3" /><path d="M15 21h6" /><path d="M18 18v3" />
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t("inspector.title")}</span>
+                {pinned && (
+                  <span
+                    title={t("inspector.pinned")}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3,
+                      padding: "1px 6px",
+                      fontSize: 9,
+                      fontWeight: 600,
+                      color: "var(--accent)",
+                      background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                      borderRadius: 999,
+                    }}
+                  >
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z" /></svg>
+                    {t("inspector.pinned")}
+                  </span>
+                )}
+              </div>
 
-            {/* Three-dot menu (stays inside header) */}
-            <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 2 }}>
+              {/* Three-dot menu (right side of title row) */}
+              <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
                 title={t("inspector.more")}
@@ -398,6 +413,26 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
                 </div>
               )}
             </div>
+            </div>
+
+            {/* cwd subtitle (shows which dir is being inspected) */}
+            {cwd && (
+              <div
+                title={cwd}
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  color: "var(--text-dim)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  direction: "rtl", // keep the meaningful path tail visible when truncating
+                  textAlign: "left",
+                }}
+              >
+                {cwd}
+              </div>
+            )}
           </div>
 
           {/* ---- Block: Git changes ---- */}
@@ -493,6 +528,29 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
                   </span>
                 )}
               </div>
+              {/* "Xs ago" indicator — uses nowTick to refresh visually between git refreshes */}
+              {lastGitFetchAt && (
+                <div
+                  data-now-tick={nowTick}
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    padding: "0 14px 6px 44px",
+                    fontSize: 9,
+                    color: "var(--text-dim)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{
+                      width: 5, height: 5, borderRadius: "50%",
+                      background: "var(--git-added)",
+                      opacity: 0.7,
+                    }} />
+                    {t("inspector.updatedAgo", { time: formatRelative(Date.now() - lastGitFetchAt) })}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -695,7 +753,7 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
             </div>
           )}
 
-          {/* Empty state */}
+          {/* Empty state — branched by what data is missing */}
           {!hasTasks && !showGit && (
             <div
               style={{
@@ -706,12 +764,42 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
                 gap: 8,
               }}
             >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)" }}>
-                <circle cx="12" cy="12" r="10" /><path d="M8 12h8M12 8v8" />
-              </svg>
-              <span style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", lineHeight: 1.5 }}>
-                {t("inspector.empty")}
-              </span>
+              {!cwd ? (
+                <>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)" }}>
+                    <path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" />
+                  </svg>
+                  <span style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", lineHeight: 1.5 }}>
+                    {t("inspector.emptyNoCwd")}
+                  </span>
+                </>
+              ) : gitData && !gitData.isGit ? (
+                <>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)" }}>
+                    <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                  </svg>
+                  <span style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", lineHeight: 1.5 }}>
+                    {t("inspector.emptyNoGit")}
+                  </span>
+                  <span style={{
+                    fontFamily: "var(--font-mono)", fontSize: 10,
+                    color: "var(--text-dim)", direction: "rtl",
+                    maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}>
+                    {cwd}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)" }}>
+                    <circle cx="12" cy="12" r="10" /><path d="M8 12h8M12 8v8" />
+                  </svg>
+                  <span style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", lineHeight: 1.5 }}>
+                    {t("inspector.empty")}
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -886,6 +974,18 @@ function Skeleton({ width, height = 12, rounded = 4 }: { width: number | string;
       }}
     />
   );
+}
+
+// ---- Relative time formatter ----
+// "just now" / "12s ago" / "3m ago". Inputs are non-negative ms.
+function formatRelative(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ago`;
 }
 
 // ---- Task row ----
