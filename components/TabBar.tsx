@@ -7,8 +7,15 @@ import { useI18n } from "@/hooks/useI18n";
 export interface Tab {
   id: string;
   label: string;
-  filePath: string;
+  /** File path for file tabs. Optional for extension panel tabs. */
+  filePath?: string;
   sourceSessionId?: string | null;
+  /** Tab kind: "file" (default) or "extension" (rendered by an extension). */
+  kind?: "file" | "extension";
+  /** QualifiedContributionId when kind === "extension". */
+  extensionId?: string;
+  /** Custom icon for extension tabs (overrides file icon). */
+  icon?: React.ReactNode;
 }
 
 interface Props {
@@ -60,7 +67,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
             }}
           >
             <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7, display: "flex", alignItems: "center" }}>
-              {getFileIcon(tab.label, 13)}
+              {tab.kind === "extension" && tab.icon ? tab.icon : getFileIcon(tab.label, 13)}
             </span>
             <span
               style={{
@@ -69,7 +76,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 flex: 1,
                 fontWeight: isActive ? 500 : 400,
               }}
-              title={tab.filePath}
+              title={tab.filePath ?? tab.label}
             >
               {tab.label}
             </span>

@@ -498,4 +498,12 @@ export const zh: Record<string, string> = {
   "skills.installed": "✓ 已安装",
   "skills.discoverBefore": "搜索",
   "skills.discoverAfter": "为你的 Agent 发现并安装技能。",
+  // ----- 扩展 -----
+  "extensions.title": "扩展",
+  "extensions.noExtensions": "未加载扩展。",
+  "extensions.hint": "将扩展包放在 ~/.pi-web/extensions/",
+  "extensions.disable": "禁用",
+  "extensions.disableHint": "下次重载页面后禁用",
+  "extensions.reloadHint": "更改在重新加载页面后生效。",
+  "sidebar.extensions": "扩展",
 };

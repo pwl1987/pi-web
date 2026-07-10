@@ -498,4 +498,12 @@ export const en: Record<string, string> = {
   "skills.installed": "✓ Installed",
   "skills.discoverBefore": "Search",
   "skills.discoverAfter": "to discover and install skills for your agent.",
+  // ----- Extensions -----
+  "extensions.title": "Extensions",
+  "extensions.noExtensions": "No extensions loaded.",
+  "extensions.hint": "Place extension packages in ~/.pi-web/extensions/",
+  "extensions.disable": "Disable",
+  "extensions.disableHint": "Disable on next page reload",
+  "extensions.reloadHint": "Changes take effect after reloading the page.",
+  "sidebar.extensions": "Extensions",
 };

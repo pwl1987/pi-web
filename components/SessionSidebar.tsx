@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProp
 import type { SessionInfo } from "@/lib/types";
 import { FileExplorer } from "./FileExplorer";
 import { useI18n } from "@/hooks/useI18n";
+import { useExtensions } from "@/hooks/useExtensions";
+import type { WorkspaceLabelItem } from "@/lib/extensions/types";
 
 interface Props {
   selectedSessionId: string | null;
@@ -1571,6 +1573,7 @@ function SessionTreeItem({
   onSessionDeleted?: (id: string) => void;
   depth: number;
 }) {
+  const { getWorkspaceLabelItems } = useExtensions();
   const [collapsed, setCollapsed] = useState(false);
   const hasChildren = node.children.length > 0;
 
@@ -1600,6 +1603,7 @@ function SessionTreeItem({
           hasChildren={hasChildren}
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((v) => !v)}
+          labels={getWorkspaceLabelItems({ session: node.session, cwd: node.session.cwd, state: {} })}
         />
       </div>
       {hasChildren && !collapsed && (
@@ -1700,6 +1704,7 @@ function SessionItem({
   hasChildren = false,
   collapsed = false,
   onToggleCollapse,
+  labels = [],
 }: {
   session: SessionInfo;
   isSelected: boolean;
@@ -1712,6 +1717,8 @@ function SessionItem({
   hasChildren?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  /** Extension-contributed label items to render inline. */
+  labels?: { qualifiedId: string; item: WorkspaceLabelItem }[];
 }) {
   const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -1908,6 +1915,27 @@ function SessionItem({
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.worktreeBranch}</span>
                 </span>
               )}
+              {labels.map(({ qualifiedId, item }) => {
+                if (item.type === "text") return (
+                  <span key={qualifiedId} title={item.title} style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-dim)", flexShrink: 0 }}>
+                    {item.icon}
+                    <span style={{ whiteSpace: "nowrap" }}>{item.text}</span>
+                  </span>
+                );
+                if (item.type === "link") return (
+                  <a key={qualifiedId} href={item.href} title={item.title}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ color: "var(--accent)", textDecoration: "none", flexShrink: 0 }}
+                    target="_blank" rel="noopener noreferrer">
+                    {item.text}
+                  </a>
+                );
+                if (item.type === "render") {
+                  const C = item.Component;
+                  return <C key={qualifiedId} {...item.props} />;
+                }
+                return null;
+              })}
             </div>
           </div>
 

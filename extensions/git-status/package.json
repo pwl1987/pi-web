@@ -1,0 +1,11 @@
+{
+  "name": "@pi-web/git-status",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Git status panel, command, and branch label for pi-web",
+  "piWeb": {
+    "extensions": [
+      { "id": "git-status", "module": "index.js" }
+    ]
+  }
+}

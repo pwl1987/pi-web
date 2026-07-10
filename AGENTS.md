@@ -75,6 +75,7 @@ lib/
   clipboard.ts         clipboard fallback (navigator → execCommand → reject)
   compaction-summary.ts parse <read-files>/<modified-files> blocks out of compaction summaries
   draft-store.ts       local draft persistence helpers
+  extensions/          browser-side UI extension system (types + registry + discovery)
   file-access.ts       allowed file roots for /api/files and worktrees
   file-fuzzy.ts        @ autocomplete query parsing + ranking (mirrors pi TUI scoreEntry)
   file-links.ts        file:// and relative path parsing for clickable links
@@ -117,6 +118,7 @@ hooks/
   useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic
   useAudio.ts         completion sound + browser AudioContext unlock
   useDragDrop.ts      shared drag/drop state
+  useExtensions.ts    browser-side UI extension loader + hook (fetch manifest → import → register)
   useI18n.ts          locale binding for React ({ locale, t, toggle } via useSyncExternalStore)
   useIsMobile.ts      responsive breakpoint hook
   useTheme.ts         theme state
@@ -137,6 +139,16 @@ Next.js core-web-vitals + typescript presets, with three `react-hooks` rules exp
 
 ### Data directory
 pi-web reads `~/.pi/agent/sessions` by default. Override with `PI_CODING_AGENT_DIR` to point at a different pi agent directory. Never hardcode the pi home path — go through `lib/session-reader.ts`.
+
+### Browser-side UI extensions
+Extensions are trusted browser-side ES modules that contribute UI to pi-web. **Not to be confused with pi SDK packages** (managed via `/api/plugins`), which extend agent capabilities server-side. Extensions extend the pi-web *interface* client-side.
+- Three contribution types: **actions** (Cmd+K command palette), **workspacePanels** (right-side tabs alongside Files), **workspaceLabels** (inline metadata in session list).
+- `lib/extensions/types.ts` — API contract (`apiVersion: 1`, `PiWebExtension`, contribution interfaces, context types).
+- `lib/extensions/registry.ts` — singleton registry (`getExtensionRegistry()`, globalThis-backed). `register()` validates + qualifies ids (`extensionId:localId`, regex `^[a-z][a-z0-9.-]*$`). No deactivate — disabling = next page load skips import.
+- `lib/extensions/discovery.ts` — server-side discovery: scans `<repo>/extensions/` (bundled) + `~/.pi-web/extensions/` (local). Builds manifest, serves assets via API routes.
+- `hooks/useExtensions.ts` — loads extensions on mount: fetch `/api/extensions/manifest.json` → `import(/* webpackIgnore: true */ url)` → `registry.register()`.
+- **React sharing**: AppShell exposes `window.React`/`window.ReactDOM` so dynamically-imported extensions share the same React instance. Panels use JSX (方案 B); labels' `render` items use `{ Component, props }` (方案 C).
+- `extensions/git-status/` — built-in example extension (action + panel + label). Source in `index.ts`, compiled to `index.js` via esbuild (`--external:react`). Config in `package.json` → `piWeb.extensions[]`.
 
 ### Internationalization (i18n)
 Lightweight, zero-dependency, client-side. Mirrors the `useTheme` pattern (module-level store + `useSyncExternalStore` + `localStorage`).

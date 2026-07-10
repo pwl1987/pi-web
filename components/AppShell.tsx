@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import type { ReactNode } from "react";
+import * as React from "react";
+import * as ReactDOM from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
@@ -9,10 +12,13 @@ import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { ExtensionsConfig } from "./ExtensionsConfig";
+import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { useExtensions } from "@/hooks/useExtensions";
 import { translate } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
@@ -29,6 +35,30 @@ export function AppShell() {
   const { isDark, toggleTheme } = useTheme();
   const isMobile = useIsMobile();
   const { locale, t, toggle: toggleLanguage } = useI18n();
+  const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
+
+  // Expose React on window so extension modules (loaded via dynamic import) share
+  // the same React instance — otherwise hooks break across instance boundaries.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as unknown as { React: typeof React }).React = React;
+      (window as unknown as { ReactDOM: typeof ReactDOM }).ReactDOM = ReactDOM;
+    }
+  }, []);
+
+  // Cmd+K / Ctrl+K to open the command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   // When user clicks +, we only store the cwd — no fake session id
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
@@ -303,6 +333,19 @@ export function AppShell() {
     });
   }, [fileTabs]);
 
+  /** Open an extension panel as a tab in the right-side panel area. */
+  const handleOpenExtensionPanel = useCallback((qualifiedId: string, title: string, icon?: ReactNode) => {
+    const tabId = `ext:${qualifiedId}`;
+    setFileTabs((prev) => {
+      const existing = prev.find((t) => t.id === tabId);
+      if (!existing) return [...prev, { id: tabId, label: title, kind: "extension" as const, extensionId: qualifiedId, icon }];
+      return prev;
+    });
+    setActiveFileTabId(tabId);
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
   const handleExportSession = useCallback(() => {
     if (!selectedSession) return;
     window.location.href = `/api/sessions/${encodeURIComponent(selectedSession.id)}/export`;
@@ -370,6 +413,17 @@ export function AppShell() {
                 <path d="M15 7V2" />
                 <path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0Z" />
                 <path d="M12 19v3" />
+              </svg>
+            ),
+          },
+          {
+            label: t("sidebar.extensions"),
+            onClick: () => setExtensionsConfigOpen(true),
+            disabled: false,
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 7h-9" /><path d="M14 17H5" />
+                <circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" />
               </svg>
             ),
           },
@@ -1039,7 +1093,27 @@ export function AppShell() {
 
         {/* File content */}
         <div style={{ flex: 1, overflow: "hidden" }}>
-          {activeFileTab?.filePath ? (
+          {activeFileTab?.kind === "extension" && activeFileTab.extensionId ? (
+            (() => {
+              const panel = getWorkspacePanels().find((p) => p.qualifiedId === activeFileTab.extensionId);
+              if (!panel) {
+                return (
+                  <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
+                    {t("empty.noFileOpen")}
+                  </div>
+                );
+              }
+              return panel.render({
+                session: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
+                cwd: activeCwd ?? undefined,
+                state: {
+                  selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
+                  selectedCwd: activeCwd ?? newSessionCwd ?? null,
+                },
+                requestRender: () => setSessionKey((k) => k + 1),
+              });
+            })()
+          ) : activeFileTab?.filePath ? (
             <FileViewer
               filePath={activeFileTab.filePath}
               cwd={activeCwd ?? undefined}
@@ -1085,6 +1159,42 @@ export function AppShell() {
         onReloaded={() => setSessionKey((k) => k + 1)}
       />
     )}
+    {extensionsConfigOpen && (
+      <ExtensionsConfig extensions={extensions} onClose={() => setExtensionsConfigOpen(false)} />
+    )}
+    <CommandPalette
+      open={commandPaletteOpen}
+      onClose={() => setCommandPaletteOpen(false)}
+      actions={getActions({
+        state: {
+          selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
+          selectedCwd: activeCwd ?? newSessionCwd ?? null,
+        },
+        focusPrompt: () => {
+          document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+        },
+        openFilePanel: () => setRightPanelOpen(true),
+        openExtensionPanel: (qualifiedId, title) => {
+          const panel = getWorkspacePanels().find((p) => p.qualifiedId === qualifiedId);
+          handleOpenExtensionPanel(qualifiedId, title ?? panel?.title ?? "Extension", panel?.icon);
+        },
+      })}
+      getDisabledReason={getActionDisabledReason}
+      context={{
+        state: {
+          selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
+          selectedCwd: activeCwd ?? newSessionCwd ?? null,
+        },
+        focusPrompt: () => {
+          document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+        },
+        openFilePanel: () => setRightPanelOpen(true),
+        openExtensionPanel: (qualifiedId, title) => {
+          const panel = getWorkspacePanels().find((p) => p.qualifiedId === qualifiedId);
+          handleOpenExtensionPanel(qualifiedId, title ?? panel?.title ?? "Extension", panel?.icon);
+        },
+      }}
+    />
     </>
   );
 }
