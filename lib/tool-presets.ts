@@ -10,7 +10,31 @@ export const PRESET_NONE: string[] = [];
 export const PRESET_DEFAULT: string[] = ["read", "bash", "edit", "write"];
 export const PRESET_FULL: string[] = ["bash", "read", "edit", "write", "grep", "find", "ls"];
 
-const BUILTIN_TOOL_NAMES = new Set(PRESET_FULL);
+/** Names of the built-in coding tools — everything else is an extension tool. */
+export const BUILTIN_TOOL_NAMES = new Set(PRESET_FULL);
+
+/**
+ * Return the active tool names from a list of ToolEntry. Used by the per-tool
+ * config panel: the UI passes the full list (with toggled `active` flags) and
+ * this extracts just the enabled names for set_tools / new-session creation.
+ */
+export function toolsToToolNames(tools: ToolEntry[]): string[] {
+  return tools.filter((t) => t.active).map((t) => t.name);
+}
+
+/**
+ * Build a default ToolEntry[] for new sessions (before get_tools is available).
+ * Starts from the DEFAULT preset (read/bash/edit/write active); extension tools
+ * are discovered and merged in after the session is created, via loadTools().
+ */
+export function defaultToolEntries(): ToolEntry[] {
+  const active = new Set(PRESET_DEFAULT);
+  return PRESET_FULL.map((name) => ({
+    name,
+    description: "",
+    active: active.has(name),
+  }));
+}
 
 export function getPresetFromTools(tools: ToolEntry[]): ToolPreset {
   const activeTools = tools.filter((t) => t.active);

@@ -459,7 +459,10 @@ export class AgentSessionWrapper {
       case "set_tools": {
         const toolNames = command.toolNames as string[];
         this.setForceEmptySystemPrompt(toolNames.length === 0);
-        this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
+        // The per-tool config panel sends the complete user-chosen tool list
+        // (built-in + extension tools), so apply it directly without re-unioning
+        // — otherwise toggling an extension tool off would immediately re-enable it.
+        this.inner.setActiveToolsByName(toolNames);
         this.applyForcedEmptySystemPrompt();
         return null;
       }
@@ -851,6 +854,10 @@ function ensureRegistryInitialized(): void {
   process.once("SIGINT", cleanup);
   process.once("SIGTERM", cleanup);
   maybeRestore();
+  // Auto-install recommended plugins if missing (fire-and-forget).
+  void import("./plugin-auto-install").then(({ ensureRecommendedPlugins }) => {
+    void ensureRecommendedPlugins();
+  });
 }
 
 /**

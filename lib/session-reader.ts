@@ -20,9 +20,10 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
   }));
 
   const cache = getPathCache();
+  const ttl = Date.now() + PATH_CACHE_TTL_MS;
   return piSessions.map((s) => {
     // Populate path cache so resolveSessionPath works without a full scan
-    cache.set(s.id, s.path);
+    cache.set(s.id, { path: s.path, expiresAt: ttl });
     const project = s.cwd ? projectByCwd.get(s.cwd) : undefined;
     return {
       path: s.path,
@@ -42,28 +43,36 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
 
 // ============================================================================
 // Session path cache: sessionId → absolute file path
-// Stored in globalThis for hot-reload safety
+// Stored in globalThis for hot-reload safety. Entries expire after PATH_CACHE_TTL_MS
+// so a session file created/moved on disk is discovered without a full restart.
 // ============================================================================
 declare global {
-  var __piSessionPathCache: Map<string, string> | undefined;
+  var __piSessionPathCache: Map<string, { path: string; expiresAt: number }> | undefined;
 }
 
-function getPathCache(): Map<string, string> {
+const PATH_CACHE_TTL_MS = 60_000;
+
+function getPathCache(): Map<string, { path: string; expiresAt: number }> {
   if (!globalThis.__piSessionPathCache) globalThis.__piSessionPathCache = new Map();
   return globalThis.__piSessionPathCache;
 }
 
 export async function resolveSessionPath(sessionId: string): Promise<string | null> {
-  const cached = getPathCache().get(sessionId);
-  if (cached) return cached;
+  const cache = getPathCache();
+  const entry = cache.get(sessionId);
+  if (entry) {
+    if (Date.now() < entry.expiresAt) return entry.path;
+    cache.delete(sessionId); // expired — treat as a miss
+  }
 
   // Cache miss: scan all sessions to populate cache, then retry
   await listAllSessions();
-  return getPathCache().get(sessionId) ?? null;
+  const repopulated = cache.get(sessionId);
+  return repopulated ? repopulated.path : null;
 }
 
 export function cacheSessionPath(sessionId: string, filePath: string): void {
-  getPathCache().set(sessionId, filePath);
+  getPathCache().set(sessionId, { path: filePath, expiresAt: Date.now() + PATH_CACHE_TTL_MS });
 }
 
 export function invalidateSessionPathCache(sessionId: string): void {

@@ -24,9 +24,16 @@ export interface ActiveSessionEntry {
   toolsDisabled: boolean;
 }
 
+export interface PinnedDir {
+  path: string;
+  alias?: string;
+  pinnedAt: number;
+}
+
 export interface PiWebState {
-  version: 1;
+  version: 2;
   activeSessions: ActiveSessionEntry[];
+  pinnedDirs: PinnedDir[];
 }
 
 function stateFilePath(): string {
@@ -34,7 +41,7 @@ function stateFilePath(): string {
 }
 
 function emptyState(): PiWebState {
-  return { version: 1, activeSessions: [] };
+  return { version: 2, activeSessions: [], pinnedDirs: [] };
 }
 
 /** Read the sidecar state. Returns an empty structure if the file is missing or corrupt. */
@@ -43,11 +50,19 @@ export function loadSessionState(): PiWebState {
     const file = stateFilePath();
     if (!existsSync(file)) return emptyState();
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as Partial<PiWebState>;
-    if (parsed.version !== 1 || !Array.isArray(parsed.activeSessions)) {
+    const parsed = JSON.parse(raw) as { version?: unknown; activeSessions?: unknown; pinnedDirs?: unknown };
+    // Accept both v1 (no pinnedDirs) and v2 (with pinnedDirs); upgrade v1 in place.
+    if (parsed.version !== 1 && parsed.version !== 2) {
       return emptyState();
     }
-    return { version: 1, activeSessions: parsed.activeSessions.filter(isValidEntry) };
+    if (!Array.isArray(parsed.activeSessions)) {
+      return emptyState();
+    }
+    // Upgrade v1 → v2 by adding an empty pinnedDirs array.
+    const pinnedDirs = parsed.version === 2 && Array.isArray(parsed.pinnedDirs)
+      ? (parsed.pinnedDirs as unknown[]).filter(isValidPinnedDir)
+      : [];
+    return { version: 2, activeSessions: (parsed.activeSessions as unknown[]).filter(isValidEntry), pinnedDirs };
   } catch {
     return emptyState();
   }
@@ -59,6 +74,14 @@ function isValidEntry(e: unknown): e is ActiveSessionEntry {
   return typeof obj.sessionId === "string"
     && typeof obj.lastActive === "number"
     && typeof obj.toolsDisabled === "boolean";
+}
+
+function isValidPinnedDir(e: unknown): e is PinnedDir {
+  if (typeof e !== "object" || e === null) return false;
+  const obj = e as Record<string, unknown>;
+  return typeof obj.path === "string"
+    && typeof obj.pinnedAt === "number"
+    && (obj.alias === undefined || typeof obj.alias === "string");
 }
 
 /** Atomically write the sidecar (write .tmp then rename to avoid corruption on crash). */
@@ -100,4 +123,44 @@ export function pruneStaleSessions(validIds: Set<string>): void {
   if (state.activeSessions.length !== before) {
     saveSessionState(state);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pinned directories
+// ---------------------------------------------------------------------------
+
+/** Return the list of pinned directories (path + optional alias). */
+export function getPinnedDirs(): PinnedDir[] {
+  return loadSessionState().pinnedDirs;
+}
+
+/**
+ * Pin a directory. If `path` is already pinned, its alias is updated.
+ * `alias` is trimmed; an empty alias is stored as undefined.
+ * No-op (returns a synthetic entry without persisting) if path is empty.
+ */
+export function addPinnedDir(path: string, alias?: string): PinnedDir {
+  const trimmedAlias = alias?.trim();
+  if (!path) return { path, alias: trimmedAlias || undefined, pinnedAt: Date.now() };
+  const state = loadSessionState();
+  const now = Date.now();
+  const existing = state.pinnedDirs.find((d) => d.path === path);
+  if (existing) {
+    existing.alias = trimmedAlias || undefined;
+    existing.pinnedAt = now;
+  } else {
+    state.pinnedDirs.push({ path, alias: trimmedAlias || undefined, pinnedAt: now });
+  }
+  saveSessionState(state);
+  return { path, alias: trimmedAlias || undefined, pinnedAt: now };
+}
+
+/** Remove a pinned directory by path. Returns true if something was removed. */
+export function removePinnedDir(path: string): boolean {
+  const state = loadSessionState();
+  const before = state.pinnedDirs.length;
+  state.pinnedDirs = state.pinnedDirs.filter((d) => d.path !== path);
+  const changed = state.pinnedDirs.length !== before;
+  if (changed) saveSessionState(state);
+  return changed;
 }

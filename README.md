@@ -47,18 +47,21 @@ On Linux this creates a systemd user unit (`~/.config/systemd/user/pi-web.servic
 ## Features
 
 - **Pick work back up**: browse previous pi conversations by project without digging through terminal history or session paths.
+- **Pin your go-to projects**: pin frequently used working directories and label them with aliases, so they stay one click away at the top of the project picker.
 - **Try different directions safely**: continue from an earlier message or fork a session into a separate route.
 - **Work across branches**: switch Git worktrees from the sidebar so new sessions and the Explorer follow the checkout you choose.
 - **Chat beside the project**: browse files on the left and preview source, docs, images, audio, and PDFs on the right while the agent works.
+- **Scroll on your terms**: read back through history while the agent works — a floating button brings you back to the latest message when you're ready, instead of forcing a jump.
 - **See session state clearly**: context usage, cost, compaction state, and system prompt details are visible from the top bar.
-- **Configure less from the terminal**: manage models, login/API keys, model tests, and skill switches from the web UI.
+- **Configure less from the terminal**: manage models, login/API keys, model tests, and skill switches from the web UI. Toggle individual tools on or off — built-in and extension tools alike — instead of picking from fixed presets.
 
 ## Notes
 
 - **Data directory**: pi-web reads `~/.pi/agent/sessions` by default. Set `PI_CODING_AGENT_DIR` to point at another pi agent directory.
 - **Session files**: files are stored as `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`.
+- **Pinned directories**: pinned projects and their aliases are saved in `pi-web-state.json` in the pi agent directory (alongside `sessions/`), so they survive restarts.
 - **Model config**: the Models panel reads and writes `models.json` in the pi agent directory. Model lists and defaults come from pi's config.
-- **File access**: file browsing and preview are scoped to the selected project directory and working directories that appear in sessions.
+- **File access**: file browsing and preview are scoped to the selected project directory, pinned directories, and working directories that appear in sessions.
 - **Git worktrees**: see [Worktrees in pi-web](./docs/worktrees.md) for when the switcher appears, how new worktrees are created, and what removal does.
 - **Forks vs in-session branches**: Fork creates a new `.jsonl` file. "Edit from here" creates another branch inside the same session file.
 
@@ -93,13 +96,14 @@ app/
     home/           # current user home directory
     models/         # available models, default model, thinking levels
     models-config/  # read/write models.json and test models
+    pinned-dirs/    # pinned working directories with aliases
     sessions/       # session reads, rename, delete, context, HTML export
     skills/         # skill listing, search, install, enable/disable
 components/
   AppShell.tsx        # main layout, URL state, top panels, file tabs
   SessionSidebar.tsx  # project selector, session tree, Explorer
-  ChatWindow.tsx      # messages, SSE, image drag/drop, minimap
-  ChatInput.tsx       # input bar, model/tools/thinking/compact/slash controls
+  ChatWindow.tsx      # messages, SSE, image drag/drop, minimap, scroll-to-bottom
+  ChatInput.tsx       # input bar, model/per-tool/thinking/compact/slash controls
   MessageView.tsx     # message, thinking, tool call/result rendering
   ModelsConfig.tsx    # model and auth configuration panel
   SkillsConfig.tsx    # skill management panel
@@ -107,7 +111,9 @@ components/
   FileViewer.tsx      # source, diff, image, audio, PDF, DOCX preview
 lib/
   rpc-manager.ts      # AgentSessionWrapper lifecycle and global registry
-  session-reader.ts   # parses .jsonl session files and branch contexts
+  session-reader.ts   # parses .jsonl session files and branch contexts (TTL path cache)
+  session-state-store.ts  # sidecar state: active sessions + pinned directories
+  tool-presets.ts     # tool preset definitions and per-tool granularity helpers
   normalize.ts        # normalizes toolCall field names
   file-access.ts      # file read safety boundary
   file-paths.ts       # path encoding and relative path helpers

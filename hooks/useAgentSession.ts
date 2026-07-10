@@ -11,7 +11,9 @@ import type {
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
-import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
+import { getToolNamesForPreset, getPresetFromTools, toolsToToolNames, defaultToolEntries, type ToolEntry } from "@/lib/tool-presets";
+import { getAgentRuntimeStore } from "@/lib/agent-runtime-store";
+import { getAgentEventBus } from "@/lib/extensions/event-bus";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 
 export interface SessionData {
@@ -158,6 +160,8 @@ export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" 
 
 const PROGRAMMATIC_SCROLL_IGNORE_MS = 700;
 const USER_SCROLL_INTENT_MS = 1200;
+/** Distance from the bottom (px) within which we consider the view "at bottom". */
+const BOTTOM_DISTANCE_PX = 80;
 const PROMPT_SETTLE_INITIAL_DELAY_MS = 800;
 const PROMPT_SETTLE_POLL_MS = 600;
 const PROMPT_SETTLE_MAX_MS = 20_000;
@@ -344,6 +348,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
   const [toolPreset, setToolPreset] = useState<"none" | "default" | "full">("default");
+  // Per-tool granularity (replaces the three-tier preset in the UI). Seeded from
+  // the DEFAULT preset so a brand-new session has a sensible starting set; an
+  // existing session is refreshed from get_tools on mount.
+  const [tools, setTools] = useState<ToolEntry[]>(() => defaultToolEntries());
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("auto");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
@@ -377,6 +385,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const ignoreProgrammaticScrollUntilRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
   const newSessionPromotedRef = useRef(false);
   const promptRunIdRef = useRef(0);
@@ -425,6 +434,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       ...(contextUsage ? { contextUsage } : {}),
     } satisfies SessionStatsInfo;
   })();
+
+  // Sync runtime state to the global store so AppShell, extension panels, and
+  // other consumers outside ChatWindow's render tree can observe agent state.
+  // sessionStats is recomputed as a fresh object every render (IIFE), so we
+  // read it from a ref to avoid re-triggering this effect on every render.
+  const runtimeStore = getAgentRuntimeStore();
+  const sessionStatsRef = useRef(sessionStats);
+  sessionStatsRef.current = sessionStats;
+  useEffect(() => {
+    runtimeStore.update({
+      sessionId: sessionIdRef.current,
+      agentRunning,
+      agentPhase,
+      tools,
+      sessionStats: sessionStatsRef.current,
+      contextUsage,
+    });
+  }, [runtimeStore, agentRunning, agentPhase, tools, contextUsage]);
+
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     try {
@@ -490,10 +518,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const loadTools = useCallback(async (sid: string) => {
     try {
-      const tools = await sendAgentCommand<ToolEntry[]>(sid, { type: "get_tools" });
-      if (tools) {
-        const { getPresetFromTools } = await import("@/lib/tool-presets");
-        setToolPresetState(getPresetFromTools(tools));
+      const toolList = await sendAgentCommand<ToolEntry[]>(sid, { type: "get_tools" });
+      if (toolList) {
+        setTools(toolList);
+        setToolPresetState(getPresetFromTools(toolList));
       }
     } catch (e) {
       console.error("Failed to load tools:", e);
@@ -524,7 +552,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const promise = (async () => {
       const selectedModel = newSessionModel ?? newSessionDefaultModel;
       if (selectedModel) setPendingModel(selectedModel);
-      const toolNames = getToolNamesForPreset(toolPreset);
+      const toolNames = toolsToToolNames(tools);
       const res = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -549,7 +577,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, newSessionModel, newSessionDefaultModel, toolPreset, thinkingLevel]);
+  }, [isNew, newSessionCwd, newSessionModel, newSessionDefaultModel, tools, thinkingLevel]);
 
   const loadSlashCommands = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
@@ -829,6 +857,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [agentRunning]);
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
+    // Emit to the extension event bus so panels/labels can react in real-time.
+    const busTypes = new Set(["agent_start", "agent_end", "tool_execution_start", "tool_execution_end", "message_end", "compaction_start", "compaction_end", "auto_compaction_start", "auto_compaction_end"]);
+    if (busTypes.has(event.type)) {
+      const et = event.type === "auto_compaction_start" ? "compaction_start" : event.type === "auto_compaction_end" ? "compaction_end" : event.type;
+      getAgentEventBus().emit({
+        type: et as "agent_start",
+        sessionId: sessionIdRef.current ?? undefined,
+        toolName: event.toolName as string | undefined,
+        toolCallId: event.toolCallId as string | undefined,
+        role: (event.message as { role?: string } | undefined)?.role,
+        aborted: event.aborted as boolean | undefined,
+        timestamp: Date.now(),
+      });
+    }
     switch (event.type) {
       case "agent_start":
         agentRunningRef.current = true;
@@ -1360,6 +1402,22 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [setToolPresetState]);
 
+  // Per-tool granularity: toggle individual tools on/off. The UI passes the
+  // updated full list; we persist it to the SDK and update local state. The
+  // server's set_tools applies the list verbatim (no extension-tool union).
+  const handleToolsChange = useCallback(async (nextTools: ToolEntry[]) => {
+    setTools(nextTools);
+    const toolNames = toolsToToolNames(nextTools);
+    setToolPresetState(getPresetFromTools(nextTools));
+    const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (!sid) return;
+    try {
+      await sendAgentCommand(sid, { type: "set_tools", toolNames });
+    } catch (e) {
+      console.error("Failed to set tools:", e);
+    }
+  }, [setToolPresetState]);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     ignoreProgrammaticScrollUntilRef.current = Date.now() + PROGRAMMATIC_SCROLL_IGNORE_MS;
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -1383,19 +1441,38 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, []);
 
   const handleScrollPositionChange = useCallback(() => {
+    // Track whether the viewport is pinned near the bottom — always, regardless
+    // of agent running state, so the floating "scroll to bottom" button shows.
+    const container = scrollContainerRef.current;
+    if (container) {
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      setIsAtBottom(distance < BOTTOM_DISTANCE_PX);
+    }
+    // Suppress completion auto-scroll only when the user actively scrolled away
+    // during a run.
     if (!agentRunningRef.current) return;
     if (Date.now() < ignoreProgrammaticScrollUntilRef.current) return;
     if (Date.now() > userScrollIntentUntilRef.current) return;
     completionScrollAllowedRef.current = false;
   }, []);
 
+  // Manual "scroll to bottom" invoked by the floating button: jumps to the
+  // bottom and re-enables completion auto-scroll so future runs follow.
+  const scrollToBottomAction = useCallback(() => {
+    completionScrollAllowedRef.current = true;
+    scrollToBottom("smooth");
+    setIsAtBottom(true);
+  }, [scrollToBottom]);
+
   // Load session on mount
   useEffect(() => {
     if (session) {
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {
+        // Always load the real tool list so the per-tool panel reflects the
+        // session's persisted state — not just when the agent is running.
+        loadTools(session.id);
         if (agentState?.running) {
-          loadTools(session.id);
           if (agentState.state?.isStreaming || agentState.state?.isPromptRunning) {
             agentRunningRef.current = true;
             setAgentRunning(true);
@@ -1528,7 +1605,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
-    agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, tools, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -1544,8 +1621,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handleToolPresetChange, handleToolsChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     dispatch, setAgentRunning, setForkingEntryId,
+    // Scroll-to-bottom
+    isAtBottom, scrollToBottomAction,
     // Subscriptions
     handleAgentEventRef,
   };

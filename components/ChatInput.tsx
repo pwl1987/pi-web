@@ -10,6 +10,9 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import type { ToolEntry } from "@/lib/tool-presets";
+import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
+import { getToolLabel } from "@/lib/tool-labels";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -42,6 +45,9 @@ interface Props {
   compactResult?: CompactResultInfo | null;
   toolPreset?: "none" | "default" | "full";
   onToolPresetChange?: (preset: "none" | "default" | "full") => void;
+  /** Per-tool granularity (preferred over toolPreset when provided). */
+  tools?: ToolEntry[];
+  onToolsChange?: (tools: ToolEntry[]) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh") => void;
   availableThinkingLevels?: string[] | null;
@@ -190,9 +196,123 @@ function QueuedMessageRow({ kind, label, text }: { kind: "steer" | "follow-up"; 
   );
 }
 
+/**
+ * Apply a preset's tool-name set to the current tool list, preserving the list
+ * shape and order. Tools named in `activeNames` become active, others inactive.
+ */
+function applyPresetToTools(tools: ToolEntry[], activeNames: string[]): ToolEntry[] {
+  const active = new Set(activeNames);
+  return tools.map((tool) => ({ ...tool, active: active.has(tool.name) }));
+}
+
+/** Quick-preset chip button used in the tool checklist header. */
+function PresetChip({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        background: "none", border: "1px solid var(--border)", borderRadius: 5,
+        padding: "3px 8px", fontSize: 11, color: "var(--text-muted)", cursor: "pointer",
+        flex: 1,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Per-tool checklist panel: built-in tools, extension tools, quick presets. */
+function ToolChecklist({ tools, onChange, onPresetApply, onClose }: {
+  tools: ToolEntry[];
+  onChange: (tools: ToolEntry[]) => void;
+  onPresetApply: (names: string[]) => void;
+  onClose: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const builtin = tools.filter((x) => BUILTIN_TOOL_NAMES.has(x.name));
+  const extensions = tools.filter((x) => !BUILTIN_TOOL_NAMES.has(x.name));
+
+  const toggle = (name: string) => {
+    onChange(tools.map((x) => x.name === name ? { ...x, active: !x.active } : x));
+  };
+
+  const renderRow = (tool: ToolEntry) => {
+    const label = getToolLabel(tool.name, locale);
+    const description = label.description || tool.description;
+    return (
+    <button
+      key={tool.name}
+      onClick={() => toggle(tool.name)}
+      title={description || tool.name}
+      style={{
+        display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 12px",
+        background: "none", border: "none", cursor: "pointer", textAlign: "left",
+        color: tool.active ? "var(--text)" : "var(--text-muted)", fontSize: 12,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+    >
+      <span style={{
+        width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+        border: tool.active ? "1px solid var(--accent)" : "1px solid var(--border)",
+        background: tool.active ? "var(--accent)" : "none",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {tool.active && (
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--bg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="1.5 5 4 7.5 8.5 2.5" />
+          </svg>
+        )}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{tool.name}</span>
+      {description && (
+        <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>
+          {description}
+        </span>
+      )}
+    </button>
+    );
+  };
+
+  return (
+    <div style={{ maxHeight: "min(60vh, 460px)", overflowY: "auto" }}>
+      {/* Quick presets */}
+      <div style={{ display: "flex", gap: 6, padding: "7px 10px", borderBottom: "1px solid var(--border)" }}>
+        <PresetChip label={t("input.presetAll")} title={t("input.toolsFull")} onClick={() => { onPresetApply(PRESET_FULL); }} />
+        <PresetChip label={t("input.presetDefault")} title={t("input.toolsDefault")} onClick={() => { onPresetApply(PRESET_DEFAULT); }} />
+        <PresetChip label={t("input.presetNone")} title={t("input.toolsNone")} onClick={() => { onPresetApply(PRESET_NONE); }} />
+      </div>
+      {builtin.length > 0 && (
+        <>
+          <div style={{ padding: "5px 12px 2px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-dim)" }}>
+            {t("input.toolsBuiltin")}
+          </div>
+          {builtin.map(renderRow)}
+        </>
+      )}
+      {extensions.length > 0 && (
+        <>
+          <div style={{ padding: "5px 12px 2px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-dim)", borderTop: builtin.length > 0 ? "1px solid var(--border)" : "none" }}>
+            {t("input.toolsExtensions")}
+          </div>
+          {extensions.map(renderRow)}
+        </>
+      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", borderTop: "1px solid var(--border)" }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 11, cursor: "pointer" }}>
+          {t("common.done")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, onModelChange,
-  onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange, tools, onToolsChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -836,6 +956,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return thinkingLevelMap[lvl] ?? lvl;
   })();
   const toolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? "default"))?.[0] ?? "default";
+  // Button label for the per-tool panel: "Tools: 4/7" (active/total). Falls back
+  // to the preset label when the per-tool list isn't available.
+  const toolsLabel = tools && tools.length > 0
+    ? t("input.toolsCount", { active: tools.filter((x) => x.active).length, total: tools.length })
+    : toolPresetLabel;
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1703,13 +1828,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 )}
               </div>
             )}
-            {!isStreaming && onToolPresetChange && (
+            {!isStreaming && (onToolsChange || onToolPresetChange) && (
               <div ref={toolDropdownRef} style={{ position: "relative" }}>
                 <button
                   onClick={() => !isStreaming && setToolDropdownOpen((v) => !v)}
                   disabled={isStreaming}
-                  title={t("input.changeToolPreset", { preset: toolPresetLabel })}
-                  aria-label={t("input.changeToolPreset", { preset: toolPresetLabel })}
+                  title={toolsLabel}
+                  aria-label={toolsLabel}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
                     padding: isMobile ? "0 6px" : "8px 12px",
@@ -1737,44 +1862,55 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                   </svg>
-                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>}
+                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolsLabel}</span>}
                 </button>
                 {toolDropdownOpen && (
                   <div style={{
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
                     zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
                     borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                    overflow: "hidden", minWidth: 120,
+                    overflow: "hidden", minWidth: 200, maxWidth: 280,
                   }}>
-                    {TOOL_PRESETS.map((lvl) => {
-                      const preset = TOOL_PRESET_MAP[lvl];
-                      const isActive = (toolPreset ?? "default") === preset;
-                      const desc = lvl === "off" ? t("input.toolsNone") : lvl === "default" ? t("input.toolsDefault") : t("input.toolsFull");
-                      return (
-                        <button
-                          key={lvl}
-                          onClick={() => { setToolDropdownOpen(false); if (!isActive) onToolPresetChange(preset); }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
-                            border: "none",
-                            color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: 12, textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
-                            whiteSpace: "nowrap",
-                          }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
-                        >
-                          {isActive
-                            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                            : <span style={{ width: 10, flexShrink: 0 }} />}
-                          <span style={{ flex: 1 }}>{lvl}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{desc}</span>
-                        </button>
-                      );
-                    })}
+                    {tools && onToolsChange ? (
+                      <ToolChecklist
+                        tools={tools}
+                        onChange={onToolsChange}
+                        onPresetApply={(names) => {
+                          onToolsChange(applyPresetToTools(tools, names));
+                        }}
+                        onClose={() => setToolDropdownOpen(false)}
+                      />
+                    ) : (
+                      TOOL_PRESETS.map((lvl) => {
+                        const preset = TOOL_PRESET_MAP[lvl];
+                        const isActive = (toolPreset ?? "default") === preset;
+                        const desc = lvl === "off" ? t("input.toolsNone") : lvl === "default" ? t("input.toolsDefault") : t("input.toolsFull");
+                        return (
+                          <button
+                            key={lvl}
+                            onClick={() => { setToolDropdownOpen(false); if (!isActive && onToolPresetChange) onToolPresetChange(preset); }}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 8,
+                              width: "100%", padding: "7px 12px",
+                              background: isActive ? "var(--bg-selected)" : "none",
+                              border: "none",
+                              color: isActive ? "var(--text)" : "var(--text-muted)",
+                              cursor: "pointer", fontSize: 12, textAlign: "left",
+                              fontWeight: isActive ? 600 : 400,
+                              whiteSpace: "nowrap",
+                            }}
+                            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
+                            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                          >
+                            {isActive
+                              ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
+                              : <span style={{ width: 10, flexShrink: 0 }} />}
+                            <span style={{ flex: 1 }}>{lvl}</span>
+                            <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{desc}</span>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 )}
               </div>

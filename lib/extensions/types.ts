@@ -8,6 +8,7 @@
 // Versioning: apiVersion is a literal `1`. Breaking changes wait for `2`.
 
 import type { ReactNode, ComponentType } from "react";
+import type { AgentEventBus } from "./event-bus";
 
 // ============================================================================
 // Identifiers
@@ -39,6 +40,8 @@ export interface PiWebExtension {
 export interface ExtensionActivationContext {
   apiVersion: 1;
   extensionId: ExtensionId;
+  /** Subscribe to agent lifecycle events (tool calls, messages, start/end). */
+  eventBus?: AgentEventBus;
 }
 
 export interface ExtensionContributions {
@@ -51,10 +54,21 @@ export interface ExtensionContributions {
 // Contexts (passed to contribution callbacks at render/query time)
 // ============================================================================
 
-/** Minimal runtime state exposed to extensions. */
+/** Runtime state exposed to extensions. */
 export interface ExtensionRuntimeState {
   selectedSession?: { id: string; cwd?: string; name?: string } | null;
   selectedCwd?: string | null;
+  /** Whether the agent is currently running a prompt. */
+  agentRunning?: boolean;
+  /** Names of currently active tools. */
+  activeTools?: string[];
+  /** Session statistics snapshot (message/tool counts, tokens, cost). */
+  sessionStats?: {
+    totalMessages?: number;
+    toolCalls?: number;
+    tokens?: { total?: number };
+    cost?: number;
+  } | null;
 }
 
 /** Context for actions (command palette). */
@@ -70,7 +84,7 @@ export interface ExtensionRuntimeContext {
 
 /** Context for workspace panels and labels. */
 export interface WorkspaceContext {
-  session?: { id: string; cwd?: string; name?: string } | null;
+  session?: { id: string; cwd?: string; name?: string; worktreeBranch?: string } | null;
   cwd?: string;
   state: ExtensionRuntimeState;
 }

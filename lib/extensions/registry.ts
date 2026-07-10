@@ -20,6 +20,7 @@ import type {
   WorkspaceLabelItem,
   WorkspacePanelContribution,
 } from "./types";
+import { getAgentEventBus } from "./event-bus";
 
 const ID_RE = /^[a-z][a-z0-9.-]*$/;
 
@@ -47,6 +48,8 @@ export class ExtensionRegistry {
   private listeners = new Set<() => void>();
   /** Bumped on every register/unregister, so useSyncExternalStore consumers re-render. */
   private version = 0;
+  /** Event bus passed to extensions at activation time. Set after construction. */
+  eventBus: import("./event-bus").AgentEventBus | undefined;
 
   // --- External store API (for useSyncExternalStore) ---
 
@@ -83,7 +86,7 @@ export class ExtensionRegistry {
       throw new Error(`Duplicate extension id: "${id}"`);
     }
 
-    const result = ext.activate({ apiVersion: 1, extensionId: id });
+    const result = ext.activate({ apiVersion: 1, extensionId: id, eventBus: this.eventBus });
     const contributions = result ?? {};
 
     const actions = this.qualifyActions(id, contributions.actions ?? []);
@@ -248,6 +251,8 @@ declare global {
 export function getExtensionRegistry(): ExtensionRegistry {
   if (!globalThis.__piWebExtensionRegistry) {
     globalThis.__piWebExtensionRegistry = new ExtensionRegistry();
+    // Wire the event bus so extensions receive it via activation context.
+    globalThis.__piWebExtensionRegistry.eventBus = getAgentEventBus();
   }
   return globalThis.__piWebExtensionRegistry;
 }
