@@ -98,7 +98,7 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
   const reloadTodos = useCallback(async () => {
     if (!sessionId) { setTasks([]); return; }
     try {
-      const res = await fetch(`/api/todos?sessionId=${encodeURIComponent(sessionId)}`);
+      const res = await fetch(`/api/task-list?sessionId=${encodeURIComponent(sessionId)}`);
       if (!res.ok) return;
       const d = await res.json() as { tasks: TodoTask[] };
       setTasks(d.tasks ?? []);
