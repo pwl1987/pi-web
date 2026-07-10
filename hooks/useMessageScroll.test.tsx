@@ -101,3 +101,63 @@ describe("useMessageScroll", () => {
     expect(result.current.scrollTo).toBe(scrollTo1);
   });
 });
+
+describe("useMessageScroll fallback for unknown entryId", () => {
+  beforeEach(() => {
+    mockedScrollIntoView.mockClear();
+  });
+
+  function makeEl(id: string): HTMLElement {
+    const el = document.createElement("section");
+    el.setAttribute("data-testid", id);
+    return el;
+  }
+
+  it("scrollTo on an unknown entryId falls back to the most recently registered element", () => {
+    const { result } = renderHook(() => useMessageScroll());
+    const first = makeEl("first");
+    const latest = makeEl("latest");
+
+    act(() => result.current.register("entry-aaa", first));
+    act(() => result.current.register("entry-zzz", latest));
+    act(() => result.current.scrollTo("entry-deleted-by-session-reload"));
+
+    // Not a no-op — fell back to the latest element.
+    expect(mockedScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(mockedScrollIntoView).toHaveBeenCalledWith(latest);
+  });
+
+  it("scrollTo on a known entryId still uses that exact element, NOT the fallback", () => {
+    const { result } = renderHook(() => useMessageScroll());
+    const earlier = makeEl("earlier");
+    const latest = makeEl("latest");
+
+    act(() => result.current.register("entry-aaa", earlier));
+    act(() => result.current.register("entry-zzz", latest));
+    act(() => result.current.scrollTo("entry-aaa"));
+
+    // The known element wins — fallback only kicks in when lookup misses.
+    expect(mockedScrollIntoView).toHaveBeenCalledWith(earlier);
+  });
+
+  it("scrollTo on an unknown entryId with an empty map is still a safe no-op", () => {
+    const { result } = renderHook(() => useMessageScroll());
+    act(() => result.current.scrollTo("anything"));
+    expect(mockedScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(mockedScrollIntoView).toHaveBeenCalledWith(undefined);
+  });
+
+  it("after register(null) removes the latest, the previous element becomes the fallback", () => {
+    const { result } = renderHook(() => useMessageScroll());
+    const older = makeEl("older");
+    const newer = makeEl("newer");
+
+    act(() => result.current.register("entry-a", older));
+    act(() => result.current.register("entry-b", newer));
+    act(() => result.current.register("entry-b", null)); // unregister the latest
+    act(() => result.current.scrollTo("entry-removed"));
+
+    // Fallback picks the new "latest" which is the older one.
+    expect(mockedScrollIntoView).toHaveBeenCalledWith(older);
+  });
+});

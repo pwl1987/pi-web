@@ -40,7 +40,19 @@ export function useMessageScroll(): {
   }, []);
 
   const scrollTo = useCallback((entryId: string) => {
-    scrollIntoView(refs.current.get(entryId));
+    const exact = refs.current.get(entryId);
+    if (exact) {
+      scrollIntoView(exact);
+      return;
+    }
+    // Fallback: scroll to the most recently registered element that's still
+    // present in the map. Useful when a task's session entryId was wiped
+    // (e.g. session reloaded, history pruned) — instead of silently no-op,
+    // we land the user somewhere reasonable: the latest visible message.
+    // Map iteration order is insertion order, so we walk in reverse.
+    let latest: HTMLElement | undefined;
+    for (const el of refs.current.values()) latest = el;
+    scrollIntoView(latest);
   }, []);
 
   return { register, scrollTo };
