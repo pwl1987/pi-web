@@ -251,6 +251,7 @@ export const en: Record<string, string> = {
   "sidebar.pinDir": "Pin this directory",
   "sidebar.pinCurrentDir": "Pin current directory",
   "sidebar.unpin": "Unpin",
+  "sidebar.unpinDir": "Unpin this directory",
   "sidebar.aliasPlaceholder": "Alias (optional)",
   "sidebar.addAlias": "Set alias…",
   "sidebar.saveAlias": "Save",

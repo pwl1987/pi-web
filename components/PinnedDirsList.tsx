@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
 
 export interface PinnedDir {
   path: string;
@@ -55,6 +56,10 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
 
   useEffect(() => {
     void reload();
+    // Re-fetch when another component mutates the pin list. The Pin button
+    // in the cwd picker fires this same bus after POST/DELETE succeeds.
+    const bus = getPinnedDirsBus();
+    return bus.subscribe(reload);
   }, [reload]);
 
   const unpin = useCallback(async (path: string) => {

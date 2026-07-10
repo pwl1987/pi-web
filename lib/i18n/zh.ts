@@ -250,6 +250,7 @@ export const zh: Record<string, string> = {
   "sidebar.pinDir": "固定此目录",
   "sidebar.pinCurrentDir": "固定当前目录",
   "sidebar.unpin": "取消固定",
+  "sidebar.unpinDir": "取消固定此目录",
   "sidebar.aliasPlaceholder": "别名（可选）",
   "sidebar.addAlias": "设置别名…",
   "sidebar.saveAlias": "保存",

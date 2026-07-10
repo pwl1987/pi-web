@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProp
 import type { SessionInfo } from "@/lib/types";
 import { FileExplorer } from "./FileExplorer";
 import { PinnedDirsList } from "./PinnedDirsList";
+import { PinCurrentDirButton } from "./PinCurrentDirButton";
+import { useIsCwdPinned } from "@/hooks/useIsCwdPinned";
 import { useI18n } from "@/hooks/useI18n";
 import { useExtensions } from "@/hooks/useExtensions";
 import type { WorkspaceLabelItem } from "@/lib/extensions/types";
@@ -700,6 +702,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [selectedCwd, onNewSession]);
 
   const recentProjects = getRecentProjects(allSessions);
+  const isCwdPinned = useIsCwdPinned(selectedCwd);
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((p) => p.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -837,11 +840,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
         {/* CWD picker */}
         <div ref={dropdownRef} style={{ position: "relative" }}>
+          <div style={{ display: "flex", gap: 4, alignItems: "stretch" }}>
           <button
             onClick={() => setDropdownOpen((v) => !v)}
             title={selectedProject ?? selectedCwd ?? ""}
             style={{
-              width: "100%",
+              flex: 1,
+              minWidth: 0,
               display: "flex",
               alignItems: "center",
               padding: "6px 10px",
@@ -881,6 +886,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               </span>
             )}
           </button>
+          <PinCurrentDirButton
+            cwd={selectedCwd ?? null}
+            isPinned={isCwdPinned}
+            onPinnedChange={() => { /* bus handles re-fetch; hook re-checks via subscription */ }}
+          />
+          </div>
 
           <AnimatedDropdown
             open={dropdownOpen}
