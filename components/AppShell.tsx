@@ -12,6 +12,11 @@ import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { McpConfigPanel } from "./McpConfigPanel";
+import { WebSearchConfigPanel } from "./WebSearchConfigPanel";
+import { SubagentsPanel } from "./SubagentsPanel";
+import { SubagentBadge } from "./SubagentBadge";
+import { InspectorPanel } from "./InspectorPanel";
 import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
@@ -20,6 +25,8 @@ import { BranchNavigator } from "./BranchNavigator";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { useExtensions } from "@/hooks/useExtensions";
+import { usePersistentState } from "@/hooks/usePersistentState";
+import { useAgentRuntime } from "@/lib/agent-runtime-store";
 import { translate } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
@@ -36,6 +43,7 @@ export function AppShell() {
   const isMobile = useIsMobile();
   const { locale, t } = useI18n();
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
+  const runtime = useAgentRuntime();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -71,13 +79,13 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = usePersistentState<boolean>("sidebar-open", true);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
     if (isMobile) setSidebarOpen(false);
-  }, [isMobile]);
+  }, [isMobile, setSidebarOpen]);
   useEffect(() => {
     setMobileSidebarReady(true);
   }, []);
@@ -134,23 +142,24 @@ export function AppShell() {
   }, []);
 
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | "panels" | "subagents" | null>(null);
+  const [activePanelTab, setActivePanelTab] = useState<"mcp" | "web-search">("mcp");
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  const toggleTopPanel = useCallback((panel: "branches" | "system" | "session") => {
+  const toggleTopPanel = useCallback((panel: "branches" | "system" | "session" | "panels" | "subagents") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
-  }, [isMobile]);
+  }, [isMobile, setSidebarOpen]);
 
   const openSessionStatsPanel = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel("session");
-  }, [isMobile]);
+  }, [isMobile, setSidebarOpen]);
 
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) setActiveTopPanel(null);
     setSidebarOpen((open) => !open);
-  }, [isMobile]);
+  }, [isMobile, setSidebarOpen]);
 
   useEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
@@ -168,9 +177,25 @@ export function AppShell() {
   }, [activeTopPanel]);
 
   // Right panel — file tabs only
-  const [fileTabs, setFileTabs] = useState<Tab[]>([]);
-  const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
-  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [fileTabs, setFileTabs] = usePersistentState<Tab[]>("file-tabs", []);
+  const [activeFileTabId, setActiveFileTabId] = usePersistentState<string | null>("active-file-tab-id", null);
+  const [rightPanelOpen, setRightPanelOpen] = usePersistentState<boolean>("right-panel-open", false);
+  const [todoSidebarOpen, setTodoSidebarOpen] = usePersistentState<boolean>("todo-sidebar-open", false);
+
+  // Reconcile persisted UI state after load: if the persisted active tab no
+  // longer exists (user closed it, file was deleted, etc.), drop the pointer.
+  // Also closes the right panel if its tab list became empty.
+  useEffect(() => {
+    if (fileTabs.length === 0) {
+      if (activeFileTabId !== null) setActiveFileTabId(null);
+      if (rightPanelOpen) setRightPanelOpen(false);
+      return;
+    }
+    if (activeFileTabId && !fileTabs.some((t) => t.id === activeFileTabId)) {
+      setActiveFileTabId(fileTabs[fileTabs.length - 1].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileTabs]);
 
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
@@ -180,6 +205,16 @@ export function AppShell() {
 
   const [initialSessionId] = useState<string | null>(() => searchParams.get("session"));
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+  // Build the shared extension runtime state (agent data injected for extensions).
+  const extState = {
+    selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
+    selectedCwd: activeCwd ?? newSessionCwd ?? null,
+    agentRunning: runtime.agentRunning,
+    activeTools: runtime.tools.filter((t) => t.active).map((t) => t.name),
+    sessionStats: runtime.sessionStats
+      ? { totalMessages: runtime.sessionStats.totalMessages, toolCalls: runtime.sessionStats.toolCalls, tokens: { total: runtime.sessionStats.tokens.total }, cost: runtime.sessionStats.cost }
+      : null,
+  };
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !searchParams.get("session"));
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
@@ -233,7 +268,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [router, isMobile]);
+  }, [router, isMobile, setSidebarOpen]);
 
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
@@ -245,7 +280,7 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace("/", { scroll: false });
-  }, [router, isMobile]);
+  }, [router, isMobile, setSidebarOpen]);
 
   // Client-built transient SessionInfo (new session / fork) lacks the
   // server-computed projectRoot, which the same-project check in
@@ -319,7 +354,7 @@ export function AppShell() {
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
-  }, [isMobile]);
+  }, [isMobile, setFileTabs, setActiveFileTabId, setRightPanelOpen, setSidebarOpen]);
 
   const handleOpenLinkedFile = useCallback((filePath: string) => {
     handleOpenFile(filePath, getFileName(filePath), selectedSession?.id ?? null);
@@ -336,7 +371,7 @@ export function AppShell() {
       const remaining = fileTabs.filter((t) => t.id !== tabId);
       return remaining.length > 0 ? remaining[remaining.length - 1].id : null;
     });
-  }, [fileTabs]);
+  }, [fileTabs, setFileTabs, setActiveFileTabId, setRightPanelOpen]);
 
   /** Open an extension panel as a tab in the right-side panel area. */
   const handleOpenExtensionPanel = useCallback((qualifiedId: string, title: string, icon?: ReactNode) => {
@@ -349,7 +384,20 @@ export function AppShell() {
     setActiveFileTabId(tabId);
     setRightPanelOpen(true);
     if (isMobile) setSidebarOpen(false);
-  }, [isMobile]);
+  }, [isMobile, setFileTabs, setActiveFileTabId, setRightPanelOpen, setSidebarOpen]);
+
+  /** Open a builtin panel (MCP config, web-search, subagents) as a right-side tab. */
+  const handleOpenBuiltinPanel = useCallback((builtinId: string, title: string, icon?: ReactNode) => {
+    const tabId = `builtin:${builtinId}`;
+    setFileTabs((prev) => {
+      const existing = prev.find((t) => t.id === tabId);
+      if (!existing) return [...prev, { id: tabId, label: title, kind: "builtin" as const, builtinId, icon }];
+      return prev;
+    });
+    setActiveFileTabId(tabId);
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile, setFileTabs, setActiveFileTabId, setRightPanelOpen, setSidebarOpen]);
 
   const handleExportSession = useCallback(() => {
     if (!selectedSession) return;
@@ -698,7 +746,62 @@ export function AppShell() {
                 </svg>
                 {!isMobile && <span>{t("topbar.system")}</span>}
               </button>
+              <button
+                onClick={() => toggleTopPanel("subagents")}
+                title={t("panels.subagents")}
+                aria-label={t("panels.subagents")}
+                aria-pressed={activeTopPanel === "subagents"}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  height: "100%", padding: "0 12px",
+                  background: activeTopPanel === "subagents" ? "var(--bg-selected)" : "none",
+                  border: "none",
+                  borderTop: activeTopPanel === "subagents" ? "2px solid var(--accent)" : "2px solid transparent",
+                  borderRight: "1px solid var(--border)",
+                  cursor: "pointer",
+                  color: activeTopPanel === "subagents" ? "var(--text)" : "var(--text-muted)",
+                  fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "subagents" ? "var(--text)" : "var(--text-muted)"; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <rect x="3" y="11" width="18" height="10" rx="2" />
+                  <circle cx="12" cy="5" r="2" />
+                  <path d="M12 7v4" />
+                </svg>
+                {!isMobile && <span>{t("panels.subagents")}</span>}
+              </button>
+              <button
+                onClick={() => toggleTopPanel("panels")}
+                title={t("panels.title")}
+                aria-label={t("panels.title")}
+                aria-pressed={activeTopPanel === "panels"}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  height: "100%", padding: "0 12px",
+                  background: activeTopPanel === "panels" ? "var(--bg-selected)" : "none",
+                  border: "none",
+                  borderTop: activeTopPanel === "panels" ? "2px solid var(--accent)" : "2px solid transparent",
+                  borderRight: "1px solid var(--border)",
+                  cursor: "pointer",
+                  color: activeTopPanel === "panels" ? "var(--text)" : "var(--text-muted)",
+                  fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = activeTopPanel === "panels" ? "var(--text)" : "var(--text-muted)"; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+                </svg>
+                {!isMobile && <span>{t("panels.title")}</span>}
+              </button>
             </div>
+          )}
+          {/* Subagent status badge — shows when subagents are running */}
+          {showChat && (
+            <SubagentBadge onClick={() => toggleTopPanel("subagents")} />
           )}
           {/* Session stats — right-aligned in top bar */}
           {showChat && (sessionStats || contextUsage) && (() => {
@@ -997,6 +1100,50 @@ export function AppShell() {
                   )}
                 </div>
               )}
+              {activeTopPanel === "panels" && (
+                <div style={{
+                  background: "var(--bg-panel)",
+                  borderBottom: "1px solid var(--border)",
+                  maxHeight: "min(600px, 75vh)",
+                  overflowY: "auto",
+                }}>
+                  <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-panel)", zIndex: 1 }}>
+                    {([
+                      { id: "mcp", label: t("panels.mcp") },
+                      { id: "web-search", label: t("panels.webSearch") },
+                    ] as const).map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActivePanelTab(tab.id)}
+                        style={{
+                          padding: "8px 14px", fontSize: 11, fontWeight: 500,
+                          background: activePanelTab === tab.id ? "var(--bg-selected)" : "none",
+                          border: "none",
+                          borderBottom: activePanelTab === tab.id ? "2px solid var(--accent)" : "2px solid transparent",
+                          color: activePanelTab === tab.id ? "var(--text)" : "var(--text-muted)",
+                          cursor: "pointer", whiteSpace: "nowrap",
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ maxHeight: "min(560px, 70vh)", overflowY: "auto" }}>
+                    {activePanelTab === "mcp" && <McpConfigPanel />}
+                    {activePanelTab === "web-search" && <WebSearchConfigPanel />}
+                  </div>
+                </div>
+              )}
+              {activeTopPanel === "subagents" && (
+                <div style={{
+                  background: "var(--bg-panel)",
+                  borderBottom: "1px solid var(--border)",
+                  maxHeight: "min(600px, 75vh)",
+                  overflowY: "auto",
+                }}>
+                  <SubagentsPanel />
+                </div>
+              )}
             </div>
           )}
 
@@ -1004,6 +1151,14 @@ export function AppShell() {
 
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          {showChat && (
+            <InspectorPanel
+              sessionId={selectedSession?.id ?? null}
+              cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
+              open={todoSidebarOpen}
+              onToggle={() => setTodoSidebarOpen((v) => !v)}
+            />
+          )}
           {showChat ? (
             <ChatWindow
               key={sessionKey}
@@ -1064,12 +1219,16 @@ export function AppShell() {
               onCloseTab={handleCloseFileTab}
             />
           </div>
-
         </div>
 
         {/* File content */}
         <div style={{ flex: 1, overflow: "hidden" }}>
-          {activeFileTab?.kind === "extension" && activeFileTab.extensionId ? (
+          {activeFileTab?.kind === "builtin" && activeFileTab.builtinId ? (
+            activeFileTab.builtinId === "mcp" ? <McpConfigPanel />
+            : activeFileTab.builtinId === "web-search" ? <WebSearchConfigPanel />
+            : activeFileTab.builtinId === "subagents" ? <SubagentsPanel />
+            : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>Unknown panel</div>
+          ) : activeFileTab?.kind === "extension" && activeFileTab.extensionId ? (
             (() => {
               const panel = getWorkspacePanels().find((p) => p.qualifiedId === activeFileTab.extensionId);
               if (!panel) {
@@ -1082,10 +1241,7 @@ export function AppShell() {
               return panel.render({
                 session: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
                 cwd: activeCwd ?? undefined,
-                state: {
-                  selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
-                  selectedCwd: activeCwd ?? newSessionCwd ?? null,
-                },
+                state: extState,
                 requestRender: () => setSessionKey((k) => k + 1),
               });
             })()
@@ -1158,10 +1314,7 @@ export function AppShell() {
       open={commandPaletteOpen}
       onClose={() => setCommandPaletteOpen(false)}
       actions={getActions({
-        state: {
-          selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
-          selectedCwd: activeCwd ?? newSessionCwd ?? null,
-        },
+        state: extState,
         focusPrompt: () => {
           document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
         },
@@ -1173,10 +1326,7 @@ export function AppShell() {
       })}
       getDisabledReason={getActionDisabledReason}
       context={{
-        state: {
-          selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
-          selectedCwd: activeCwd ?? newSessionCwd ?? null,
-        },
+        state: extState,
         focusPrompt: () => {
           document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
         },
