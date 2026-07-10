@@ -180,6 +180,12 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
   const inProgressTasks = tasks.filter((t) => t.status === "in_progress");
   const pendingTasks = tasks.filter((t) => t.status === "pending");
   const allDone = hasTasks && completedTasks.length === tasks.length;
+  const progressPct = hasTasks ? completedTasks.length / tasks.length : 0;
+  // Progress color: dim (none) → amber (in progress) → green (all done)
+  const progressColor =
+    allDone ? "var(--git-added)"
+      : completedTasks.length === 0 ? "var(--text-dim)"
+      : "var(--git-modified)";
 
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
   const showGit = gitData?.isGit === true;
@@ -419,19 +425,45 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
                   −{fmt(gitData!.deleted)}
                 </span>
               </div>
-              {/* Sub-detail: file counts */}
+              {/* Sub-detail: file counts (semantic colors) */}
               <div
                 style={{
                   display: "flex",
-                  gap: 12,
+                  gap: 10,
                   padding: "0 14px 8px 44px",
                   fontSize: 10,
                   color: "var(--text-dim)",
                 }}
               >
-                <span>{t("inspector.modified")}: {gitData!.modified}</span>
-                <span>{t("inspector.staged")}: {gitData!.staged}</span>
-                {gitData!.untracked > 0 && <span>{t("inspector.untracked")}: {gitData!.untracked}</span>}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: "50%",
+                    background: gitData!.modified > 0 ? "var(--git-modified)" : "var(--border)",
+                  }} />
+                  <span style={{ color: gitData!.modified > 0 ? "var(--git-modified)" : "var(--text-dim)", fontWeight: gitData!.modified > 0 ? 500 : 400 }}>
+                    {t("inspector.modified")}: {gitData!.modified}
+                  </span>
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: "50%",
+                    background: gitData!.staged > 0 ? "var(--accent)" : "var(--border)",
+                  }} />
+                  <span style={{ color: gitData!.staged > 0 ? "var(--accent)" : "var(--text-dim)", fontWeight: gitData!.staged > 0 ? 500 : 400 }}>
+                    {t("inspector.staged")}: {gitData!.staged}
+                  </span>
+                </span>
+                {gitData!.untracked > 0 && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{
+                      width: 6, height: 6, borderRadius: "50%",
+                      background: "var(--git-untracked)",
+                    }} />
+                    <span style={{ color: "var(--git-untracked)", fontWeight: 500 }}>
+                      {t("inspector.untracked")}: {gitData!.untracked}
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -530,8 +562,21 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
                 }}
               >
                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{t("inspector.process")}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: allDone ? "var(--git-added)" : "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* Mini progress bar — 36px wide, 4px tall, fills left-to-right */}
+                  <div style={{
+                    width: 36, height: 4, borderRadius: 2,
+                    background: "var(--bg-subtle)", overflow: "hidden",
+                    border: "1px solid var(--border)",
+                  }}>
+                    <div style={{
+                      width: `${progressPct * 100}%`,
+                      height: "100%",
+                      background: progressColor,
+                      transition: "width 0.25s ease, background 0.2s",
+                    }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: progressColor, fontVariantNumeric: "tabular-nums", transition: "color 0.2s" }}>
                     {completedTasks.length}/{tasks.length}
                   </span>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-muted)", transform: tasksCollapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }}>

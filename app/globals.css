@@ -33,6 +33,10 @@
   --assistant-bg: #ffffff;
   --tool-bg: #f9fafb;
   --bg-subtle: rgba(0,0,0,0.03);
+  --git-added: #4ec990;
+  --git-deleted: #f47067;
+  --git-modified: #d4a72c;
+  --git-untracked: #a371f7;
 }
 
 html.dark {
@@ -50,6 +54,10 @@ html.dark {
   --assistant-bg: #1a1a1a;
   --tool-bg: #1f2937;
   --bg-subtle: rgba(255,255,255,0.04);
+  --git-added: #4ec990;
+  --git-deleted: #f47067;
+  --git-modified: #e3b341;
+  --git-untracked: #b18be5;
 }
 
 /* Theme toggle: circular wipe via View Transitions API.
