@@ -344,6 +344,23 @@ export const en: Record<string, string> = {
   "chat.confirm": "Confirm",
   "chat.submit": "Submit",
 
+  // ----- InspectorPanel.tsx -----
+  "inspector.title": "Inspector",
+  "inspector.pin": "Pin panel",
+  "inspector.pinned": "Pinned",
+  "inspector.changes": "Changes",
+  "inspector.modified": "modified",
+  "inspector.staged": "staged",
+  "inspector.untracked": "untracked",
+  "inspector.detached": "detached HEAD",
+  "inspector.process": "Process",
+  "inspector.completedN": "{count} completed",
+  "inspector.empty": "No data. Open a session to see git status and tasks.",
+  "inspector.more": "More actions",
+  "inspector.commitPush": "Commit or Push",
+  "inspector.branch": "Branch",
+  "inspector.collapseTasks": "Collapse task list",
+
   // ----- BranchNavigator.tsx -----
   "branch.branches": "Branches",
   "branch.noActiveSession": "No active session",

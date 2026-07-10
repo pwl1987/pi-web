@@ -344,6 +344,23 @@ export const zh: Record<string, string> = {
   "chat.confirm": "确认",
   "chat.submit": "提交",
 
+  // ----- InspectorPanel.tsx -----
+  "inspector.title": "检查器",
+  "inspector.pin": "固定面板",
+  "inspector.pinned": "已固定",
+  "inspector.changes": "更改",
+  "inspector.modified": "已修改",
+  "inspector.staged": "已暂存",
+  "inspector.untracked": "未跟踪",
+  "inspector.detached": "游离 HEAD",
+  "inspector.process": "进程",
+  "inspector.completedN": "已完成 {count} 项",
+  "inspector.empty": "暂无数据。打开会话查看 Git 状态和任务。",
+  "inspector.more": "更多操作",
+  "inspector.commitPush": "提交或推送",
+  "inspector.branch": "分支",
+  "inspector.collapseTasks": "收起任务列表",
+
   // ----- BranchNavigator.tsx -----
   "branch.branches": "分支",
   "branch.noActiveSession": "没有活动会话",
