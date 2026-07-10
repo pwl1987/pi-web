@@ -2,7 +2,6 @@
 
 import { useI18n } from "@/hooks/useI18n";
 import type { LoadedExtensionInfo } from "@/lib/extensions/types";
-import { setExtensionEnabled } from "@/lib/extensions/discovery";
 
 interface Props {
   extensions: LoadedExtensionInfo[];
@@ -81,9 +80,13 @@ export function ExtensionsConfig({ extensions, onClose }: Props) {
                   </div>
                 </div>
                 <button
-                  onClick={() => {
-                    // Toggling writes config; user must reload for it to take effect.
-                    setExtensionEnabled(ext.id, false);
+                  onClick={async () => {
+                    // Toggling writes config server-side; user must reload for it to take effect.
+                    await fetch("/api/extensions/config", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: ext.id, enabled: false }),
+                    });
                   }}
                   style={{
                     padding: "4px 10px", fontSize: 11, borderRadius: 5, cursor: "pointer",
