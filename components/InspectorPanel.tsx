@@ -47,6 +47,11 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
   const runtime = useAgentRuntime();
   const [gitData, setGitData] = useState<GitDiffData | null>(null);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
+  // True while the initial fetch is in flight. Flips to false after the
+  // first response (success or failure). Used to drive the skeleton
+  // placeholders so the panel doesn't feel empty during the first paint.
+  const [gitLoading, setGitLoading] = useState(true);
+  const [tasksLoading, setTasksLoading] = useState(true);
   const [pinned, setPinned] = useState(false);
   const [tasksCollapsed, setTasksCollapsed] = useState(false);
   // Hide completed tasks by default — they accumulate fast and clutter the list.
@@ -93,23 +98,25 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
 
   // ---- Git data fetching ----
   const reloadGit = useCallback(async () => {
-    if (!cwd) return;
+    if (!cwd) { setGitLoading(false); return; }
     try {
       const res = await fetch(`/api/git-diff?cwd=${encodeURIComponent(cwd)}`);
-      if (!res.ok) return;
+      if (!res.ok) { setGitLoading(false); return; }
       setGitData(await res.json());
     } catch { /* best-effort */ }
+    setGitLoading(false);
   }, [cwd]);
 
   // ---- Todo data fetching ----
   const reloadTodos = useCallback(async () => {
-    if (!sessionId) { setTasks([]); return; }
+    if (!sessionId) { setTasks([]); setTasksLoading(false); return; }
     try {
       const res = await fetch(`/api/task-list?sessionId=${encodeURIComponent(sessionId)}`);
-      if (!res.ok) return;
+      if (!res.ok) { setTasksLoading(false); return; }
       const d = await res.json() as { tasks: TodoTask[] };
       setTasks(d.tasks ?? []);
     } catch { /* best-effort */ }
+    setTasksLoading(false);
   }, [sessionId]);
 
   // Initial load + git polling (10s)
@@ -211,6 +218,10 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
         @keyframes inspector-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50%      { opacity: 0.4; transform: scale(0.7); }
+        }
+        @keyframes inspector-shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
         }
       `}</style>
 
@@ -390,6 +401,23 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
           </div>
 
           {/* ---- Block: Git changes ---- */}
+          {/* Git skeleton while loading initial data */}
+          {!showGit && gitLoading && cwd && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 6px" }}>
+                <Skeleton width={22} height={22} rounded={6} />
+                <Skeleton width={60} />
+                <span style={{ flex: 1 }} />
+                <Skeleton width={36} />
+                <Skeleton width={36} />
+              </div>
+              <div style={{ display: "flex", gap: 14, padding: "0 14px 10px 44px" }}>
+                <Skeleton width={80} height={9} />
+                <Skeleton width={70} height={9} />
+              </div>
+            </div>
+          )}
+
           {showGit && (
             <div>
               <div
@@ -546,6 +574,22 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
           )}
 
           {/* ---- Block: Task progress ---- */}
+
+          {/* Tasks skeleton while loading */}
+          {!hasTasks && tasksLoading && sessionId && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <Skeleton width={50} height={11} />
+                <Skeleton width={70} height={14} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <Skeleton width="85%" />
+                <Skeleton width="65%" />
+                <Skeleton width="75%" />
+              </div>
+            </div>
+          )}
+
           {hasTasks && (
             <div style={{ borderTop: "1px solid var(--border)", flex: 1, overflowY: "auto", minHeight: 0 }}>
               <button
@@ -824,6 +868,23 @@ function ProgressRing({ pct, color, value }: { pct: number; color: string; value
         {value}
       </text>
     </svg>
+  );
+}
+
+// ---- Skeleton placeholder ----
+
+function Skeleton({ width, height = 12, rounded = 4 }: { width: number | string; height?: number; rounded?: number }) {
+  return (
+    <div
+      style={{
+        width,
+        height,
+        borderRadius: rounded,
+        background: "linear-gradient(90deg, var(--bg-subtle) 0%, color-mix(in srgb, var(--bg-hover) 70%, transparent) 50%, var(--bg-subtle) 100%)",
+        backgroundSize: "200% 100%",
+        animation: "inspector-shimmer 1.6s ease-in-out infinite",
+      }}
+    />
   );
 }
 
