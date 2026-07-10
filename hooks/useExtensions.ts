@@ -28,7 +28,7 @@ async function loadExtensions(): Promise<void> {
   let manifest: ExtensionManifest;
 
   try {
-    const res = await fetch("/api/extensions/manifest.json", { cache: "no-store" });
+    const res = await fetch("/api/extensions/manifest", { cache: "no-store" });
     if (!res.ok) return;
     manifest = (await res.json()) as ExtensionManifest;
   } catch {

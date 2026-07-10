@@ -22,8 +22,9 @@ export function getExtensionsDir(): string {
 
 /** Get the bundled extensions dir (<repoRoot>/extensions/). */
 function getBundledDir(): string {
-  // __dirname is lib/extensions/, repo root is three levels up.
-  return resolve(__dirname, "..", "..", "extensions");
+  // In dev, process.cwd() is the repo root. In production (next start), it's
+  // also the repo root. __dirname is unreliable because Next.js compiles to .next/.
+  return resolve(process.cwd(), "extensions");
 }
 
 /** Safe relative path check: no "..", not absolute, non-empty. */
