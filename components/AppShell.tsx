@@ -91,7 +91,8 @@ export function AppShell() {
   }, []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   // Holds the imperative ChatWindow handle (currently: scrollToEntry).
-  // Populated by ChatWindow via useEffect on the ref we pass down.
+  // Populated by ChatWindow via useImperativeHandle on the ref we pass
+  // down (ref={...}, standard React forwardRef pattern).
   const chatWindowRef = useRef<ChatWindowHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 
@@ -1164,7 +1165,7 @@ export function AppShell() {
               // this no-op keeps the prop plumbed without breaking UX.
               onTaskClick={(entryId) => {
                 // S5b + S6: scroll the message with this entryId into view.
-                // The handle is set by ChatWindow via useEffect on chatWindowRef.
+                // The handle is populated by ChatWindow via useImperativeHandle.
                 chatWindowRef.current?.scrollToEntry(entryId);
               }}
             />
@@ -1179,7 +1180,7 @@ export function AppShell() {
               onSessionForked={handleSessionForked}
               modelsRefreshKey={modelsRefreshKey}
               chatInputRef={chatInputRef}
-              chatWindowRef={chatWindowRef}
+              ref={chatWindowRef}
               onBranchDataChange={handleBranchDataChange}
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}

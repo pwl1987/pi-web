@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
@@ -29,11 +29,6 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
-  /**
-   * Receives a handle exposing imperative methods on ChatWindow, primarily
-   * `scrollToEntry(entryId)` for click-to-jump. Filled in by useImperativeHandle.
-   */
-  chatWindowRef?: React.RefObject<ChatWindowHandle | null>;
 }
 
 /**
@@ -151,7 +146,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, chatWindowRef }: Props) {
+export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props, ref: Ref<ChatWindowHandle>) {
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
   const { t } = useI18n();
@@ -247,19 +242,9 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
   const { register: registerMessageEl, scrollTo: scrollToMessage } = useMessageScroll();
 
   // Expose imperative handle to the parent (AppShell) for click-to-jump.
-  // The parent holds a ref; calling `chatWindowRef.current?.scrollToEntry(eid)`
+  // The parent holds a ref; calling `ref.current?.scrollToEntry(eid)`
   // scrolls the matching message into view.
-  useEffect(() => {
-    if (!chatWindowRef) return;
-    chatWindowRef.current = { scrollToEntry: scrollToMessage };
-    return () => {
-      // Don't null out the ref on every render — only on unmount. The parent
-      // can read the ref shape to detect a stale handle if it cares.
-      if (chatWindowRef.current?.scrollToEntry === scrollToMessage) {
-        chatWindowRef.current = null;
-      }
-    };
-  }, [chatWindowRef, scrollToMessage]);
+  useImperativeHandle(ref, () => ({ scrollToEntry: scrollToMessage }), [scrollToMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !agentRunning;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
@@ -683,7 +668,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       )}
     </div>
   );
-}
+});
 
 function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text: string }> }) {
   if (statuses.length === 0) return null;
