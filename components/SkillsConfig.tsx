@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useI18n } from "@/hooks/useI18n";
 import type { SkillSearchResult } from "@/lib/api-types";
 
 interface Skill {
@@ -38,14 +39,15 @@ function Toggle({
   loading: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <button
       onClick={onToggle}
       disabled={loading}
       title={
         enabled
-          ? "Visible in model prompt — click to disable"
-          : "Hidden from model prompt — click to enable"
+          ? t("skills.visibleHint")
+          : t("skills.hiddenHint")
       }
       style={{
         flexShrink: 0,
@@ -91,8 +93,15 @@ function SkillDetail({
   toggling: boolean;
   saveError: string | null;
 }) {
+  const { t } = useI18n();
   const label = sourceLabel(skill);
   const enabled = !skill.disableModelInvocation;
+  const labelDisplay =
+    label === "project"
+      ? t("skills.scopeProject")
+      : label === "global"
+        ? t("skills.scopeGlobal")
+        : t("skills.scopePath");
 
   function displayPath(p: string): string {
     if (label === "project" && p.startsWith(cwd)) {
@@ -120,7 +129,7 @@ function SkillDetail({
               label === "project" ? "rgba(99,102,241,0.8)" : "var(--text-dim)",
           }}
         >
-          {label}
+          {labelDisplay}
         </span>
         <span
           style={{
@@ -151,7 +160,7 @@ function SkillDetail({
         <span
           style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}
         >
-          Name
+          {t("skills.name")}
         </span>
         <span
           style={{
@@ -168,7 +177,7 @@ function SkillDetail({
         <span
           style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}
         >
-          Description
+          {t("skills.description")}
         </span>
         <span
           style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.6 }}
@@ -196,6 +205,7 @@ function AddSkillPanel({
   const [installedPkgs, setInstalledPkgs] = useState<Set<string>>(new Set());
   const [scope, setScope] = useState<"global" | "project">("global");
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -221,13 +231,13 @@ function AddSkillPanel({
         return;
       }
       setResults(d.results ?? []);
-      if ((d.results ?? []).length === 0) setSearchError("No skills found");
+      if ((d.results ?? []).length === 0) setSearchError(t("skills.noSkillsFound"));
     } catch (e) {
       setSearchError(String(e));
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [t]);
 
   const install = useCallback(
     async (pkg: string) => {
@@ -272,7 +282,7 @@ function AddSkillPanel({
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
-          Add Skill
+          {t("skills.addSkill")}
         </div>
 
         {/* Search row */}
@@ -311,7 +321,7 @@ function AddSkillPanel({
               flexShrink: 0,
             }}
           >
-            {searching ? "Searching…" : "Search"}
+            {searching ? t("skills.searching") : t("skills.search")}
           </button>
         </div>
 
@@ -342,7 +352,7 @@ function AddSkillPanel({
                     s === "global" ? "1px solid var(--border)" : "none",
                 }}
               >
-                {s}
+                {s === "project" ? t("skills.scopeProject") : t("skills.scopeGlobal")}
               </button>
             ))}
           </div>
@@ -475,10 +485,10 @@ function AddSkillPanel({
                   }}
                 >
                   {isInstalled
-                    ? "✓ Installed"
+                    ? t("skills.installed")
                     : isInstalling
-                      ? "Installing…"
-                      : "Install"}
+                      ? t("skills.installing")
+                      : t("skills.install")}
                 </button>
               </div>
             );
@@ -490,7 +500,7 @@ function AddSkillPanel({
           <div
             style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.8 }}
           >
-            Search{" "}
+            {t("skills.discoverBefore")}{" "}
             <a
               href="https://skills.sh"
               target="_blank"
@@ -499,7 +509,7 @@ function AddSkillPanel({
             >
               skills.sh
             </a>{" "}
-            to discover and install skills for your agent.
+            {t("skills.discoverAfter")}
           </div>
         )
       )}
@@ -515,6 +525,7 @@ export function SkillsConfig({
   onClose: () => void;
 }) {
   const isMobile = useIsMobile();
+  const { t } = useI18n();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -628,7 +639,7 @@ export function SkillsConfig({
             <span
               style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}
             >
-              Skills
+              {t("skills.skills")}
             </span>
             <code
               style={{
@@ -684,7 +695,7 @@ export function SkillsConfig({
                     color: "var(--text-muted)",
                   }}
                 >
-                  Loading…
+                  {t("skills.loading")}
                 </div>
               ) : error ? (
                 <div
@@ -704,7 +715,7 @@ export function SkillsConfig({
                     color: "var(--text-dim)",
                   }}
                 >
-                  No skills found
+                  {t("skills.noSkillsFound")}
                 </div>
               ) : (
                 (() => {
@@ -729,7 +740,11 @@ export function SkillsConfig({
                             letterSpacing: "0.06em",
                           }}
                         >
-                          {grpLabel}
+                          {grpLabel === "project"
+                            ? t("skills.scopeProject")
+                            : grpLabel === "global"
+                              ? t("skills.scopeGlobal")
+                              : t("skills.scopePath")}
                         </div>
                         {grpSkills.map((skill) => {
                           const isSelected =
@@ -846,7 +861,7 @@ export function SkillsConfig({
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                Add skill
+                {t("skills.addSkill")}
               </div>
             </div>
           </div>
@@ -880,7 +895,7 @@ export function SkillsConfig({
                   fontSize: 13,
                 }}
               >
-                Select a skill
+                {t("skills.selectASkill")}
               </div>
             )}
           </div>
@@ -909,7 +924,7 @@ export function SkillsConfig({
               fontSize: 13,
             }}
           >
-            Close
+            {t("skills.close")}
           </button>
         </div>
       </div>

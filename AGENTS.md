@@ -8,6 +8,7 @@ npm run dev   # port 30141
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
 Lint: `npm run lint`  
+Test: `node --test --experimental-strip-types lib/*.test.mjs` (no `npm test` script exists; tests are `node:test` + `node:assert/strict` importing the `.ts` sources directly — Node 22+ strips types natively). Add new tests as `lib/<name>.test.mjs` next to the module.
 **Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
 
 ---
@@ -54,6 +55,7 @@ app/api/
   auth/providers/route.ts         GET OAuth provider list
   cwd/validate/route.ts           POST validate/select a cwd
   default-cwd/route.ts            POST create ~/pi-cwd-YYYYMMDD
+  file-index/route.ts            GET git-tracked file index for @ autocomplete
   files/[...path]/route.ts        GET file contents for viewer
   home/route.ts                   GET user home directory
   models/route.ts                 GET { models, modelList, defaultModel }
@@ -67,18 +69,32 @@ app/api/
 
 lib/
   agent-client.ts      typed fetch helper for /api/agent commands
+  allowed-roots.ts     in-memory extra browsable roots (globalThis-backed, hot-reload-safe)
+  ansi.ts              ANSI escape parsing → styled spans (used by tool output rendering)
+  api-types.ts         shared request/response types for plugins + skills search (client+server)
+  clipboard.ts         clipboard fallback (navigator → execCommand → reject)
+  compaction-summary.ts parse <read-files>/<modified-files> blocks out of compaction summaries
   draft-store.ts       local draft persistence helpers
   file-access.ts       allowed file roots for /api/files and worktrees
+  file-fuzzy.ts        @ autocomplete query parsing + ranking (mirrors pi TUI scoreEntry)
+  file-links.ts        file:// and relative path parsing for clickable links
   file-paths.ts        client/server path encoding helpers
+  file-types.ts        preview size limits + ext→MIME maps (text/image/audio/doc)
+  i18n/                lightweight i18n core (index.ts + en.ts + zh.ts) — zero deps
   markdown.ts          shared markdown helpers
+  message-display.ts   assistant block filtering (empty thinking, final-answer detection)
+  normalize.ts         normalizeToolCalls() — field name mismatch between file format and our types
   npx.ts               npx runner used by skill install
+  patch.ts             unified-diff → split-diff cells for file change views
   pi-types.ts          local structural types for pi SDK objects
-  rpc-manager.ts      AgentSessionWrapper + registry + startRpcSession
-  session-reader.ts   SessionManager wrappers + path cache + buildSessionContext adapter
-  tool-presets.ts     PRESET_NONE/DEFAULT/FULL + getPresetFromTools()
-  types.ts            shared TypeScript types
-  normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
-  worktree.ts         project/worktree resolution and git worktree operations
+  rpc-manager.ts       AgentSessionWrapper + registry + startRpcSession
+  session-file-references.ts(.core) is a given path referenced by a session's entries (used by delete guards)
+  session-reader.ts    SessionManager wrappers + path cache + buildSessionContext adapter
+  session-state-store.ts  sidecar (~/.pi/agent/pi-web-state.json) tracking recently active sessions for restart recovery
+  tool-presets.ts      PRESET_NONE/DEFAULT/FULL + getPresetFromTools()
+  types.ts             shared TypeScript types
+  worktree.ts          project/worktree resolution and git worktree operations
+  *.test.mjs           node:test suites — co-located with the module they cover
 
 components/
   AppShell.tsx        layout + URL state + tab management
@@ -101,9 +117,47 @@ hooks/
   useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic
   useAudio.ts         completion sound + browser AudioContext unlock
   useDragDrop.ts      shared drag/drop state
+  useI18n.ts          locale binding for React ({ locale, t, toggle } via useSyncExternalStore)
   useIsMobile.ts      responsive breakpoint hook
   useTheme.ts         theme state
 ```
+
+---
+
+## Conventions & Config
+
+### Path alias
+`@/*` → repo root (configured in `tsconfig.json` `paths`). Prefer `@/lib/...` / `@/components/...` over relative imports in app/components/hooks. (Note: files inside `lib/` import each other with relative paths — match the surrounding file.)
+
+### Server-external packages
+`@earendil-works/pi-coding-agent` and `@earendil-works/pi-ai` are in `next.config.ts` `serverExternalPackages`. They must NOT be bundled into client code — import them only from `app/api/**` route handlers or `lib/rpc-manager.ts`. Their versions also feed `NEXT_PUBLIC_PI_VERSION` for display.
+
+### Lint config (`eslint.config.mjs`)
+Next.js core-web-vitals + typescript presets, with three `react-hooks` rules explicitly turned **off**: `immutability`, `refs`, `set-state-in-effect`. Don't re-enable them without discussion.
+
+### Data directory
+pi-web reads `~/.pi/agent/sessions` by default. Override with `PI_CODING_AGENT_DIR` to point at a different pi agent directory. Never hardcode the pi home path — go through `lib/session-reader.ts`.
+
+### Internationalization (i18n)
+Lightweight, zero-dependency, client-side. Mirrors the `useTheme` pattern (module-level store + `useSyncExternalStore` + `localStorage`).
+- `lib/i18n/index.ts` — core: `getSnapshot`/`getServerSnapshot`/`subscribe`/`setLocale`/`translate`. `getSnapshot` reads `<html data-lang>` (stamped by the layout preload script), `getServerSnapshot` always returns `"en"` (SSR-safe, avoids hydration mismatch).
+- `lib/i18n/en.ts` + `zh.ts` — flat dotted-key dictionaries (`"namespace.subkey"`). **When translating a component, add keys to BOTH files.**
+- `hooks/useI18n.ts` — React binding: `const { locale, t, toggle, setLocale } = useI18n()`. `t("key")` or `t("key", { var })` for `{var}` interpolation.
+- Locale persisted as `"pi-language"` in localStorage (`"en" | "zh"`). Toggle button sits in the top bar (AppShell) next to the theme toggle.
+- `app/layout.tsx` has a preload `<script>` that reads `pi-language` and sets `data-lang` + `lang` on `<html>` before first paint — no FOUC.
+
+### CLI entrypoint (`bin/pi-web.js`)
+Publishes as `@agegr/pi-web` (`bin: pi-web`). Resolves next's CLI directly (not via `.bin` symlinks, which may not exist under `npx`). Honors `--port`/`-p`, `--hostname`/`-H`, and `PORT`/`HOSTNAME` env (default port 30141). This is why `npm run dev` and the published CLI agree on the port.
+`pi-web install` / `pi-web uninstall` subcommands register/remove a system service (systemd user unit on Linux, launchd plist on macOS) for auto-start + crash-restart. `ExecStart` uses the absolute bin path (`process.argv[1]`); service files reference `pi-web start` so the server boots the same way interactively and as a service.
+
+### Restart recovery (sidecar)
+The Pi SDK already persists all messages/models/compaction to `.jsonl` — nothing to do there. What is *not* in `.jsonl` is the in-memory registry of "which sessions are currently open" (`globalThis.__piSessions`) and the `forceEmptySystemPrompt` flag. `lib/session-state-store.ts` writes a sidecar `~/.pi/agent/pi-web-state.json` recording the last 20 active session ids + their `toolsDisabled` state. On process restart, `restoreActiveSessions()` (triggered lazily from `getRegistry()` on first access) pre-warms the 5 most recent sessions via `SessionManager.open()` and re-applies `toolsDisabled`. Fire-and-forget — failures don't block startup.
+
+### File-access split
+`file-access.ts` computes *allowed roots* (session cwds + project roots + `~/pi-cwd-*` + explicitly added roots). `allowed-roots.ts` holds the in-memory additions (globalThis-backed so hot-reload preserves them). `file-types.ts` owns preview size limits and ext→MIME maps. Keep `/api/files` a preview-only viewer, not a general browser.
+
+### Release
+See `docs/release.md`. `npm run release` bumps patch, runs `next build --webpack`, and publishes. Never run `release` or `next build` during normal dev.
 
 ---
 

@@ -35,6 +35,15 @@ pi-web -p 8080 -H 127.0.0.1     # combine options
 PORT=8080 pi-web                # environment variable is also supported
 ```
 
+**Auto-start (Linux / macOS):**
+
+```bash
+pi-web install                  # register as a system service: auto-starts on login, restarts on crash
+pi-web uninstall                # remove the service
+```
+
+On Linux this creates a systemd user unit (`~/.config/systemd/user/pi-web.service`); on macOS a launchd plist (`~/Library/LaunchAgents/com.pi-web.plist`). After install, recently active sessions are automatically restored when the service restarts.
+
 ## Features
 
 - **Pick work back up**: browse previous pi conversations by project without digging through terminal history or session paths.

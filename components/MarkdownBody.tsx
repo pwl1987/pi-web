@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
+import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { markdownRehypePlugins, markdownRemarkPlugins } from "@/lib/markdown";
@@ -121,6 +122,7 @@ function normalizeDisplayMath(markdown: string): string {
 
 function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boolean }) {
   const { isDark } = useTheme();
+  const { t } = useI18n();
   const [showPreview, setShowPreview] = useState(false);
   const [svg, setSvg] = useState<string | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
@@ -143,7 +145,7 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
       });
 
       const parsed = await mermaid.parse(code, { suppressErrors: true });
-      if (!parsed) throw new Error("Invalid Mermaid diagram");
+      if (!parsed) throw new Error(t("md.invalidMermaidDiagram"));
 
       const id =
         typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -163,16 +165,16 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
     return () => {
       cancelled = true;
     };
-  }, [code, currentKey, isDark, isStreaming, showPreview]);
+  }, [code, currentKey, isDark, isStreaming, showPreview, t]);
 
   const previewButton = (
     <button
       onClick={() => setShowPreview((v) => !v)}
       disabled={isStreaming}
-      title={isStreaming ? "Preview available after streaming" : (showPreview ? "Show Mermaid source" : "Preview Mermaid diagram")}
+      title={isStreaming ? t("md.previewAvailableAfterStreaming") : (showPreview ? t("md.showMermaidSource") : t("md.previewMermaidDiagram"))}
       className={["markdown-code-action", showPreview ? "is-active" : ""].filter(Boolean).join(" ")}
     >
-      {showPreview ? "Source" : "Preview"}
+      {showPreview ? t("md.source") : t("md.preview")}
     </button>
   );
 
@@ -182,9 +184,9 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
 
   const body =
     failedKey === currentKey ? (
-      <div className="mermaid-block mermaid-block-error">Invalid Mermaid diagram</div>
+      <div className="mermaid-block mermaid-block-error">{t("md.invalidMermaidDiagram")}</div>
     ) : !svg || renderedKey !== currentKey ? (
-      <div className="mermaid-block mermaid-block-loading" aria-label="Rendering Mermaid diagram" />
+      <div className="mermaid-block mermaid-block-loading" aria-label={t("md.renderingMermaidDiagram")} />
     ) : (
       <div
         className="mermaid-block"
@@ -205,6 +207,7 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
 
 function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; headerAction?: ReactNode }) {
   const { isDark } = useTheme();
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -217,14 +220,14 @@ function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; h
   return (
     <div className="markdown-code-block">
       <div className="markdown-code-header">
-        <span className="markdown-code-lang">{lang || "text"}</span>
+        <span className="markdown-code-lang">{lang || t("md.codeLangFallback")}</span>
         <div className="markdown-code-actions">
           {headerAction}
           <button
             onClick={copy}
             className="markdown-code-action"
           >
-            {copied ? "copied" : "copy"}
+            {copied ? t("md.copied") : t("md.copy")}
           </button>
         </div>
       </div>

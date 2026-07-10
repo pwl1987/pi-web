@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
+import { useI18n } from "@/hooks/useI18n";
 import { encodeFilePathForApi, getRelativeFilePath, joinFilePath } from "@/lib/file-paths";
 
 interface FileEntry {
@@ -27,11 +28,13 @@ interface Props {
   onAtMention?: (relativePath: string, isDir: boolean) => void;
 }
 
-async function fetchEntries(dirPath: string): Promise<FileNode[]> {
+type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
+
+async function fetchEntries(dirPath: string, t: TranslateFn): Promise<FileNode[]> {
   const encoded = encodeFilePathForApi(dirPath);
   const res = await fetch(`/api/files/${encoded}?type=list`);
   if (!res.ok) {
-    let message = `Failed to load files (HTTP ${res.status})`;
+    let message = t("file.failedToLoadFiles", { status: res.status });
     try {
       const data = await res.json() as { error?: string };
       if (data.error) message = data.error;
@@ -70,6 +73,7 @@ function TreeNode({
   onToggleExpanded: (fullPath: string, open: boolean) => void;
   refreshKey?: number;
 }) {
+  const { t } = useI18n();
   const open = expandedPaths.has(node.fullPath);
   const [children, setChildren] = useState<FileNode[]>(node.children ?? []);
   const [loaded, setLoaded] = useState(node.loaded ?? false);
@@ -80,7 +84,7 @@ function TreeNode({
     if (loaded && !force) return;
     setLoading(true);
     try {
-      const entries = await fetchEntries(node.fullPath);
+      const entries = await fetchEntries(node.fullPath, t);
       setChildren(entries);
       setLoaded(true);
     } catch {
@@ -88,7 +92,7 @@ function TreeNode({
     } finally {
       setLoading(false);
     }
-  }, [loaded, node.fullPath]);
+  }, [loaded, node.fullPath, t]);
 
   // When refreshKey causes a re-render with the same node identity, reload open dirs
   const prevLoadedRef = useRef(loaded);
@@ -171,7 +175,7 @@ function TreeNode({
               e.stopPropagation();
               onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir);
             }}
-            title="Insert path into chat"
+            title={t("file.insertPathIntoChat")}
             style={{
               position: "absolute",
               right: !node.isDir ? 28 : 4,
@@ -197,7 +201,7 @@ function TreeNode({
               <circle cx="12" cy="12" r="4" />
               <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
             </svg>
-            mention
+            {t("file.mention")}
           </button>
         )}
         {hovered && !node.isDir && (
@@ -205,7 +209,7 @@ function TreeNode({
             href={`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`}
             download
             onClick={(e) => e.stopPropagation()}
-            title="Download file"
+            title={t("file.downloadFile")}
             style={{
               position: "absolute",
               right: 4,
@@ -243,7 +247,7 @@ function TreeNode({
           ))}
           {children.length === 0 && loaded && (
             <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
-              empty
+              {t("file.empty")}
             </div>
           )}
         </div>
@@ -253,6 +257,7 @@ function TreeNode({
 }
 
 export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props) {
+  const { t } = useI18n();
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -276,16 +281,16 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
 
     setLoading(cwdChanged);
     setError(null);
-    fetchEntries(cwd)
+    fetchEntries(cwd, t)
       .then((entries) => setRoots(entries))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [cwd, refreshKey]);
+  }, [cwd, refreshKey, t]);
 
   if (loading) {
     return (
       <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>
-        Loading files...
+        {t("file.loadingFiles")}
       </div>
     );
   }
@@ -315,7 +320,7 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
       ))}
       {roots.length === 0 && (
         <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>
-          No files found
+          {t("file.noFilesFound")}
         </div>
       )}
     </div>

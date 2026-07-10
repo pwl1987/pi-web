@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getFileIcon } from "./FileIcons";
+import { useI18n } from "@/hooks/useI18n";
 
 export interface Tab {
   id: string;
@@ -19,6 +20,7 @@ interface Props {
 
 export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
+  const { t } = useI18n();
 
   return (
     <div
@@ -87,7 +89,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 flexShrink: 0,
                 transition: "background 0.1s, color 0.1s",
               }}
-              title="Close"
+              title={t("tab.close")}
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <line x1="2" y1="2" x2="8" y2="8" />

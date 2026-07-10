@@ -1,6 +1,7 @@
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
-import { cacheSessionPath } from "./session-reader";
+import { cacheSessionPath, resolveSessionPath } from "./session-reader";
+import { loadSessionState, recordActiveSession } from "./session-state-store";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
@@ -832,6 +833,8 @@ function getRegistry(): Map<string, AgentSessionWrapper> {
     process.once("exit", cleanup);
     process.once("SIGINT", cleanup);
     process.once("SIGTERM", cleanup);
+    // Pre-warm recently active sessions from the sidecar (fire-and-forget).
+    maybeRestore();
   }
   return globalThis.__piSessions;
 }
@@ -964,9 +967,51 @@ export async function startRpcSession(
     registry.set(realSessionId, wrapper);
     wrapper.beginExtensionBinding({ forceEmptySystemPrompt: toolNames?.length === 0 });
 
+    // Persist to sidecar so this session can be pre-warmed after a process restart.
+    recordActiveSession(realSessionId, toolNames?.length === 0);
+
     return { session: wrapper, realSessionId };
   })().finally(() => locks.delete(sessionId));
 
   locks.set(sessionId, starting);
   return starting;
+}
+
+// ----------------------------------------------------------------------------
+// Restart recovery — pre-warm recently active sessions from the sidecar.
+//
+// Called once (lazily) when the registry is first accessed after a process
+// restart. Fire-and-forget: failures don't block the app from starting.
+// ----------------------------------------------------------------------------
+
+let restoreStarted = false;
+
+export async function restoreActiveSessions(): Promise<void> {
+  const state = loadSessionState();
+  // Only pre-warm the 5 most recent — avoids heavy I/O on startup.
+  const recent = [...state.activeSessions]
+    .sort((a, b) => b.lastActive - a.lastActive)
+    .slice(0, 5);
+
+  for (const entry of recent) {
+    try {
+      const filePath = await resolveSessionPath(entry.sessionId);
+      if (!filePath) continue; // session deleted from disk — skip
+      const cwd = SessionManager.open(filePath).getHeader()?.cwd;
+      if (!cwd) continue;
+      // toolNames=undefined lets the SDK restore the saved tool set from .jsonl;
+      // we re-apply toolsDisabled separately via setForceEmptySystemPrompt.
+      const { session } = await startRpcSession(entry.sessionId, filePath, cwd, undefined);
+      if (entry.toolsDisabled) session.setForceEmptySystemPrompt(true);
+    } catch {
+      // Individual session restore failure is non-fatal — skip and continue.
+    }
+  }
+}
+
+/** Lazy trigger: runs restoreActiveSessions exactly once on first registry access. */
+function maybeRestore(): void {
+  if (restoreStarted) return;
+  restoreStarted = true;
+  void restoreActiveSessions();
 }
