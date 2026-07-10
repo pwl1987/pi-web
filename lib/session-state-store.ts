@@ -6,12 +6,17 @@
 //
 // Location: <agentDir>/pi-web-state.json (alongside sessions/).
 
-import { getAgentDir } from "./session-reader";
 import { writeFileSync, readFileSync, existsSync, renameSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 
 const STATE_FILE = "pi-web-state.json";
 const MAX_ENTRIES = 20;
+
+/** Resolve the pi agent directory (inlined to avoid importing session-reader → pi SDK in tests). */
+function getAgentDir(): string {
+  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+}
 
 export interface ActiveSessionEntry {
   sessionId: string;

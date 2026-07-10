@@ -20,9 +20,18 @@ import type {
   WorkspaceLabelItem,
   WorkspacePanelContribution,
 } from "./types";
-import { isPiWebExtension } from "./types";
 
 const ID_RE = /^[a-z][a-z0-9.-]*$/;
+
+/** Check if a module export looks like a valid extension (inlined to avoid value import). */
+function isPiWebExtension(value: unknown): value is PiWebExtension {
+  return (
+    typeof value === "object" && value !== null &&
+    (value as PiWebExtension).apiVersion === 1 &&
+    typeof (value as PiWebExtension).name === "string" &&
+    typeof (value as PiWebExtension).activate === "function"
+  );
+}
 
 interface RegisteredExtension {
   id: ExtensionId;
@@ -33,7 +42,7 @@ interface RegisteredExtension {
   labels: QualifiedLabelContribution[];
 }
 
-class ExtensionRegistry {
+export class ExtensionRegistry {
   private extensions = new Map<ExtensionId, RegisteredExtension>();
   private listeners = new Set<() => void>();
   /** Bumped on every register/unregister, so useSyncExternalStore consumers re-render. */
