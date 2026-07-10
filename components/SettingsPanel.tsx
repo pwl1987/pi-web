@@ -10,17 +10,49 @@ interface PiSettings {
   defaultModel: string | null;
   defaultThinkingLevel: string;
   compactionEnabled: boolean;
+  compactionReserveTokens: number | null;
+  compactionKeepRecentTokens: number | null;
   retryEnabled: boolean;
+  retryMaxRetries: number | null;
+  retryBaseDelayMs: number | null;
+  branchSummaryReserveTokens: number | null;
+  branchSummarySkipPrompt: boolean;
+  thinkingBudgetsMinimal: number | null;
+  thinkingBudgetsLow: number | null;
+  thinkingBudgetsMedium: number | null;
+  thinkingBudgetsHigh: number | null;
   steeringMode: string;
   followUpMode: string;
   transport: string;
+  httpProxy: string;
   httpIdleTimeoutMs: number;
+  websocketConnectTimeoutMs: number;
   shellPath: string;
   shellCommandPrefix: string;
   npmCommand: string[] | null;
   defaultProjectTrust: string;
+  sessionDir: string;
+  externalEditor: string;
   hideThinkingBlock: boolean;
   quietStartup: boolean;
+  collapseChangelog: boolean;
+  showImages: boolean;
+  imageWidthCells: number;
+  clearOnShrink: boolean;
+  showTerminalProgress: boolean;
+  imageAutoResize: boolean;
+  blockImages: boolean;
+  editorPaddingX: number;
+  outputPad: number;
+  autocompleteMaxVisible: number;
+  showHardwareCursor: boolean;
+  codeBlockIndent: string;
+  doubleEscapeAction: string;
+  treeFilterMode: string;
+  enableSkillCommands: boolean;
+  enableInstallTelemetry: boolean;
+  enableAnalytics: boolean;
+  warningsAnthropicExtraUsage: boolean;
 }
 
 interface ModelOption { provider: string; modelId: string; name: string; }
@@ -221,6 +253,126 @@ export function SettingsPanel({ onClose, onOpenModels, onOpenSkills, onOpenPlugi
           )}
           {piSettings && (
             <ToggleRow label={t("settings.quietStartup")} checked={piSettings.quietStartup} onChange={(v) => updatePi("quietStartup", v)} />
+          )}
+
+          {/* Compaction details (read-only sub-fields) */}
+          {piSettings && (piSettings.compactionReserveTokens !== null || piSettings.compactionKeepRecentTokens !== null) && (
+            <Row label={t("settings.compactionReserve")} hint={t("settings.compactionKeepRecent")}>
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                {piSettings.compactionReserveTokens ?? "—"} / {piSettings.compactionKeepRecentTokens ?? "—"}
+              </span>
+            </Row>
+          )}
+
+          {/* Retry details */}
+          {piSettings && (piSettings.retryMaxRetries !== null || piSettings.retryBaseDelayMs !== null) && (
+            <Row label={t("settings.retryDetails")}>
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                {piSettings.retryMaxRetries ?? "—"} × / {piSettings.retryBaseDelayMs ?? "—"}ms
+              </span>
+            </Row>
+          )}
+
+          {/* Thinking budgets */}
+          {piSettings && (piSettings.thinkingBudgetsMedium !== null) && (
+            <Row label={t("settings.thinkingBudgets")} hint="minimal / low / medium / high">
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                {piSettings.thinkingBudgetsMinimal ?? "—"} / {piSettings.thinkingBudgetsLow ?? "—"} / {piSettings.thinkingBudgetsMedium ?? "—"} / {piSettings.thinkingBudgetsHigh ?? "—"}
+              </span>
+            </Row>
+          )}
+
+          {/* Network proxy / WS timeout (read-only) */}
+          {piSettings && piSettings.httpProxy && (
+            <Row label="HTTP Proxy">
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>{piSettings.httpProxy}</span>
+            </Row>
+          )}
+          {piSettings && (
+            <Row label="WebSocket timeout (ms)">
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>{piSettings.websocketConnectTimeoutMs}</span>
+            </Row>
+          )}
+
+          {/* Session dir / External editor (read-only) */}
+          {piSettings && piSettings.sessionDir && (
+            <Row label="Session dir">
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>{piSettings.sessionDir}</span>
+            </Row>
+          )}
+          {piSettings && piSettings.externalEditor && (
+            <Row label="External editor">
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>{piSettings.externalEditor}</span>
+            </Row>
+          )}
+
+          {/* Display — advanced */}
+          {piSettings && (
+            <ToggleRow label={t("settings.collapseChangelog")} checked={piSettings.collapseChangelog} onChange={(v) => updatePi("collapseChangelog", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.showImages")} checked={piSettings.showImages} onChange={(v) => updatePi("showImages", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.imageAutoResize")} checked={piSettings.imageAutoResize} onChange={(v) => updatePi("imageAutoResize", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.blockImages")} checked={piSettings.blockImages} onChange={(v) => updatePi("blockImages", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.showTerminalProgress")} checked={piSettings.showTerminalProgress} onChange={(v) => updatePi("showTerminalProgress", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.clearOnShrink")} checked={piSettings.clearOnShrink} onChange={(v) => updatePi("clearOnShrink", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.enableSkillCommands")} checked={piSettings.enableSkillCommands} onChange={(v) => updatePi("enableSkillCommands", v)} />
+          )}
+          {piSettings && (
+            <Row label={t("settings.imageWidth")}>
+              <input type="number" value={piSettings.imageWidthCells} onChange={(e) => updatePi("imageWidthCells", parseInt(e.target.value) || 0)} style={inputStyle} />
+            </Row>
+          )}
+          {piSettings && (
+            <Row label={t("settings.editorPadding")}>
+              <input type="number" value={piSettings.editorPaddingX} onChange={(e) => updatePi("editorPaddingX", parseInt(e.target.value) || 0)} style={inputStyle} />
+            </Row>
+          )}
+          {piSettings && (
+            <Row label={t("settings.autocompleteMax")}>
+              <input type="number" value={piSettings.autocompleteMaxVisible} onChange={(e) => updatePi("autocompleteMaxVisible", parseInt(e.target.value) || 0)} style={inputStyle} />
+            </Row>
+          )}
+          {piSettings && (
+            <Row label={t("settings.doubleEscape")}>
+              <select value={piSettings.doubleEscapeAction} onChange={(e) => updatePi("doubleEscapeAction", e.target.value)} style={selectStyle}>
+                <option value="fork">fork</option>
+                <option value="tree">tree</option>
+                <option value="none">none</option>
+              </select>
+            </Row>
+          )}
+          {piSettings && (
+            <Row label={t("settings.treeFilter")}>
+              <select value={piSettings.treeFilterMode} onChange={(e) => updatePi("treeFilterMode", e.target.value)} style={selectStyle}>
+                <option value="default">default</option>
+                <option value="no-tools">no-tools</option>
+                <option value="user-only">user-only</option>
+                <option value="labeled-only">labeled-only</option>
+                <option value="all">all</option>
+              </select>
+            </Row>
+          )}
+
+          {/* Telemetry */}
+          {piSettings && (
+            <ToggleRow label={t("settings.installTelemetry")} checked={piSettings.enableInstallTelemetry} onChange={(v) => updatePi("enableInstallTelemetry", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.analytics")} checked={piSettings.enableAnalytics} onChange={(v) => updatePi("enableAnalytics", v)} />
+          )}
+          {piSettings && (
+            <ToggleRow label={t("settings.warnExtraUsage")} hint="Anthropic" checked={piSettings.warningsAnthropicExtraUsage} onChange={(v) => updatePi("warningsAnthropicExtraUsage", v)} />
           )}
 
           {/* ===== Section: Management ===== */}
