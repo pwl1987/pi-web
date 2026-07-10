@@ -1,5 +1,12 @@
 "use client";
 
+import { useRef } from "react";
+
+/** CSS class added on click for a brief visual confirmation. */
+export const TASK_ROW_CLICKED_CLASS = "task-row-clicked";
+/** How long the click feedback class stays applied (matches CSS animation duration). */
+export const TASK_ROW_CLICK_FEEDBACK_MS = 300;
+
 /**
  * One row in the InspectorPanel task list.
  *
@@ -32,7 +39,22 @@ export interface InspectorTaskRowProps {
 
 export function InspectorTaskRow({ task, variant, entryId, onTaskClick }: InspectorTaskRowProps) {
   const clickable = entryId !== undefined;
-  const handleClick = clickable ? () => onTaskClick(entryId!) : undefined;
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const handleClick = clickable
+    ? () => {
+        onTaskClick(entryId!);
+        // Brief CSS-driven feedback so the user sees "click registered"
+        // before the chat scroll lands. The class is added on click and
+        // removed after TASK_ROW_CLICK_FEEDBACK_MS via a setTimeout.
+        const btn = buttonRef.current;
+        if (btn) {
+          btn.classList.add(TASK_ROW_CLICKED_CLASS);
+          setTimeout(() => {
+            btn.classList.remove(TASK_ROW_CLICKED_CLASS);
+          }, TASK_ROW_CLICK_FEEDBACK_MS);
+        }
+      }
+    : undefined;
 
   const statusDot = (
     <span
@@ -100,6 +122,7 @@ export function InspectorTaskRow({ task, variant, entryId, onTaskClick }: Inspec
   // no-op and the cursor reflects the state.
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={handleClick}
       disabled={!clickable}

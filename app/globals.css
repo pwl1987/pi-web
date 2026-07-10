@@ -473,6 +473,19 @@ span.linenumber {
   border-radius: 4px;
 }
 
+/* Task row click feedback. Brief background pulse so the user sees
+   "click registered" before the chat scroll lands. Class is added
+   by InspectorTaskRow on click and removed after
+   TASK_ROW_CLICK_FEEDBACK_MS. */
+@keyframes task-row-click-flash {
+  0%   { background: color-mix(in srgb, var(--accent) 0%, transparent); }
+  30%  { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  100% { background: color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.task-row-clicked {
+  animation: task-row-click-flash 0.3s ease-out;
+}
+
 @keyframes drop-zone-in {
   from { opacity: 0; transform: scale(0.97); }
   to   { opacity: 1; transform: scale(1); }
