@@ -591,4 +591,15 @@ export const zh: Record<string, string> = {
   "prompts.systemDesc": "完全替换默认系统提示词。谨慎使用。",
   "prompts.appendDesc": "追加到系统提示词。补充而非替换。",
   "settings.openPrompts": "提示词文件",
+
+  // 扩展管理新 key
+  "extensions.bundled": "内置",
+  "extensions.uninstall": "卸载",
+  "extensions.uninstallConfirm": "卸载扩展 \"{id}\"?",
+  "extensions.install": "安装扩展",
+  "extensions.installPath": "扩展目录的本地路径",
+  "extensions.installBtn": "安装",
+  "extensions.installHint": "目录需包含 package.json 且声明了 piWeb.extensions。",
+  "extensions.installed": "已安装: {id}。重载页面以激活。",
+  "extensions.contributions": "个贡献项",
 };

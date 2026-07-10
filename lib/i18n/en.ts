@@ -591,4 +591,15 @@ export const en: Record<string, string> = {
   "prompts.systemDesc": "Completely replaces the default system prompt. Use with caution.",
   "prompts.appendDesc": "Appended to the system prompt. Supplements without replacing.",
   "settings.openPrompts": "Prompt Files",
+
+  // New extension management keys
+  "extensions.bundled": "built-in",
+  "extensions.uninstall": "Uninstall",
+  "extensions.uninstallConfirm": "Uninstall extension \"{id}\"?",
+  "extensions.install": "Install Extension",
+  "extensions.installPath": "Local path to extension directory",
+  "extensions.installBtn": "Install",
+  "extensions.installHint": "Directory must contain package.json with piWeb.extensions declaration.",
+  "extensions.installed": "Installed: {id}. Reload page to activate.",
+  "extensions.contributions": "contributions",
 };

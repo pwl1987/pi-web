@@ -10,7 +10,7 @@
 // The module path must be a safe relative path within the package dir (no "..",
 // no absolute). The file must exist and be a file (not directory).
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "fs";
 import { join, resolve, relative, isAbsolute } from "path";
 import type { ExtensionManifest, ExtensionManifestEntry, ExtensionRecord, ExtensionSource } from "./types";
 
@@ -193,3 +193,79 @@ export function resolveExtensionAsset(
   if (!existsSync(absPath) || !statSync(absPath).isFile()) return null;
   return { absPath, record };
 }
+
+export interface ExtensionListEntry {
+  id: string;
+  name?: string;
+  source: ExtensionSource;
+  enabled: boolean;
+  canUninstall: boolean;
+  dir: string;
+}
+
+/** List all discovered extensions with their enabled state (for config UI). */
+export function listExtensionsWithState(): ExtensionListEntry[] {
+  const records = discoverExtensions();
+  const enabledState = readEnabledState();
+  return records.map((r) => ({
+    id: r.id,
+    name: r.name,
+    source: r.source,
+    enabled: enabledState[r.id] !== false,
+    canUninstall: r.source === "local",
+    dir: r.dir,
+  }));
+}
+
+/** Install a local extension by creating a symlink in ~/.pi-web/extensions/. */
+export function installLocalExtension(sourcePath: string): { id: string; name?: string } {
+  // Validate source has package.json with piWeb.extensions
+  const pkgPath = join(sourcePath, "package.json");
+  if (!existsSync(pkgPath)) throw new Error("Source directory must contain package.json");
+  const entries = parseExtensionEntries(pkgPath);
+  if (entries.length === 0) throw new Error("package.json must declare piWeb.extensions");
+
+  const extDir = getExtensionsDir();
+  const results: { id: string; name?: string } = { id: "", name: undefined };
+
+  for (const entry of entries) {
+    const targetDir = join(extDir, entry.id);
+    // Remove existing symlink/dir if present
+    try { rmSync(targetDir, { recursive: true, force: true }); } catch { /* not present */ }
+
+    symlinkSync(sourcePath, targetDir);
+    results.id = entry.id;
+  }
+
+  // Read name from package.json
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    results.name = typeof pkg?.name === "string" ? pkg.name : undefined;
+  } catch { /* ignore */ }
+
+  return results;
+}
+
+/** Uninstall a local extension by removing its directory/symlink. */
+export function uninstallExtension(id: string): void {
+  const extDir = getExtensionsDir();
+  const targetDir = join(extDir, id);
+  if (!existsSync(targetDir)) throw new Error(`Extension "${id}" not found in ${extDir}`);
+  rmSync(targetDir, { recursive: true, force: true });
+
+  // Clean up enabled state in config
+  setExtensionEnabled(id, true); // reset to default (will be removed from config)
+  // Actually remove the entry entirely
+  try {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const configPath = join(home, ".pi-web", "config.json");
+    if (existsSync(configPath)) {
+      const config = JSON.parse(readFileSync(configPath, "utf8"));
+      if (config.extensions) {
+        delete config.extensions[id];
+        writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+      }
+    }
+  } catch { /* best-effort */ }
+}
+
