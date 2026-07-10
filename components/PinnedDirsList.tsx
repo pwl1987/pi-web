@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
 
@@ -41,6 +41,10 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
   const [items, setItems] = useState<PinnedDir[] | null>(null);
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  // Set true while an unpin DELETE is in flight. saveAlias checks this to
+  // avoid racing a POST (alias save) against a DELETE (unpin) when the
+  // user clicks × while the alias editor is open.
+  const unpinningRef = useRef(false);
 
   const reload = useCallback(async () => {
     try {
@@ -65,6 +69,10 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
   }, [reload]);
 
   const unpin = useCallback(async (path: string) => {
+    // Signal to saveAlias that an unpin is in progress so it doesn't
+    // race a POST against this DELETE.
+    unpinningRef.current = true;
+    setEditingPath(null);
     // Optimistic local removal so the UI feels instant; revert via
     // reload() if the API rejects.
     setItems((prev) => (prev ?? []).filter((d) => d.path !== path));
@@ -77,11 +85,21 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
       if (!res.ok) await reload();
     } catch {
       await reload();
+    } finally {
+      unpinningRef.current = false;
     }
   }, [reload]);
 
   const saveAlias = useCallback(async (path: string, alias: string) => {
     setEditingPath(null);
+    // Skip the POST when the alias hasn't changed — avoids unnecessary
+    // writes and prevents a POST/DELETE race when the user clicks the
+    // × unpin button while the editor is open (the blur would otherwise
+    // fire a save POST alongside the unpin DELETE).
+    const existing = items?.find((d) => d.path === path);
+    if (existing && (existing.alias ?? "") === alias) return;
+    // Skip if an unpin is in progress (avoids POST/DELETE race).
+    if (unpinningRef.current) return;
     try {
       const res = await fetch("/api/pinned-dirs", {
         method: "POST",
@@ -102,7 +120,7 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
     } catch {
       await reload();
     }
-  }, [reload]);
+  }, [reload, items]);
 
   // Empty state — render nothing (no header, no "empty" placeholder).
   if (!items || items.length === 0) return null;
@@ -263,6 +281,7 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
               <button
                 data-unpin
                 aria-label={t("sidebar.unpin")}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
                   void unpin(dir.path);

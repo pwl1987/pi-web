@@ -702,7 +702,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [selectedCwd, onNewSession]);
 
   const recentProjects = getRecentProjects(allSessions);
-  const isCwdPinned = useIsCwdPinned(selectedCwd);
+  const isCwdPinnedRaw = useIsCwdPinned(selectedCwd);
+  // Optimistic override: the Pin button flips this immediately on click;
+  // cleared when the bus-driven re-fetch settles (isCwdPinnedRaw changes).
+  const [pinOverride, setPinOverride] = useState<boolean | null>(null);
+  useEffect(() => { setPinOverride(null); }, [isCwdPinnedRaw]);
+  const isCwdPinned = pinOverride ?? isCwdPinnedRaw;
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((p) => p.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -889,7 +894,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           <PinCurrentDirButton
             cwd={selectedCwd ?? null}
             isPinned={isCwdPinned}
-            onPinnedChange={() => { /* bus handles re-fetch; hook re-checks via subscription */ }}
+            onPinnedChange={setPinOverride}
           />
           </div>
 
@@ -1123,8 +1128,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         </div>
 
         {/* Pinned dirs — dedicated section between cwd picker and worktree
-            switcher. Renders nothing when the list is empty. */}
-        <PinnedDirsList onCwdChange={onCwdChange ?? (() => {})} />
+            switcher. Renders nothing when the list is empty. Routes through
+            setSelectedCwd so the useEffect at line ~480 resolves the proper
+            projectRoot (worktree-aware) before notifying the parent. */}
+        <PinnedDirsList onCwdChange={(cwd) => setSelectedCwd(cwd)} />
 
         {/* Worktree switcher — shown only for git projects at a checkout top
             level (repo subdirs keep their own project identity, so switching

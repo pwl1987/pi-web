@@ -3,14 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useIsCwdPinned } from "./useIsCwdPinned";
 import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
-
-function mockFetchOnce(body: unknown, status = 200) {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok: status === 200,
-    status,
-    json: async () => body,
-  } as unknown as typeof fetch);
-}
+import { mockFetchAlways } from "@/lib/test-fetch-mock";
 
 describe("useIsCwdPinned", () => {
   beforeEach(() => {
@@ -19,7 +12,7 @@ describe("useIsCwdPinned", () => {
   });
 
   it("returns false initially, then true when the cwd is in the list", async () => {
-    mockFetchOnce({
+    mockFetchAlways({
       pinnedDirs: [
         { path: "/Users/me/projects/x" },
         { path: "/other" },
@@ -31,13 +24,13 @@ describe("useIsCwdPinned", () => {
   });
 
   it("returns false when the cwd is not in the list", async () => {
-    mockFetchOnce({ pinnedDirs: [{ path: "/other" }] });
+    mockFetchAlways({ pinnedDirs: [{ path: "/other" }] });
     const { result } = renderHook(() => useIsCwdPinned("/not-pinned"));
     await waitFor(() => expect(result.current).toBe(false));
   });
 
   it("returns false when cwd is null", async () => {
-    mockFetchOnce({ pinnedDirs: [{ path: "/x" }] });
+    mockFetchAlways({ pinnedDirs: [{ path: "/x" }] });
     const { result } = renderHook(() => useIsCwdPinned(null));
     await waitFor(() => expect(result.current).toBe(false));
   });

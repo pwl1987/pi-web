@@ -31,7 +31,8 @@ interface Props {
  * `onPinnedChange(true|false)` so the button face updates without
  * waiting for the API. If the API rejects, we flip back (rollback)
  * before propagating the next state. The pinned-dirs bus is fired on
- * success so PinnedDirsList and similar viewers re-fetch.
+ * success so PinnedDirsList and similar viewers re-fetch. Failures
+ * (non-2xx or network error) are silent — no throw, just rollback.
  *
  * Contract: see components/PinCurrentDirButton.test.tsx (7 tests).
  */

@@ -2,18 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PinCurrentDirButton } from "./PinCurrentDirButton";
-
-function mockFetchSequence(responses: { body: unknown; status?: number }[]) {
-  const fn = vi.fn();
-  for (const r of responses) {
-    fn.mockResolvedValueOnce({
-      ok: (r.status ?? 200) === 200,
-      status: r.status ?? 200,
-      json: async () => r.body,
-    } as unknown as Response);
-  }
-  globalThis.fetch = fn as unknown as typeof fetch;
-}
+import { mockFetchSequence } from "@/lib/test-fetch-mock";
 
 /**
  * PinCurrentDirButton — small icon button that pins/unpins the user's
@@ -29,7 +18,7 @@ function mockFetchSequence(responses: { body: unknown; status?: number }[]) {
  *    the pinned-dirs bus so PinnedDirsList re-fetches.
  *  - Click on unpin → DELETE /api/pinned-dirs with { path: cwd }, then emit.
  *  - On success → optimistic local toggle of isPinned.
- *  - On API failure → revert isPinned + re-throw.
+ *  - On API failure → revert isPinned (optimistic rollback).
  *  - Disabled when cwd is null (no path to pin).
  */
 describe("PinCurrentDirButton", () => {

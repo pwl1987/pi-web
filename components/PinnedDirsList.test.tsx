@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PinnedDirsList, type PinnedDir } from "./PinnedDirsList";
+import { mockFetchSequence } from "@/lib/test-fetch-mock";
 
 const sample: PinnedDir[] = [
   { path: "/Users/me/projects/pi-web", alias: "pi-web", pinnedAt: 1700000000000 },
@@ -15,18 +16,6 @@ describe("PinnedDirsList", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-function mockFetchSequence(responses: { body: unknown; status?: number }[]) {
-  const fn = vi.fn();
-  for (const r of responses) {
-    fn.mockResolvedValueOnce({
-      ok: (r.status ?? 200) === 200,
-      status: r.status ?? 200,
-      json: async () => r.body,
-    } as unknown as Response);
-  }
-  globalThis.fetch = fn as unknown as typeof fetch;
-}
 
   it("renders the pinned dirs from /api/pinned-dirs on mount", async () => {
     mockFetchSequence([{ body: { pinnedDirs: sample } }]);
@@ -156,5 +145,52 @@ function mockFetchSequence(responses: { body: unknown; status?: number }[]) {
     const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
     const postCall = calls.find((c) => (c[1] as RequestInit)?.method === "POST");
     expect(postCall).toBeUndefined();
+  });
+
+  it("blur without changes does not POST (skips unnecessary write)", async () => {
+    mockFetchSequence([{ body: { pinnedDirs: sample } }]);
+    render(<PinnedDirsList onCwdChange={() => {}} />);
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-pinned-row]").length).toBe(2);
+    });
+    const firstRow = document.querySelectorAll("[data-pinned-row]")[0]!;
+    // Open editor (alias is "pi-web"), don't change value, blur.
+    fireEvent.click(firstRow.querySelector("[data-edit-alias]")!);
+    const input = firstRow.querySelector("[data-alias-input]") as HTMLInputElement;
+    fireEvent.blur(input);
+    // No POST should have been made.
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const postCall = calls.find((c) => (c[1] as RequestInit)?.method === "POST");
+    expect(postCall).toBeUndefined();
+  });
+
+  it("clicking unpin while editing does not race with a save POST", async () => {
+    // Initial GET + DELETE response for the unpin.
+    mockFetchSequence([
+      { body: { pinnedDirs: sample } },
+      { body: { removed: true } },
+    ]);
+    render(<PinnedDirsList onCwdChange={() => {}} />);
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-pinned-row]").length).toBe(2);
+    });
+    const firstRow = document.querySelectorAll("[data-pinned-row]")[0]!;
+    // Open editor and change value.
+    fireEvent.click(firstRow.querySelector("[data-edit-alias]")!);
+    const input = firstRow.querySelector("[data-alias-input]") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "new-alias" } });
+    // Click the unpin button while editing. In real browsers the
+    // onMouseDown=preventDefault on the × button stops the input from
+    // blurring, so no save POST fires alongside the unpin DELETE.
+    fireEvent.click(firstRow.querySelector("[data-unpin]")!);
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-pinned-row]").length).toBe(1);
+    });
+    // Only a DELETE should have been made — NO POST (save) should fire.
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const postCall = calls.find((c) => (c[1] as RequestInit)?.method === "POST");
+    expect(postCall).toBeUndefined();
+    const deleteCall = calls.find((c) => (c[1] as RequestInit)?.method === "DELETE");
+    expect(deleteCall).toBeTruthy();
   });
 });
