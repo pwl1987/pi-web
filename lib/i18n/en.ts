@@ -506,4 +506,16 @@ export const en: Record<string, string> = {
   "extensions.disableHint": "Disable on next page reload",
   "extensions.reloadHint": "Changes take effect after reloading the page.",
   "sidebar.extensions": "Extensions",
+  // ----- Settings panel -----
+  "settings.title": "Settings",
+  "settings.appearance": "Appearance",
+  "settings.theme": "Theme",
+  "settings.themeLight": "Light",
+  "settings.themeDark": "Dark",
+  "settings.language": "Language",
+  "settings.languageEn": "English",
+  "settings.languageZh": "中文",
+  "settings.sound": "Completion sound",
+  "settings.soundHint": "Play a tone when the agent finishes a response.",
+  "settings.openModels": "Open Models configuration",
 };

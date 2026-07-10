@@ -506,4 +506,16 @@ export const zh: Record<string, string> = {
   "extensions.disableHint": "下次重载页面后禁用",
   "extensions.reloadHint": "更改在重新加载页面后生效。",
   "sidebar.extensions": "扩展",
+  // ----- 设置面板 -----
+  "settings.title": "设置",
+  "settings.appearance": "外观",
+  "settings.theme": "主题",
+  "settings.themeLight": "浅色",
+  "settings.themeDark": "深色",
+  "settings.language": "语言",
+  "settings.languageEn": "English",
+  "settings.languageZh": "中文",
+  "settings.sound": "完成提示音",
+  "settings.soundHint": "Agent 完成响应时播放提示音。",
+  "settings.openModels": "打开模型配置",
 };

@@ -1,6 +1,57 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useSyncExternalStore } from "react";
+
+// ============================================================================
+// External store (module-level) — mirrors useTheme/useI18n pattern so the
+// sound toggle stays in sync across SettingsPanel and ChatInput.
+// ============================================================================
+
+const STORAGE_KEY = "pi-sound-enabled";
+
+function readStored(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  return stored === null ? true : stored === "true";
+}
+
+let soundEnabled = readStored();
+const listeners = new Set<() => void>();
+
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
+function getSnapshot(): boolean {
+  return soundEnabled;
+}
+
+function getServerSnapshot(): boolean {
+  return true;
+}
+
+function setSoundEnabled(next: boolean): void {
+  soundEnabled = next;
+  try { localStorage.setItem(STORAGE_KEY, String(next)); } catch { /* ignore */ }
+  listeners.forEach((cb) => cb());
+}
+
+// ============================================================================
+// AudioContext management (unchanged — single reused context)
+// ============================================================================
+
+let audioCtx: AudioContext | null = null;
+
+function getCtx(): AudioContext | null {
+  if (audioCtx && audioCtx.state !== "closed") return audioCtx;
+  try {
+    audioCtx = new AudioContext();
+  } catch {
+    return null;
+  }
+  return audioCtx;
+}
 
 function playTone(ctx: AudioContext) {
   const now = ctx.currentTime;
@@ -21,43 +72,26 @@ function playTone(ctx: AudioContext) {
   });
 }
 
-export function useAudio() {
-  const [enabled, setEnabled] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const stored = localStorage.getItem("pi-sound-enabled");
-    return stored === null ? true : stored === "true";
-  });
+// ============================================================================
+// Public API
+// ============================================================================
 
+export function useAudio() {
+  const enabled = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const enabledRef = useRef(enabled);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
-
-  // Reuse a single AudioContext so it can be resumed if the browser
-  // autoplay policy suspends it (contexts created outside user gestures
-  // start in "suspended" state and produce no sound).
-  const ctxRef = useRef<AudioContext | null>(null);
-  const getCtx = useCallback((): AudioContext | null => {
-    if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current;
-    try {
-      ctxRef.current = new AudioContext();
-    } catch {
-      return null;
-    }
-    return ctxRef.current;
-  }, []);
 
   const unlockAudio = useCallback((force = false) => {
     if (!force && !enabledRef.current) return;
     const ctx = getCtx();
     if (!ctx || ctx.state !== "suspended") return;
     ctx.resume().catch(() => {});
-  }, [getCtx]);
+  }, []);
 
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
     if (next) unlockAudio(true);
-    enabledRef.current = next;
-    localStorage.setItem("pi-sound-enabled", String(next));
-    setEnabled(next);
+    setSoundEnabled(next);
   }, [unlockAudio]);
 
   const playDone = useCallback(() => {
@@ -76,7 +110,7 @@ export function useAudio() {
       return;
     }
     play();
-  }, [getCtx]);
+  }, []);
 
   return { soundEnabled: enabled, onSoundToggle: toggle, playDoneSound: playDone, unlockAudio, soundEnabledRef: enabledRef };
 }
