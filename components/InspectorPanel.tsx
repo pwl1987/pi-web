@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
+import { getEntryIdForTask } from "@/lib/inspector-task-id";
+import { InspectorTaskRow } from "./InspectorTaskRow";
 
 // ---- Types ----
 
@@ -37,11 +39,17 @@ interface TodoTask {
  *   circular close (X) in the panel's top-right corner and a 3-dot menu
  *   inside the header. The pill disappears while expanded.
  */
-export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
+export function InspectorPanel({ sessionId, cwd, open, onToggle, onTaskClick }: {
   sessionId: string | null;
   cwd: string | null;
   open: boolean;
   onToggle: () => void;
+  /**
+   * Called when the user clicks a task row. Receives the latest entryId
+   * that mentioned the task. Parent (AppShell) is responsible for
+   * scrolling the chat to that entry.
+   */
+  onTaskClick?: (entryId: string) => void;
 }) {
   const { t } = useI18n();
   const runtime = useAgentRuntime();
@@ -53,6 +61,9 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
   // label so "3s ago" advances without needing a real git refresh.
   const [nowTick, setNowTick] = useState(0);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
+  // Maps taskId → latest session entryId that mentions it. Lets the
+  // InspectorTaskRow click handler jump to the right message.
+  const [entryIds, setEntryIds] = useState<Record<number, string>>({});
   // True while the initial fetch is in flight. Flips to false after the
   // first response (success or failure). Used to drive the skeleton
   // placeholders so the panel doesn't feel empty during the first paint.
@@ -116,12 +127,13 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
 
   // ---- Todo data fetching ----
   const reloadTodos = useCallback(async () => {
-    if (!sessionId) { setTasks([]); setTasksLoading(false); return; }
+    if (!sessionId) { setTasks([]); setEntryIds({}); setTasksLoading(false); return; }
     try {
       const res = await fetch(`/api/task-list?sessionId=${encodeURIComponent(sessionId)}`);
       if (!res.ok) { setTasksLoading(false); return; }
-      const d = await res.json() as { tasks: TodoTask[] };
+      const d = await res.json() as { tasks: TodoTask[]; entryIds?: Record<number, string> };
       setTasks(d.tasks ?? []);
+      setEntryIds(d.entryIds ?? {});
     } catch { /* best-effort */ }
     setTasksLoading(false);
   }, [sessionId]);
@@ -679,10 +691,22 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
               {!tasksCollapsed && (
                 <div style={{ padding: "0 0 8px" }}>
                   {inProgressTasks.map((task) => (
-                    <TaskRow key={task.id} task={task} variant="active" />
+                    <InspectorTaskRow
+                      key={task.id}
+                      task={task}
+                      variant="active"
+                      entryId={getEntryIdForTask(entryIds, task.id)}
+                      onTaskClick={onTaskClick ?? (() => {})}
+                    />
                   ))}
                   {pendingTasks.map((task) => (
-                    <TaskRow key={task.id} task={task} variant="pending" />
+                    <InspectorTaskRow
+                      key={task.id}
+                      task={task}
+                      variant="pending"
+                      entryId={getEntryIdForTask(entryIds, task.id)}
+                      onTaskClick={onTaskClick ?? (() => {})}
+                    />
                   ))}
                   {completedTasks.length > 0 && (
                     <>
@@ -692,7 +716,13 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
                             {t("inspector.completedN", { count: completedTasks.length })}
                           </div>
                           {completedTasks.map((task) => (
-                            <TaskRow key={task.id} task={task} variant="done" />
+                            <InspectorTaskRow
+                            key={task.id}
+                            task={task}
+                            variant="done"
+                            entryId={getEntryIdForTask(entryIds, task.id)}
+                            onTaskClick={onTaskClick ?? (() => {})}
+                          />
                           ))}
                           <button
                             onClick={toggleShowCompleted}
@@ -986,74 +1016,6 @@ function formatRelative(ms: number): string {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   return `${h}h ago`;
-}
-
-// ---- Task row ----
-
-function TaskRow({ task, variant }: { task: TodoTask; variant: "active" | "pending" | "done" }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 8,
-        padding: "4px 14px",
-      }}
-    >
-      <span
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: "50%",
-          flexShrink: 0,
-          marginTop: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          ...(variant === "done"
-            ? { background: "var(--git-added)", border: "none" }
-            : variant === "active"
-              ? { background: "var(--accent)", border: "2px solid var(--accent)" }
-              : { background: "none", border: "2px solid var(--border)" }),
-        }}
-      >
-        {variant === "done" && (
-          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--bg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="1.5 5 4 7.5 8.5 2.5" />
-          </svg>
-        )}
-        {variant === "active" && (
-          <span
-            style={{
-              width: 5,
-              height: 5,
-              borderRadius: "50%",
-              background: "var(--bg)",
-              animation: "inspector-pulse 1.5s ease-in-out infinite",
-            }}
-          />
-        )}
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 11,
-            lineHeight: 1.35,
-            color: variant === "done" ? "var(--text-dim)" : "var(--text)",
-            textDecoration: variant === "done" ? "line-through" : "none",
-            wordBreak: "break-word",
-          }}
-        >
-          {task.subject}
-        </div>
-        {task.activeForm && variant === "active" && (
-          <div style={{ fontSize: 10, color: "var(--accent)", fontStyle: "italic", marginTop: 1 }}>
-            ⟳ {task.activeForm}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 const iconBtn: React.CSSProperties = {

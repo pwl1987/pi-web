@@ -1157,6 +1157,9 @@ export function AppShell() {
               cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
               open={todoSidebarOpen}
               onToggle={() => setTodoSidebarOpen((v) => !v)}
+              // Click-to-jump is wired in a follow-up slice (S5). For now
+              // this no-op keeps the prop plumbed without breaking UX.
+              onTaskClick={() => {}}
             />
           )}
           {showChat ? (

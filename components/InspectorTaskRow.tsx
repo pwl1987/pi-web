@@ -1,0 +1,129 @@
+"use client";
+
+/**
+ * One row in the InspectorPanel task list.
+ *
+ * Extracted from InspectorPanel.tsx so the click-to-jump behavior can be
+ * unit-tested in isolation (no need to render the whole panel + fetch mocks).
+ *
+ * Behavior:
+ * - If `entryId` is provided, the row renders as a button and calls
+ *   `onTaskClick(entryId)` on click. This is the "click-to-jump" affordance.
+ * - If `entryId` is missing (e.g. older session whose todo tool-result
+ *   didn't include the mapping), the row still renders but clicking does
+ *   nothing — graceful no-op rather than an error.
+ */
+
+interface TodoTaskLike {
+  id: number;
+  subject: string;
+  status?: string;
+  activeForm?: string;
+}
+
+export interface InspectorTaskRowProps {
+  task: TodoTaskLike;
+  variant: "active" | "pending" | "done";
+  /** Latest session entryId that mentions this task; undefined = no-op click. */
+  entryId: string | undefined;
+  /** Called with `entryId` when the row is clicked. Ignored if entryId is undefined. */
+  onTaskClick: (entryId: string) => void;
+}
+
+export function InspectorTaskRow({ task, variant, entryId, onTaskClick }: InspectorTaskRowProps) {
+  const clickable = entryId !== undefined;
+  const handleClick = clickable ? () => onTaskClick(entryId!) : undefined;
+
+  const statusDot = (
+    <span
+      style={{
+        width: 14,
+        height: 14,
+        borderRadius: "50%",
+        flexShrink: 0,
+        marginTop: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        ...(variant === "done"
+          ? { background: "var(--git-added)", border: "none" }
+          : variant === "active"
+            ? { background: "var(--accent)", border: "2px solid var(--accent)" }
+            : { background: "none", border: "2px solid var(--border)" }),
+      }}
+    >
+      {variant === "done" && (
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--bg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="1.5 5 4 7.5 8.5 2.5" />
+        </svg>
+      )}
+      {variant === "active" && (
+        <span
+          style={{
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: "var(--bg)",
+            animation: "inspector-pulse 1.5s ease-in-out infinite",
+          }}
+        />
+      )}
+    </span>
+  );
+
+  const content = (
+    <>
+      {statusDot}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 11,
+            lineHeight: 1.35,
+            color: variant === "done" ? "var(--text-dim)" : "var(--text)",
+            textDecoration: variant === "done" ? "line-through" : "none",
+            wordBreak: "break-word",
+          }}
+        >
+          {task.subject}
+        </div>
+        {task.activeForm && variant === "active" && (
+          <div style={{ fontSize: 10, color: "var(--accent)", fontStyle: "italic", marginTop: 1 }}>
+            ⟳ {task.activeForm}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  // Always render a <button> — accessibility, consistent layout, easier
+  // testing. When entryId is missing, disable the button so click is a
+  // no-op and the cursor reflects the state.
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={!clickable}
+      title={entryId ? `Jump to ${task.subject}` : undefined}
+      style={{
+        all: "unset",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        padding: "4px 14px",
+        width: "100%",
+        cursor: clickable ? "pointer" : "default",
+        opacity: clickable ? 1 : 0.6,
+        borderRadius: 4,
+        transition: "background 0.1s, opacity 0.1s",
+      }}
+      onMouseEnter={(e) => {
+        if (clickable) (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-hover)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+      }}
+    >
+      {content}
+    </button>
+  );
+}

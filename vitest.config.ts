@@ -23,7 +23,7 @@ export default defineConfig({
       "components/**/*.test.{ts,tsx}",
       "hooks/**/*.test.{ts,tsx}",
     ],
-    setupFiles: [],
+    setupFiles: ["./vitest.setup.ts"],
   },
   resolve: {
     alias: {
