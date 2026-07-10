@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
 
 interface TodoTask {
@@ -41,6 +42,8 @@ export function TodoSidebar({ sessionId, open, onToggle }: {
   }, [sessionId]);
 
   useEffect(() => { void reload(); }, [reload]);
+  // Live refresh — re-fetch when the agent's `todo` tool completes in this session.
+  useTodoLiveRefresh(sessionId, reload);
   useEffect(() => {
     if (!runtime.agentRunning && sessionId) void reload();
   }, [runtime.agentRunning, sessionId, reload]);

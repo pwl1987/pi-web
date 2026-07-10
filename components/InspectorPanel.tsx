@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
 
 // ---- Types ----
@@ -114,6 +115,9 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
 
   // Todo load + refresh on agent end
   useEffect(() => { void reloadTodos(); }, [reloadTodos]);
+  // Live refresh — re-fetch the moment the agent's `todo` tool completes,
+  // so progress updates mid-run show up without waiting for agent_end.
+  useTodoLiveRefresh(sessionId, reloadTodos);
   useEffect(() => {
     if (!runtime.agentRunning) { void reloadGit(); void reloadTodos(); }
   }, [runtime.agentRunning, reloadGit, reloadTodos]);
