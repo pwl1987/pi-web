@@ -6,7 +6,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SessionSidebar } from "./SessionSidebar";
-import { ChatWindow } from "./ChatWindow";
+import { ChatWindow, type ChatWindowHandle } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { ModelsConfig } from "./ModelsConfig";
@@ -90,6 +90,9 @@ export function AppShell() {
     setMobileSidebarReady(true);
   }, []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
+  // Holds the imperative ChatWindow handle (currently: scrollToEntry).
+  // Populated by ChatWindow via useEffect on the ref we pass down.
+  const chatWindowRef = useRef<ChatWindowHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
 
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
@@ -1159,7 +1162,11 @@ export function AppShell() {
               onToggle={() => setTodoSidebarOpen((v) => !v)}
               // Click-to-jump is wired in a follow-up slice (S5). For now
               // this no-op keeps the prop plumbed without breaking UX.
-              onTaskClick={() => {}}
+              onTaskClick={(entryId) => {
+                // S5b + S6: scroll the message with this entryId into view.
+                // The handle is set by ChatWindow via useEffect on chatWindowRef.
+                chatWindowRef.current?.scrollToEntry(entryId);
+              }}
             />
           )}
           {showChat ? (
@@ -1172,6 +1179,7 @@ export function AppShell() {
               onSessionForked={handleSessionForked}
               modelsRefreshKey={modelsRefreshKey}
               chatInputRef={chatInputRef}
+              chatWindowRef={chatWindowRef}
               onBranchDataChange={handleBranchDataChange}
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}

@@ -7,6 +7,7 @@ import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistant
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { useMessageScroll } from "@/hooks/useMessageScroll";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -28,6 +29,21 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
+  /**
+   * Receives a handle exposing imperative methods on ChatWindow, primarily
+   * `scrollToEntry(entryId)` for click-to-jump. Filled in by useImperativeHandle.
+   */
+  chatWindowRef?: React.RefObject<ChatWindowHandle | null>;
+}
+
+/**
+ * Public imperative surface of ChatWindow. Currently just one method, but
+ * the type is here so future additions don't have to chase the
+ * useImperativeHandle site.
+ */
+export interface ChatWindowHandle {
+  /** Scroll the message with the given session entryId into view, if it exists. */
+  scrollToEntry: (entryId: string) => void;
 }
 
 function phaseLabel(phase: AgentPhase, tt: (key: string, vars?: Record<string, string | number>) => string): string {
@@ -135,7 +151,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
   );
 }
 
-export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props) {
+export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, chatWindowRef }: Props) {
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
   const { t } = useI18n();
@@ -157,7 +173,7 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const {
     loading, error, messages, entryIds, streamState,
-    agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, tools, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -171,7 +187,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands,
+    handleToolPresetChange, handleToolsChange, handleThinkingLevelChange, loadSlashCommands,
+    isAtBottom, scrollToBottomAction,
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
@@ -224,6 +241,25 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
 
   const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const messageRefs = useMessageRefs(visibleMessages.length);
+  // Click-to-jump target: maps session entryId → the DOM node of its message
+  // wrapper div. Wired to the imperative scrollToEntry handle below so
+  // InspectorPanel can jump a task row to the message that created it.
+  const { register: registerMessageEl, scrollTo: scrollToMessage } = useMessageScroll();
+
+  // Expose imperative handle to the parent (AppShell) for click-to-jump.
+  // The parent holds a ref; calling `chatWindowRef.current?.scrollToEntry(eid)`
+  // scrolls the matching message into view.
+  useEffect(() => {
+    if (!chatWindowRef) return;
+    chatWindowRef.current = { scrollToEntry: scrollToMessage };
+    return () => {
+      // Don't null out the ref on every render — only on unmount. The parent
+      // can read the ref shape to detect a stale handle if it cares.
+      if (chatWindowRef.current?.scrollToEntry === scrollToMessage) {
+        chatWindowRef.current = null;
+      }
+    };
+  }, [chatWindowRef, scrollToMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !agentRunning;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
@@ -257,6 +293,8 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
       compactResult={compactResult}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
+      tools={tools}
+      onToolsChange={session || isNew ? handleToolsChange : undefined}
       thinkingLevel={thinkingLevel}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}
       availableThinkingLevels={availableThinkingLevels}
@@ -429,6 +467,11 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
               const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
                 messageRefs.current[refIndex] = el;
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
+                // Also register for click-to-jump. entryIds[idx] may be null
+                // for entries that haven't been loaded — only register when
+                // we have an id, so the map stays clean.
+                const eid = entryIds[idx];
+                if (eid) registerMessageEl(eid, el);
               };
 
               const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
@@ -582,6 +625,37 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
             </div>
           </div>
         </div>
+        {!isAtBottom && messages.length > 0 && (
+          <button
+            onClick={scrollToBottomAction}
+            aria-label={t("chat.scrollToBottom")}
+            title={t("chat.scrollToBottom")}
+            style={{
+              position: "absolute",
+              bottom: 20,
+              right: isMobile ? 20 : CHAT_MINIMAP_WIDTH + 20,
+              zIndex: 30,
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+              color: "var(--text)",
+              cursor: "pointer",
+              transition: "background 0.12s, transform 0.12s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-panel)"; }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        )}
         {isMobile ? null : (
           <ChatMinimap
             messages={messages}
