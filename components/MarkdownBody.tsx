@@ -10,6 +10,17 @@ import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { markdownRehypePlugins, markdownRemarkPlugins } from "@/lib/markdown";
+import { sanitizeSyntaxHighlighterTheme } from "@/lib/syntax-highlighter-theme";
+
+// Some themes (e.g. `vsc-dark-plus`) set `background` (shorthand) on the
+// pre style. react-syntax-highlighter merges that with our `customStyle`
+// into a single inline style object, so passing a longhand
+// `backgroundColor` here would put both properties on the same element
+// and trigger React's shorthand/longhand conflict warning. Sanitize the
+// themes once at module load so the pre style uses `backgroundColor`
+// longhand exclusively.
+const sanitizedVscDarkPlus = sanitizeSyntaxHighlighterTheme(vscDarkPlus);
+const sanitizedVs = sanitizeSyntaxHighlighterTheme(vs);
 
 interface MarkdownBodyProps {
   children: string;
@@ -233,7 +244,7 @@ function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; h
       </div>
       <SyntaxHighlighter
         language={lang || "text"}
-        style={isDark ? vscDarkPlus : vs}
+        style={isDark ? sanitizedVscDarkPlus : sanitizedVs}
         showLineNumbers
         lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
         customStyle={{
@@ -242,10 +253,6 @@ function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; h
           fontSize: 12.5,
           lineHeight: 1.62,
           borderRadius: 0,
-          // Use the longhand `backgroundColor` (not the `background` shorthand)
-          // — react-syntax-highlighter sets `backgroundColor` internally per
-          // theme, and mixing shorthand + longhand for the same value
-          // triggers a React style warning.
           backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
         }}
         codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
