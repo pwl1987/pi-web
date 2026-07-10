@@ -193,6 +193,8 @@ export const en: Record<string, string> = {
   "inspector.commitPush": "Commit or Push",
   "inspector.branch": "Branch",
   "inspector.collapseTasks": "Collapse task list",
+  "inspector.showCompleted": "Show {count} completed",
+  "inspector.hideCompleted": "Hide completed",
   "todo.empty": "No tasks yet. Ask the agent to create a todo list.",
   "todo.inProgress": "In Progress",
   "todo.pending": "Pending",
