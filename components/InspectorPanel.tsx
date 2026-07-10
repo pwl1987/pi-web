@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTaskKeyboardNav } from "@/hooks/useTaskKeyboardNav";
 import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
@@ -73,6 +74,12 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle, onTaskClick }: 
   const [tasksCollapsed, setTasksCollapsed] = useState(false);
   // Hide completed tasks by default — they accumulate fast and clutter the list.
   const [showCompleted, setShowCompleted] = useState(false);
+  // Ref to the task list container so useTaskKeyboardNav can scope j/k
+  // navigation to its buttons. The container also gets tabIndex={-1} so
+  // it can receive focus programmatically (e.g. when a user clicks the
+  // panel header), letting the keydown handler fire from anywhere.
+  const taskListRef = useRef<HTMLDivElement | null>(null);
+  const handleTaskKeyDown = useTaskKeyboardNav(taskListRef, !tasksCollapsed);
   const [menuOpen, setMenuOpen] = useState(false);
   const [closeHover, setCloseHover] = useState(false);
 
@@ -689,7 +696,12 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle, onTaskClick }: 
               </button>
 
               {!tasksCollapsed && (
-                <div style={{ padding: "0 0 8px" }}>
+                <div
+                  ref={taskListRef}
+                  tabIndex={-1}
+                  onKeyDown={handleTaskKeyDown}
+                  style={{ padding: "0 0 8px", outline: "none" }}
+                >
                   {inProgressTasks.map((task) => (
                     <InspectorTaskRow
                       key={task.id}
