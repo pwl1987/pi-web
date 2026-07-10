@@ -73,7 +73,12 @@ export function AppShell() {
   // When user clicks +, we only store the cwd — no fake session id
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [sessionKey, setSessionKey] = useState(0);
+  const [pluginsRefreshKey, setPluginsRefreshKey] = useState(0);
+  // extensionRenderKey is intentionally unused as a value — bumping it just
+  // forces a normal AppShell re-render so extension panels re-run their
+  // badge/visible/render() callbacks. (Previously this used the global
+  // sessionKey which forced a full ChatWindow remount — wildly over budget.)
+  const [, setExtensionRenderKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
@@ -207,12 +212,14 @@ export function AppShell() {
     chatInputRef.current?.insertText(buildAtMentionText(relativePath, isDir));
   }, []);
 
-  // Stable callback used by extension panels to ask AppShell to re-render
-  // (e.g. after the panel mutates its own internal state). Without useCallback
-  // this inline arrow would change identity every render and defeat
-  // React.memo on the extension panel wrapper.
+  // Stable callback used by extension panels to ask AppShell to re-evaluate
+  // their badge/visible/render outputs. Previously this bumped a global
+  // sessionKey that remounted ChatWindow (~1100-line subtree) — wildly
+  // disproportionate. Now it bumps a dedicated counter that only triggers
+  // a normal AppShell re-render (which is what extension panels actually
+  // need to re-run their render() callbacks).
   const requestExtensionRender = useCallback(() => {
-    setSessionKey((k) => k + 1);
+    setExtensionRenderKey((k) => k + 1);
   }, []);
 
   const [initialSessionId] = useState<string | null>(() => searchParams.get("session"));
@@ -255,7 +262,10 @@ export function AppShell() {
   );
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !searchParams.get("session"));
-  // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
+  // Suppresses the redundant ChatWindow remount that would come from the
+// onCwdChange effect firing after setSelectedCwd in the sidebar during the
+// initial URL restore (since chatWindowKey is derived from session/cwd,
+// triggering both updates in quick succession would remount ChatWindow twice).
   const suppressCwdBumpRef = useRef(false);
 
   const handleCwdChange = useCallback((cwd: string | null, projectRoot?: string | null) => {
@@ -280,7 +290,6 @@ export function AppShell() {
       if (prev && prev !== cwd) return null;
       return prev;
     });
-    setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
@@ -291,13 +300,12 @@ export function AppShell() {
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
     setSelectedSession(session);
-    setSessionKey((k) => k + 1);
     setSystemPrompt(null);
     setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
     if (isRestore) {
-      // Suppress the redundant sessionKey bump that would come from the
+      // Suppress the redundant ChatWindow remount that would come from the
       // onCwdChange effect firing after setSelectedCwd in the sidebar
       suppressCwdBumpRef.current = true;
     }
@@ -311,7 +319,6 @@ export function AppShell() {
   const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
-    setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
@@ -351,7 +358,6 @@ export function AppShell() {
 
   const handleSessionForked = useCallback((newSessionId: string) => {
     setRefreshKey((k) => k + 1);
-    setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
     setSelectedSession((prev) => ({
       ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
@@ -371,7 +377,6 @@ export function AppShell() {
       const cwd = selectedSession.cwd;
       setSelectedSession(null);
       setNewSessionCwd(cwd ?? null);
-      setSessionKey((k) => k + 1);
       setBranchTree([]);
       setBranchActiveLeafId(null);
       setSystemPrompt(null);
@@ -456,6 +461,19 @@ export function AppShell() {
   const activeFileTab = useMemo(
     () => fileTabs.find((t) => t.id === activeFileTabId) ?? null,
     [fileTabs, activeFileTabId],
+  );
+
+  // ChatWindow's key. Previously this was a counter (sessionKey) bumped on
+  // *any* session-touching action, which forced ChatWindow to fully unmount
+  // and remount — expensive (1110-line subtree, 1618-line useAgentSession
+  // hook, EventSource teardown/setup, scroll/draft state reset). Using the
+  // session id (or cwd for new sessions) as the key means the remount only
+  // happens when the actual session identity changes; lighter operations
+  // like plugin reload use pluginsRefreshKey instead and refresh tools
+  // in-place via a useEffect (see hooks/useAgentSession.ts).
+  const chatWindowKey = useMemo(
+    () => selectedSession?.id ?? (effectiveNewSessionCwd ? `new:${effectiveNewSessionCwd}` : "empty"),
+    [selectedSession?.id, effectiveNewSessionCwd],
   );
 
   const sidebarContent = (
@@ -1214,13 +1232,14 @@ export function AppShell() {
           )}
           {showChat ? (
             <ChatWindow
-              key={sessionKey}
+              key={chatWindowKey}
               session={selectedSession}
               newSessionCwd={effectiveNewSessionCwd}
               onAgentEnd={handleAgentEnd}
               onSessionCreated={handleSessionCreated}
               onSessionForked={handleSessionForked}
               modelsRefreshKey={modelsRefreshKey}
+              pluginsRefreshKey={pluginsRefreshKey}
               chatInputRef={chatInputRef}
               ref={chatWindowRef}
               onBranchDataChange={handleBranchDataChange}
@@ -1342,7 +1361,7 @@ export function AppShell() {
         cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
         sessionId={selectedSession?.id ?? null}
         onClose={() => setPluginsConfigOpen(false)}
-        onReloaded={() => setSessionKey((k) => k + 1)}
+        onReloaded={() => setPluginsRefreshKey((k) => k + 1)}
       />
     )}
     {extensionsConfigOpen && (

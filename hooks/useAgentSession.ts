@@ -144,6 +144,9 @@ export interface UseAgentSessionOptions {
   onSessionCreated?: (session: SessionInfo) => void;
   onSessionForked?: (newSessionId: string) => void;
   modelsRefreshKey?: number;
+  /** Bumped after PluginsConfig reloads plugins. Triggers a tool-list
+   *  re-fetch without unmounting the chat subtree. */
+  pluginsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
@@ -321,7 +324,7 @@ type SlashCommandsResponse = {
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
-    modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, pluginsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
   } = opts;
 
   const isNew = session === null && newSessionCwd !== null;
@@ -1476,6 +1479,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     });
     return () => controller.abort();
   }, [loadModels, modelsRefreshKey]);
+
+  // Re-fetch tool list when plugins are reloaded. Mirrors the
+  // modelsRefreshKey pattern: a counter bump from AppShell triggers a
+  // lightweight in-place refresh instead of a full ChatWindow remount.
+  useEffect(() => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    void loadTools(sid).catch((e) => {
+      console.error("Failed to refresh tools after plugin reload:", e);
+    });
+  }, [loadTools, pluginsRefreshKey]);
 
   // Compact error auto-dismiss
   useEffect(() => {
