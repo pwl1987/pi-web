@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { getFileIcon } from "./FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -10,10 +10,12 @@ export interface Tab {
   /** File path for file tabs. Optional for extension panel tabs. */
   filePath?: string;
   sourceSessionId?: string | null;
-  /** Tab kind: "file" (default) or "extension" (rendered by an extension). */
-  kind?: "file" | "extension";
+  /** Tab kind: "file" (default), "extension" (rendered by an extension), or "builtin". */
+  kind?: "file" | "extension" | "builtin";
   /** QualifiedContributionId when kind === "extension". */
   extensionId?: string;
+  /** Builtin panel id when kind === "builtin" (e.g. "mcp", "web-search", "subagents"). */
+  builtinId?: string;
   /** Custom icon for extension tabs (overrides file icon). */
   icon?: React.ReactNode;
 }
@@ -25,7 +27,7 @@ interface Props {
   onCloseTab: (id: string) => void;
 }
 
-export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
+export const TabBar = memo(function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const { t } = useI18n();
 
@@ -108,4 +110,4 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
       })}
     </div>
   );
-}
+});

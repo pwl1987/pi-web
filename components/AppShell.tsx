@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
@@ -207,18 +207,52 @@ export function AppShell() {
     chatInputRef.current?.insertText(buildAtMentionText(relativePath, isDir));
   }, []);
 
+  // Stable callback used by extension panels to ask AppShell to re-render
+  // (e.g. after the panel mutates its own internal state). Without useCallback
+  // this inline arrow would change identity every render and defeat
+  // React.memo on the extension panel wrapper.
+  const requestExtensionRender = useCallback(() => {
+    setSessionKey((k) => k + 1);
+  }, []);
+
   const [initialSessionId] = useState<string | null>(() => searchParams.get("session"));
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
   // Build the shared extension runtime state (agent data injected for extensions).
-  const extState = {
-    selectedSession: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
-    selectedCwd: activeCwd ?? newSessionCwd ?? null,
-    agentRunning: runtime.agentRunning,
-    activeTools: runtime.tools.filter((t) => t.active).map((t) => t.name),
-    sessionStats: runtime.sessionStats
-      ? { totalMessages: runtime.sessionStats.totalMessages, toolCalls: runtime.sessionStats.toolCalls, tokens: { total: runtime.sessionStats.tokens.total }, cost: runtime.sessionStats.cost }
-      : null,
-  };
+  // Each piece is memoized independently so identity stays stable across renders
+  // that don't change it — otherwise extension panels that receive these as
+  // `state={extState}` re-render on every AppShell render (AppShell owns ~12
+  // useState hooks that fire on sidebar/panel toggles, so this happens a lot).
+  const extSession = useMemo(
+    () => (selectedSession
+      ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name }
+      : null),
+    [selectedSession],
+  );
+  const activeToolNames = useMemo(
+    () => runtime.tools.filter((t) => t.active).map((t) => t.name),
+    [runtime.tools],
+  );
+  const extStats = useMemo(
+    () => (runtime.sessionStats
+      ? {
+          totalMessages: runtime.sessionStats.totalMessages,
+          toolCalls: runtime.sessionStats.toolCalls,
+          tokens: { total: runtime.sessionStats.tokens.total },
+          cost: runtime.sessionStats.cost,
+        }
+      : null),
+    [runtime.sessionStats],
+  );
+  const extState = useMemo(
+    () => ({
+      selectedSession: extSession,
+      selectedCwd: activeCwd ?? newSessionCwd ?? null,
+      agentRunning: runtime.agentRunning,
+      activeTools: activeToolNames,
+      sessionStats: extStats,
+    }),
+    [extSession, activeCwd, newSessionCwd, runtime.agentRunning, activeToolNames, extStats],
+  );
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !searchParams.get("session"));
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
@@ -409,12 +443,20 @@ export function AppShell() {
   }, [selectedSession]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
-  const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
+  // Memoized so React.memo'd children that depend on these stay stable when
+  // unrelated state (modal toggles, refresh counters, etc.) changes.
+  const effectiveNewSessionCwd = useMemo(
+    () => newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null),
+    [newSessionCwd, selectedSession, activeCwd],
+  );
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
 
-  const activeFileTab = fileTabs.find((t) => t.id === activeFileTabId) ?? null;
+  const activeFileTab = useMemo(
+    () => fileTabs.find((t) => t.id === activeFileTabId) ?? null,
+    [fileTabs, activeFileTabId],
+  );
 
   const sidebarContent = (
     <>
@@ -1251,10 +1293,10 @@ export function AppShell() {
                 );
               }
               return panel.render({
-                session: selectedSession ? { id: selectedSession.id, cwd: selectedSession.cwd, name: selectedSession.name } : null,
+                session: extSession,
                 cwd: activeCwd ?? undefined,
                 state: extState,
-                requestRender: () => setSessionKey((k) => k + 1),
+                requestRender: requestExtensionRender,
               });
             })()
           ) : activeFileTab?.filePath ? (
