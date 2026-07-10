@@ -567,4 +567,22 @@ export const zh: Record<string, string> = {
   "settings.installTelemetry": "安装遥测",
   "settings.analytics": "分析",
   "settings.warnExtraUsage": "额外用量警告",
+
+  // ----- AGENTS.md 管理 -----
+  "agents.title": "AGENTS.md",
+  "agents.userLevel": "用户级",
+  "agents.projectLevel": "项目级",
+  "agents.edit": "编辑",
+  "agents.preview": "预览",
+  "agents.save": "保存",
+  "agents.saved": "已保存",
+  "agents.saving": "保存中…",
+  "agents.optimize": "AI 优化",
+  "agents.optimizing": "优化中…",
+  "agents.original": "原文",
+  "agents.optimized": "优化版",
+  "agents.apply": "采用优化版",
+  "agents.discard": "放弃",
+  "agents.notExists": "文件尚不存在。保存以创建。",
+  "settings.openAgents": "AGENTS.md",
 };

@@ -13,6 +13,7 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { ExtensionsConfig } from "./ExtensionsConfig";
+import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
 import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
@@ -38,6 +39,7 @@ export function AppShell() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [agentsConfigOpen, setAgentsConfigOpen] = useState(false);
 
   // Expose React on window so extension modules (loaded via dynamic import) share
   // the same React instance — otherwise hooks break across instance boundaries.
@@ -1140,6 +1142,13 @@ export function AppShell() {
         onOpenSkills={() => setSkillsConfigOpen(true)}
         onOpenPlugins={() => setPluginsConfigOpen(true)}
         onOpenExtensions={() => setExtensionsConfigOpen(true)}
+        onOpenAgents={() => setAgentsConfigOpen(true)}
+      />
+    )}
+    {agentsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+      <AgentsConfig
+        cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
+        onClose={() => setAgentsConfigOpen(false)}
       />
     )}
     <CommandPalette

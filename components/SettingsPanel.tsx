@@ -63,10 +63,11 @@ interface Props {
   onOpenSkills: () => void;
   onOpenPlugins: () => void;
   onOpenExtensions: () => void;
+  onOpenAgents: () => void;
 }
 
 /** Unified settings modal — pi agent config + UI preferences + management shortcuts. */
-export function SettingsPanel({ onClose, onOpenModels, onOpenSkills, onOpenPlugins, onOpenExtensions }: Props) {
+export function SettingsPanel({ onClose, onOpenModels, onOpenSkills, onOpenPlugins, onOpenExtensions, onOpenAgents }: Props) {
   const { isDark, toggleTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
   const { soundEnabled, onSoundToggle } = useAudio();
@@ -381,6 +382,7 @@ export function SettingsPanel({ onClose, onOpenModels, onOpenSkills, onOpenPlugi
           <ManagementButton label={t("settings.openSkills")} onClick={() => { onClose(); onOpenSkills(); }} />
           <ManagementButton label={t("settings.openPlugins")} onClick={() => { onClose(); onOpenPlugins(); }} />
           <ManagementButton label={t("settings.openExtensions")} onClick={() => { onClose(); onOpenExtensions(); }} />
+          <ManagementButton label={t("settings.openAgents")} onClick={() => { onClose(); onOpenAgents(); }} />
 
           {/* ===== Section: Preferences ===== */}
           <SectionHeader label={t("settings.preferences")} />

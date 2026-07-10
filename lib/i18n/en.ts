@@ -567,4 +567,22 @@ export const en: Record<string, string> = {
   "settings.installTelemetry": "Install telemetry",
   "settings.analytics": "Analytics",
   "settings.warnExtraUsage": "Warn extra usage",
+
+  // ----- AGENTS.md management -----
+  "agents.title": "AGENTS.md",
+  "agents.userLevel": "User",
+  "agents.projectLevel": "Project",
+  "agents.edit": "Edit",
+  "agents.preview": "Preview",
+  "agents.save": "Save",
+  "agents.saved": "Saved",
+  "agents.saving": "Saving…",
+  "agents.optimize": "AI Optimize",
+  "agents.optimizing": "Optimizing…",
+  "agents.original": "Original",
+  "agents.optimized": "Optimized",
+  "agents.apply": "Apply Optimized",
+  "agents.discard": "Discard",
+  "agents.notExists": "File does not exist yet. Save to create it.",
+  "settings.openAgents": "AGENTS.md",
 };
