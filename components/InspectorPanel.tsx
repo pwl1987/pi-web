@@ -563,19 +563,8 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
               >
                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>{t("inspector.process")}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {/* Mini progress bar — 36px wide, 4px tall, fills left-to-right */}
-                  <div style={{
-                    width: 36, height: 4, borderRadius: 2,
-                    background: "var(--bg-subtle)", overflow: "hidden",
-                    border: "1px solid var(--border)",
-                  }}>
-                    <div style={{
-                      width: `${progressPct * 100}%`,
-                      height: "100%",
-                      background: progressColor,
-                      transition: "width 0.25s ease, background 0.2s",
-                    }} />
-                  </div>
+                  {/* Circular progress ring — 30px diameter, completed count inside */}
+                  <ProgressRing pct={progressPct} color={progressColor} value={completedTasks.length} />
                   <span style={{ fontSize: 12, fontWeight: 600, color: progressColor, fontVariantNumeric: "tabular-nums", transition: "color 0.2s" }}>
                     {completedTasks.length}/{tasks.length}
                   </span>
@@ -798,6 +787,43 @@ function MenuItem({ onClick, label, icon, checked }: {
         </svg>
       )}
     </button>
+  );
+}
+
+// ---- Task row ----
+
+function ProgressRing({ pct, color, value }: { pct: number; color: string; value: number }) {
+  const size = 30;
+  const stroke = 3;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - Math.min(1, Math.max(0, pct)));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      {/* Background ring */}
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-subtle)" strokeWidth={stroke} />
+      {/* Progress arc — rotated -90deg so it starts from 12 o'clock */}
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ transition: "stroke-dashoffset 0.3s cubic-bezier(.4,0,.2,1), stroke 0.2s" }}
+      />
+      {/* Center number */}
+      <text
+        x={size / 2} y={size / 2}
+        textAnchor="middle" dominantBaseline="central"
+        fontSize="10" fontWeight="700" fill={color}
+        style={{ fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-mono)", transition: "fill 0.2s" }}
+      >
+        {value}
+      </text>
+    </svg>
   );
 }
 
