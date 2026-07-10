@@ -22,6 +22,13 @@ const STORE_KEY_PREFIX = "__piPersistent:";
 
 const listeners = new Map<string, Set<() => void>>();
 
+// Memoize getSnapshot results so referential equality holds across the
+// repeated getSnapshot() calls React issues per render. Without this,
+// JSON.parse() returns a fresh object every time and useSyncExternalStore
+// warns "The result of getSnapshot should be cached to avoid an infinite
+// loop". Keyed on the raw storage string so writes invalidate the cache.
+const snapshotCache = new Map<string, { raw: string; parsed: unknown }>();
+
 function subscribe(key: string, cb: () => void): () => void {
   let set = listeners.get(key);
   if (!set) {
@@ -36,10 +43,19 @@ function subscribe(key: string, cb: () => void): () => void {
 
 function getSnapshot<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw) as T;
+    raw = window.localStorage.getItem(key);
+  } catch {
+    return fallback;
+  }
+  if (raw === null) return fallback;
+  const cached = snapshotCache.get(key);
+  if (cached && cached.raw === raw) return cached.parsed as T;
+  try {
+    const parsed = JSON.parse(raw) as T;
+    snapshotCache.set(key, { raw, parsed });
+    return parsed;
   } catch {
     return fallback;
   }
@@ -57,10 +73,17 @@ export function usePersistentState<T>(
   defaultValue: T,
 ): [T, (next: T | ((prev: T) => T)) => void] {
   const fullKey = STORE_KEY_PREFIX + key;
-  // Mirror defaultValue into a ref so the setter's deps don't churn when the
-  // caller passes a fresh literal each render (e.g. `[]`, `true`).
+  // Capture the default exactly once and never reassign. If we re-mirrored
+  // `defaultValue` into the ref on every render, callers that pass a fresh
+  // literal each render (e.g. `usePersistentState<Tab[]>("file-tabs", [])`)
+  // would make the ref's identity churn — and since getSnapshot returns this
+  // ref directly when localStorage has no stored value, useSyncExternalStore
+  // would see a "new" snapshot every render and either warn about
+  // getSnapshot caching or hit "Maximum update depth exceeded".
+  //
+  // The setter does not depend on defaultRef.current (its useCallback deps
+  // are [fullKey]), so this capture-once is safe for it as well.
   const defaultRef = useRef(defaultValue);
-  defaultRef.current = defaultValue;
 
   const value = useSyncExternalStore(
     (cb) => subscribe(fullKey, cb),
