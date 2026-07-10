@@ -1137,6 +1137,9 @@ export function AppShell() {
       <SettingsPanel
         onClose={() => setSettingsOpen(false)}
         onOpenModels={() => setModelsConfigOpen(true)}
+        onOpenSkills={() => setSkillsConfigOpen(true)}
+        onOpenPlugins={() => setPluginsConfigOpen(true)}
+        onOpenExtensions={() => setExtensionsConfigOpen(true)}
       />
     )}
     <CommandPalette
