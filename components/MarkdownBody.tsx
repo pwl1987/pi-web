@@ -242,7 +242,11 @@ function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; h
           fontSize: 12.5,
           lineHeight: 1.62,
           borderRadius: 0,
-          background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+          // Use the longhand `backgroundColor` (not the `background` shorthand)
+          // — react-syntax-highlighter sets `backgroundColor` internally per
+          // theme, and mixing shorthand + longhand for the same value
+          // triggers a React style warning.
+          backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
         }}
         codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
       >
