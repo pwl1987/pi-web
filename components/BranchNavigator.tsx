@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { SessionEntry, SessionTreeNode } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -217,7 +217,7 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
   );
 }
 
-export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession, compact }: Props) {
+export const BranchNavigator = memo(function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession, compact }: Props) {
   const { t } = useI18n();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
@@ -399,4 +399,4 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
       )}
     </div>
   );
-}
+});

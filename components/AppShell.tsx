@@ -164,6 +164,9 @@ export function AppShell() {
   // when AppShell re-renders for unrelated reasons (modal toggles, etc.).
   const openSubagentsPanel = useCallback(() => toggleTopPanel("subagents"), [toggleTopPanel]);
 
+  // Stable callback for BranchNavigator (memo'd).
+  const toggleBranchesPanel = useCallback(() => toggleTopPanel("branches"), [toggleTopPanel]);
+
   // Stable callbacks for InspectorPanel — same rationale: the panel is
   // memo'd, so these need stable identity across AppShell re-renders.
   // Defined later (after the relevant state is declared) since they close
@@ -796,7 +799,7 @@ export function AppShell() {
                 compact={isMobile}
                 containerRef={topBarRef}
                 open={activeTopPanel === "branches"}
-                onToggle={() => toggleTopPanel("branches")}
+                onToggle={toggleBranchesPanel}
                 hasSession
               />
               <button
