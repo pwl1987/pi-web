@@ -56,6 +56,16 @@ export function InspectorTaskRow({ task, variant, entryId, onTaskClick }: Inspec
       }
     : undefined;
 
+  // Right-click copies the task subject to clipboard. Suppresses the
+  // browser's native context menu so we own the gesture end-to-end.
+  const handleContextMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!clickable) return;
+    e.preventDefault();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(task.subject);
+    }
+  };
+
   const statusDot = (
     <span
       style={{
@@ -125,6 +135,7 @@ export function InspectorTaskRow({ task, variant, entryId, onTaskClick }: Inspec
       ref={buttonRef}
       type="button"
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
       disabled={!clickable}
       title={entryId ? `Jump to ${task.subject}` : undefined}
       style={{

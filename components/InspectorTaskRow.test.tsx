@@ -68,6 +68,72 @@ describe("InspectorTaskRow click behavior", () => {
   });
 });
 
+describe("InspectorTaskRow right-click copy", () => {
+  let writeTextSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    writeTextSpy = vi.fn().mockResolvedValue(undefined);
+    // jsdom's navigator.clipboard is undefined by default; install a stub.
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: writeTextSpy },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+  });
+
+  it("right-click on a clickable row copies the subject to clipboard", () => {
+    render(
+      <ul>
+        <InspectorTaskRow
+          task={sampleTask}
+          variant="active"
+          entryId="e1"
+          onTaskClick={() => {}}
+        />
+      </ul>,
+    );
+    const btn = screen.getByRole("button", { name: /click me/i });
+    fireEvent.contextMenu(btn);
+    expect(writeTextSpy).toHaveBeenCalledWith("Click me");
+  });
+
+  it("right-click does NOT copy when entryId is undefined (no-op rows are still no-op)", () => {
+    render(
+      <ul>
+        <InspectorTaskRow
+          task={sampleTask}
+          variant="active"
+          entryId={undefined}
+          onTaskClick={() => {}}
+        />
+      </ul>,
+    );
+    const btn = screen.getByRole("button", { name: /click me/i });
+    fireEvent.contextMenu(btn);
+    expect(writeTextSpy).not.toHaveBeenCalled();
+  });
+
+  it("right-click does not fire the click handler (single action per gesture)", () => {
+    const onTaskClick = vi.fn();
+    render(
+      <ul>
+        <InspectorTaskRow
+          task={sampleTask}
+          variant="active"
+          entryId="e1"
+          onTaskClick={onTaskClick}
+        />
+      </ul>,
+    );
+    const btn = screen.getByRole("button", { name: /click me/i });
+    fireEvent.contextMenu(btn);
+    expect(onTaskClick).not.toHaveBeenCalled();
+  });
+});
+
 describe("InspectorTaskRow click feedback", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
