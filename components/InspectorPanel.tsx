@@ -49,6 +49,8 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
   const [tasks, setTasks] = useState<TodoTask[]>([]);
   const [pinned, setPinned] = useState(false);
   const [tasksCollapsed, setTasksCollapsed] = useState(false);
+  // Hide completed tasks by default — they accumulate fast and clutter the list.
+  const [showCompleted, setShowCompleted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [closeHover, setCloseHover] = useState(false);
 
@@ -83,6 +85,10 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
       return next;
     });
     setMenuOpen(false);
+  }, []);
+
+  const toggleShowCompleted = useCallback(() => {
+    setShowCompleted((prev) => !prev);
   }, []);
 
   // ---- Git data fetching ----
@@ -536,20 +542,76 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle }: {
 
               {!tasksCollapsed && (
                 <div style={{ padding: "0 0 8px" }}>
-                  {completedTasks.length > 0 && (
-                    <div style={{ padding: "0 14px 4px", fontSize: 10, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      {t("inspector.completedN", { count: completedTasks.length })}
-                    </div>
-                  )}
                   {inProgressTasks.map((task) => (
                     <TaskRow key={task.id} task={task} variant="active" />
                   ))}
                   {pendingTasks.map((task) => (
                     <TaskRow key={task.id} task={task} variant="pending" />
                   ))}
-                  {completedTasks.map((task) => (
-                    <TaskRow key={task.id} task={task} variant="done" />
-                  ))}
+                  {completedTasks.length > 0 && (
+                    <>
+                      {showCompleted ? (
+                        <>
+                          <div style={{ padding: "8px 14px 4px", fontSize: 10, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            {t("inspector.completedN", { count: completedTasks.length })}
+                          </div>
+                          {completedTasks.map((task) => (
+                            <TaskRow key={task.id} task={task} variant="done" />
+                          ))}
+                          <button
+                            onClick={toggleShowCompleted}
+                            style={{
+                              width: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 5,
+                              padding: "6px 14px",
+                              marginTop: 4,
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: 10,
+                              color: "var(--text-muted)",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text)"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+                          >
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="18 15 12 9 6 15" />
+                            </svg>
+                            {t("inspector.hideCompleted")}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={toggleShowCompleted}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            padding: "7px 14px",
+                            marginTop: 4,
+                            background: "none",
+                            border: "1px dashed var(--border)",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontSize: 11,
+                            color: "var(--text-muted)",
+                          }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-dim)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                          {t("inspector.showCompleted", { count: completedTasks.length })}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>

@@ -193,6 +193,8 @@ export const zh: Record<string, string> = {
   "inspector.commitPush": "提交或推送",
   "inspector.branch": "分支",
   "inspector.collapseTasks": "收起任务列表",
+  "inspector.showCompleted": "展开 {count} 项已完成",
+  "inspector.hideCompleted": "收起已完成",
   "todo.empty": "暂无任务。让 agent 创建待办列表。",
   "todo.inProgress": "进行中",
   "todo.pending": "待处理",
