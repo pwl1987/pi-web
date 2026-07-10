@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 
 interface AsyncStatus {
@@ -21,7 +21,7 @@ interface AsyncStatus {
  * - Clicking opens the subagents panel.
  * - Polls /api/subagents every 10s.
  */
-export function SubagentBadge({ onClick }: { onClick: () => void }) {
+export const SubagentBadge = memo(function SubagentBadge({ onClick }: { onClick: () => void }) {
   const { t } = useI18n();
   const [active, setActive] = useState<AsyncStatus[]>([]);
 
@@ -97,4 +97,4 @@ export function SubagentBadge({ onClick }: { onClick: () => void }) {
       `}</style>
     </button>
   );
-}
+});

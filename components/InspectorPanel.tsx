@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTaskKeyboardNav } from "@/hooks/useTaskKeyboardNav";
 import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
@@ -40,7 +40,7 @@ interface TodoTask {
  *   circular close (X) in the panel's top-right corner and a 3-dot menu
  *   inside the header. The pill disappears while expanded.
  */
-export function InspectorPanel({ sessionId, cwd, open, onToggle, onTaskClick }: {
+export const InspectorPanel = memo(function InspectorPanel({ sessionId, cwd, open, onToggle, onTaskClick }: {
   sessionId: string | null;
   cwd: string | null;
   open: boolean;
@@ -918,7 +918,7 @@ export function InspectorPanel({ sessionId, cwd, open, onToggle, onTaskClick }: 
       )}
     </div>
   );
-}
+});
 
 // ---- Menu item helper ----
 

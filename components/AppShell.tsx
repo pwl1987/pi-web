@@ -160,6 +160,15 @@ export function AppShell() {
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile, setSidebarOpen]);
 
+  // Stable callback for SubagentBadge — keeps the badge's React.memo effective
+  // when AppShell re-renders for unrelated reasons (modal toggles, etc.).
+  const openSubagentsPanel = useCallback(() => toggleTopPanel("subagents"), [toggleTopPanel]);
+
+  // Stable callbacks for InspectorPanel — same rationale: the panel is
+  // memo'd, so these need stable identity across AppShell re-renders.
+  // Defined later (after the relevant state is declared) since they close
+  // over setTodoSidebarOpen and chatWindowRef.
+
   const openSessionStatsPanel = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel("session");
@@ -190,6 +199,14 @@ export function AppShell() {
   const [activeFileTabId, setActiveFileTabId] = usePersistentState<string | null>("active-file-tab-id", null);
   const [rightPanelOpen, setRightPanelOpen] = usePersistentState<boolean>("right-panel-open", false);
   const [todoSidebarOpen, setTodoSidebarOpen] = usePersistentState<boolean>("todo-sidebar-open", false);
+
+  // Stable callbacks for InspectorPanel (memo'd) — keep these refs stable so
+  // the panel doesn't re-render on unrelated AppShell state changes.
+  const toggleTodoSidebar = useCallback(() => setTodoSidebarOpen((v) => !v), [setTodoSidebarOpen]);
+  const scrollChatToEntry = useCallback(
+    (entryId: string) => { chatWindowRef.current?.scrollToEntry(entryId); },
+    [], // chatWindowRef is a stable ref — empty deps, callback never changes
+  );
 
   // Reconcile persisted UI state after load: if the persisted active tab no
   // longer exists (user closed it, file was deleted, etc.), drop the pointer.
@@ -865,7 +882,7 @@ export function AppShell() {
           )}
           {/* Subagent status badge — shows when subagents are running */}
           {showChat && (
-            <SubagentBadge onClick={() => toggleTopPanel("subagents")} />
+            <SubagentBadge onClick={openSubagentsPanel} />
           )}
           {/* Session stats — right-aligned in top bar */}
           {showChat && (sessionStats || contextUsage) && (() => {
@@ -1220,14 +1237,8 @@ export function AppShell() {
               sessionId={selectedSession?.id ?? null}
               cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
               open={todoSidebarOpen}
-              onToggle={() => setTodoSidebarOpen((v) => !v)}
-              // Click-to-jump is wired in a follow-up slice (S5). For now
-              // this no-op keeps the prop plumbed without breaking UX.
-              onTaskClick={(entryId) => {
-                // S5b + S6: scroll the message with this entryId into view.
-                // The handle is populated by ChatWindow via useImperativeHandle.
-                chatWindowRef.current?.scrollToEntry(entryId);
-              }}
+              onToggle={toggleTodoSidebar}
+              onTaskClick={scrollChatToEntry}
             />
           )}
           {showChat ? (
