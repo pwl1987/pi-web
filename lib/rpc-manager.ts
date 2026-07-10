@@ -2,6 +2,11 @@ import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir
 import { randomUUID } from "crypto";
 import { cacheSessionPath, resolveSessionPath } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
+import {
+  getRegistry,
+  getLocks,
+  notifyRunningChange,
+} from "./session-registry";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
@@ -91,7 +96,11 @@ export class AgentSessionWrapper {
   private onDestroyCallback: (() => void) | null = null;
   private _alive = true;
 
-  constructor(public readonly inner: AgentSessionLike) {}
+  readonly inner: AgentSessionLike;
+
+  constructor(inner: AgentSessionLike) {
+    this.inner = inner;
+  }
 
   get sessionId(): string {
     return this.inner.sessionId;
@@ -817,80 +826,31 @@ export class AgentSessionWrapper {
 }
 
 // ============================================================================
-// Session registry
+// Session registry (extracted to session-registry.ts for testability)
 // ============================================================================
+// getRegistry, getLocks, getRpcSession, subscribeRunningSessions,
+// notifyRunningChange are imported from ./session-registry.
+// AgentSessionWrapper satisfies SessionHandle structurally.
 
-declare global {
-  var __piSessions: Map<string, AgentSessionWrapper> | undefined;
-  var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
-  var __piRunningListeners: Set<(ids: string[]) => void> | undefined;
-}
+/** Re-export for API route consumers. */
+export { subscribeRunningSessions } from "./session-registry";
+export { getRunningRpcSessionIds } from "./session-registry";
 
-function getRegistry(): Map<string, AgentSessionWrapper> {
-  if (!globalThis.__piSessions) {
-    globalThis.__piSessions = new Map();
-    const cleanup = () => globalThis.__piSessions?.forEach((s) => s.destroy());
-    process.once("exit", cleanup);
-    process.once("SIGINT", cleanup);
-    process.once("SIGTERM", cleanup);
-    // Pre-warm recently active sessions from the sidecar (fire-and-forget).
-    maybeRestore();
-  }
-  return globalThis.__piSessions;
-}
-
-function getLocks(): Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> {
-  if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
-  return globalThis.__piStartLocks;
-}
-
+/** Typed wrapper — registry stores SessionHandle, callers get AgentSessionWrapper. */
 export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {
-  return getRegistry().get(sessionId);
+  return getRegistry().get(sessionId) as AgentSessionWrapper | undefined;
 }
 
-export function getRunningRpcSessionIds(): string[] {
-  const ids = new Set<string>();
-  for (const [sessionId, session] of getRegistry()) {
-    if (session.isRunning()) ids.add(session.sessionId || sessionId);
-  }
-  return [...ids];
-}
-
-// ----------------------------------------------------------------------------
-// Running-status broadcaster
-//
-// Pushes the current set of running session ids to subscribers whenever any
-// session's running state may have changed. This lets the sidebar receive live
-// updates over SSE instead of polling. Listeners live on globalThis so they
-// survive Next.js hot-reload.
-// ----------------------------------------------------------------------------
-
-function getRunningListeners(): Set<(ids: string[]) => void> {
-  if (!globalThis.__piRunningListeners) globalThis.__piRunningListeners = new Set();
-  return globalThis.__piRunningListeners;
-}
-
-/** Subscribe to running-session-id changes. Returns an unsubscribe function. */
-export function subscribeRunningSessions(listener: (ids: string[]) => void): () => void {
-  const listeners = getRunningListeners();
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
-
-let lastRunningSnapshot = "";
-
-/**
- * Recompute the running-session-id set and, if it changed since the last
- * notification, broadcast it to subscribers. Cheap to call often.
- */
-export function notifyRunningChange(): void {
-  const ids = getRunningRpcSessionIds();
-  const snapshot = JSON.stringify([...ids].sort());
-  if (snapshot === lastRunningSnapshot) return;
-  lastRunningSnapshot = snapshot;
-  for (const listener of getRunningListeners()) {
-    try { listener(ids); } catch { /* ignore listener errors */ }
-  }
+// One-time process cleanup + sidecar restore (added to getRegistry on first call).
+let registryInitialized = false;
+function ensureRegistryInitialized(): void {
+  if (registryInitialized) return;
+  registryInitialized = true;
+  const cleanup = () => getRegistry().forEach((s) => s.destroy());
+  process.once("exit", cleanup);
+  process.once("SIGINT", cleanup);
+  process.once("SIGTERM", cleanup);
+  maybeRestore();
 }
 
 /**
@@ -904,14 +864,15 @@ export async function startRpcSession(
   cwd: string,
   toolNames?: string[]
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
+  ensureRegistryInitialized();
   const registry = getRegistry();
   const locks = getLocks();
 
   const existing = registry.get(sessionId);
-  if (existing?.isAlive()) return { session: existing, realSessionId: sessionId };
+  if (existing?.isAlive()) return { session: existing as AgentSessionWrapper, realSessionId: sessionId };
 
   const inflight = locks.get(sessionId);
-  if (inflight) return inflight;
+  if (inflight) return inflight as Promise<{ session: AgentSessionWrapper; realSessionId: string }>;
 
   const starting = (async () => {
     const agentDir = getAgentDir();
