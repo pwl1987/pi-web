@@ -247,7 +247,6 @@ export const en: Record<string, string> = {
   "sidebar.checking": "Checking…",
   "sidebar.open": "Open",
   "sidebar.pinnedDirs": "Pinned",
-  "sidebar.unpin": "Unpin",
   "sidebar.recentProjects": "Recent",
   "sidebar.pinDir": "Pin this directory",
   "sidebar.pinCurrentDir": "Pin current directory",

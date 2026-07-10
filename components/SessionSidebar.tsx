@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { FileExplorer } from "./FileExplorer";
+import { PinnedDirsList } from "./PinnedDirsList";
 import { useI18n } from "@/hooks/useI18n";
 import { useExtensions } from "@/hooks/useExtensions";
 import type { WorkspaceLabelItem } from "@/lib/extensions/types";
@@ -1109,6 +1110,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               )}
           </AnimatedDropdown>
         </div>
+
+        {/* Pinned dirs — dedicated section between cwd picker and worktree
+            switcher. Renders nothing when the list is empty. */}
+        <PinnedDirsList onCwdChange={onCwdChange ?? (() => {})} />
 
         {/* Worktree switcher — shown only for git projects at a checkout top
             level (repo subdirs keep their own project identity, so switching
