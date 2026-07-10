@@ -247,6 +247,7 @@ export const zh: Record<string, string> = {
   "sidebar.checking": "检查中…",
   "sidebar.open": "打开",
   "sidebar.pinnedDirs": "已固定",
+  "sidebar.unpin": "取消固定",
   "sidebar.recentProjects": "最近",
   "sidebar.pinDir": "固定此目录",
   "sidebar.pinCurrentDir": "固定当前目录",
