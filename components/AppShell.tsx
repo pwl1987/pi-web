@@ -154,13 +154,16 @@ export function AppShell() {
 
   useEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
+    const bar = topBarRef.current;
     const update = () => {
-      const rect = topBarRef.current!.getBoundingClientRect();
+      const el = topBarRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
       setTopPanelPos({ top: rect.bottom, left: rect.left, width: rect.width });
     };
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(topBarRef.current);
+    ro.observe(bar);
     return () => ro.disconnect();
   }, [activeTopPanel]);
 
