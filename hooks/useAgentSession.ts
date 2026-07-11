@@ -14,6 +14,37 @@ import type {
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
 import type { ContextUsage } from "@/lib/pi-types";
+import {
+  streamReducer,
+  normalizeQueuedMessages,
+  noticeReducer,
+  createNoticeId,
+  fillPendingNotices,
+  extractMessageText,
+  userMessageKey,
+  readCompactResult,
+  MAX_NOTICES,
+  NOTICE_VISIBLE_MS,
+  NOTICE_EXIT_ANIMATION_MS,
+  type StreamingState,
+  type StreamAction,
+  type NoticeState,
+  type NoticeAction,
+  type NoticeType,
+  type NoticeItem,
+  type QueuedMessages,
+  type CompactResultInfo,
+  type CompactCommandResult,
+} from "@/lib/agent-session-helpers";
+// Re-export types that are part of this hook's public API but now live in the
+// helpers module, so existing importers (`import { QueuedMessages } from ...`)
+// keep compiling.
+export type {
+  QueuedMessages,
+  NoticeType,
+  NoticeItem,
+  CompactResultInfo,
+} from "@/lib/agent-session-helpers";
 import { sendAgentCommand } from "@/lib/agent-client";
 import {
   getToolNamesForPreset,
@@ -40,39 +71,9 @@ export interface SessionData {
   };
 }
 
-interface StreamingState {
-  isStreaming: boolean;
-  streamingMessage: Partial<AgentMessage> | null;
-}
-
-type StreamAction =
-  | { type: "start" }
-  | { type: "update"; message: Partial<AgentMessage> }
-  | { type: "end" }
-  | { type: "reset" };
-
-function streamReducer(state: StreamingState, action: StreamAction): StreamingState {
-  switch (action.type) {
-    case "start":
-      return { isStreaming: true, streamingMessage: null };
-    case "update":
-      return { isStreaming: true, streamingMessage: action.message };
-    case "end":
-    case "reset":
-      return { isStreaming: false, streamingMessage: null };
-    default:
-      return state;
-  }
-}
-
 interface AgentEvent {
   type: string;
   [key: string]: unknown;
-}
-
-interface CompactCommandResult {
-  tokensBefore: number; // required per SDK CompactionResult
-  estimatedTokensAfter?: number; // optional per SDK CompactionResult
 }
 
 interface LastAssistantTextResponse {
@@ -91,52 +92,17 @@ type AgentStateResponse = {
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
 };
 
-export interface QueuedMessages {
-  steering: string[];
-  followUp: string[];
-}
-
-function normalizeQueuedMessages(
-  q?: { steering?: string[]; followUp?: string[] } | null,
-): QueuedMessages {
-  return { steering: q?.steering ?? [], followUp: q?.followUp ?? [] };
-}
-
 type ExtensionUiDialogRequest = Extract<
   ExtensionUiRequest,
   { method: "select" | "confirm" | "input" | "editor" }
 >;
 type ExtensionUiCustomRequest = Extract<ExtensionUiRequest, { method: "custom" }>;
-export type NoticeType = "info" | "success" | "warning" | "error";
-
-export type NoticeItem = {
-  id: string;
-  message: string;
-  type: NoticeType;
-  exiting?: boolean;
-};
-
-type NoticeState = {
-  visible: NoticeItem[];
-  pending: NoticeItem[];
-};
-
-type NoticeAction =
-  | { type: "add"; notice: NoticeItem }
-  | { type: "mark_oldest_exiting" }
-  | { type: "remove"; id: string };
 
 export type AgentPhase =
   | { kind: "waiting_model" }
   | { kind: "running_command" }
   | { kind: "running_tools"; tools: Array<{ id: string; name: string }> }
   | null;
-
-export interface CompactResultInfo {
-  reason: "manual" | "threshold" | "overflow" | "auto" | string;
-  tokensBefore: number;
-  estimatedTokensAfter?: number; // optional per SDK CompactionResult
-}
 
 export interface SlashCommandInfo {
   name: string;
@@ -187,9 +153,6 @@ const PROMPT_SETTLE_POLL_MS = 600;
 const PROMPT_SETTLE_MAX_MS = 20_000;
 const AGENT_STATE_RECONCILE_MS = 15_000;
 const EVENT_STREAM_CONNECT_TIMEOUT_MS = 5_000;
-const MAX_NOTICES = 5;
-const NOTICE_VISIBLE_MS = 5000;
-const NOTICE_EXIT_ANIMATION_MS = 180;
 const SCROLL_KEYS = new Set([
   "ArrowUp",
   "ArrowDown",
@@ -220,116 +183,8 @@ class EventStreamConnectionError extends Error {
   }
 }
 
-function createNoticeId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function markOldestNoticeExiting(notices: NoticeItem[]): NoticeItem[] {
-  const index = notices.findIndex((notice) => !notice.exiting);
-  if (index === -1) return notices;
-  return notices.map((notice, i) => (i === index ? { ...notice, exiting: true } : notice));
-}
-
-function fillPendingNotices(visible: NoticeItem[], pending: NoticeItem[]): NoticeState {
-  let nextVisible = visible;
-  let nextPending = pending;
-  while (nextPending.length > 0 && nextVisible.length < MAX_NOTICES) {
-    const [next, ...rest] = nextPending;
-    nextVisible = [...nextVisible, next];
-    nextPending = rest;
-  }
-  if (nextPending.length > 0 && !nextVisible.some((notice) => notice.exiting)) {
-    nextVisible = markOldestNoticeExiting(nextVisible);
-  }
-  return { visible: nextVisible, pending: nextPending };
-}
-
-function noticeReducer(state: NoticeState, action: NoticeAction): NoticeState {
-  switch (action.type) {
-    case "add": {
-      if (state.visible.some((notice) => notice.exiting) || state.visible.length >= MAX_NOTICES) {
-        return {
-          visible: state.visible.some((notice) => notice.exiting)
-            ? state.visible
-            : markOldestNoticeExiting(state.visible),
-          pending: [...state.pending, action.notice],
-        };
-      }
-      return { ...state, visible: [...state.visible, action.notice] };
-    }
-    case "mark_oldest_exiting":
-      return { ...state, visible: markOldestNoticeExiting(state.visible) };
-    case "remove": {
-      const visible = state.visible.filter((notice) => notice.id !== action.id);
-      return fillPendingNotices(visible, state.pending);
-    }
-    default:
-      return state;
-  }
-}
-
-function extractMessageText(message: Partial<AgentMessage>): string {
-  const content = (message as { content?: unknown }).content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((block) =>
-      block &&
-      typeof block === "object" &&
-      (block as { type?: string }).type === "text" &&
-      typeof (block as { text?: unknown }).text === "string"
-        ? (block as { text: string }).text
-        : "",
-    )
-    .filter(Boolean)
-    .join("\n");
-}
-
-function imageSignature(block: unknown): string {
-  if (!block || typeof block !== "object" || (block as { type?: unknown }).type !== "image")
-    return "";
-  const source = (block as { source?: unknown }).source;
-  if (source && typeof source === "object") {
-    const src = source as { type?: unknown; media_type?: unknown; data?: unknown; url?: unknown };
-    return [
-      src.type === "url" ? "url" : "base64",
-      typeof src.media_type === "string" ? src.media_type : "",
-      typeof src.data === "string" ? src.data : "",
-      typeof src.url === "string" ? src.url : "",
-    ].join(":");
-  }
-  const flat = block as { data?: unknown; mimeType?: unknown };
-  return [
-    "base64",
-    typeof flat.mimeType === "string" ? flat.mimeType : "",
-    typeof flat.data === "string" ? flat.data : "",
-    "",
-  ].join(":");
-}
-
-function userMessageKey(message: Partial<AgentMessage>): string {
-  const content = (message as { content?: unknown }).content;
-  if (typeof content === "string") return JSON.stringify({ text: content, images: [] });
-  if (!Array.isArray(content)) return JSON.stringify({ text: "", images: [] });
-  return JSON.stringify({
-    text: extractMessageText(message),
-    images: content.map(imageSignature).filter(Boolean),
-  });
-}
-
-function readCompactResult(result: unknown, reason: string): CompactResultInfo | null {
-  if (!result || typeof result !== "object") return null;
-  const r = result as CompactCommandResult;
-  // tokensBefore is required; estimatedTokensAfter is optional in SDK
-  if (typeof r.tokensBefore !== "number") return null;
-  return { reason, tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter };
 }
 
 type SelectedModel = { provider: string; modelId: string };
