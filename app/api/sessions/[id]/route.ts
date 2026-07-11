@@ -9,6 +9,7 @@ import {
   listAllSessions,
 } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
+import { reparentSessionHeader } from "@/lib/session-reparent";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
 
@@ -251,13 +252,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         const childPath = join(dir, file);
         try {
           const content = readFileSync(childPath, "utf8");
-          const lines = content.split("\n");
-          const header = JSON.parse(lines[0]) as { type?: string; parentSession?: string };
+          const firstLine = content.split("\n", 1)[0];
+          const header = JSON.parse(firstLine) as { type?: string; parentSession?: string };
           if (header.type === "session" && header.parentSession === filePath) {
-            // Rewrite header with new parentSession
-            header.parentSession = parentSessionPath;
-            lines[0] = JSON.stringify(header);
-            writeFileSync(childPath, lines.join("\n"));
+            // Rewrite ONLY the header line, preserving every subsequent byte —
+            // re-joining the whole file normalized line endings and rewrote
+            // large session files just to change one header field.
+            writeFileSync(childPath, reparentSessionHeader(content, parentSessionPath), "utf8");
           }
         } catch {
           /* skip malformed */
