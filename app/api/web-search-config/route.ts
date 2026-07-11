@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { join } from "path";
 import { homedir } from "os";
 import { readJsonFile, writeJsonFileAtomic, ensureParentDir } from "@/lib/config-file";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -60,12 +62,15 @@ export async function GET() {
       configPath: configPath(),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PUT /api/web-search-config — update config. API keys are set only if provided.
 export async function PUT(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as {
       provider?: string;
@@ -99,6 +104,6 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

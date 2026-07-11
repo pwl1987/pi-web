@@ -23,6 +23,7 @@ import { AnimatedDropdown } from "./AnimatedDropdown";
 import { PiAgentTitle } from "./PiAgentTitle";
 import { SessionItem } from "./SessionItem";
 import { Icons } from "./Icons";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface Props {
   selectedSessionId: string | null;
@@ -352,7 +353,7 @@ export function SessionSidebar({
     try {
       const res = await fetch("/api/cwd/validate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ cwd: path }),
       });
       const data = (await res.json().catch(() => ({}))) as { cwd?: string; error?: string };
@@ -373,7 +374,7 @@ export function SessionSidebar({
 
   const handleDefaultCwd = useCallback(async () => {
     try {
-      const res = await fetch("/api/default-cwd", { method: "POST" });
+      const res = await fetch("/api/default-cwd", { method: "POST", headers: csrfHeaders() });
       const data = (await res.json()) as { cwd?: string; error?: string };
       if (data.cwd) {
         setSelectedCwd(data.cwd);
@@ -395,7 +396,7 @@ export function SessionSidebar({
     try {
       const res = await fetch("/api/worktrees", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ cwd: worktreeState.projectRoot, branch }),
       });
       const data = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
@@ -435,7 +436,7 @@ export function SessionSidebar({
       try {
         const res = await fetch("/api/worktrees", {
           method: "DELETE",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ cwd: worktreeState.projectRoot, path, force }),
         });
         const data = (await res.json().catch(() => ({}))) as { error?: string; dirty?: boolean };

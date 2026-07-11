@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { existsSync } from "fs";
 import { addWorktree, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
@@ -44,12 +46,15 @@ export async function GET(req: Request) {
       worktrees,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // POST /api/worktrees  body: { cwd, branch }  →  { path, branch }
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as { cwd?: string; branch?: string };
     if (!body.cwd || typeof body.cwd !== "string") {
@@ -74,6 +79,9 @@ export async function POST(req: Request) {
 
 // DELETE /api/worktrees  body: { cwd, path, force? }
 export async function DELETE(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as { cwd?: string; path?: string; force?: boolean };
     if (!body.cwd || typeof body.cwd !== "string") {

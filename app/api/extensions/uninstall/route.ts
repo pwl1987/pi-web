@@ -1,11 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { uninstallExtension, listExtensionsWithState } from "@/lib/extensions/discovery";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/extensions/uninstall — remove a local extension.
 // body: { id: string }
 export async function POST(req: NextRequest) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as { id?: string };
     const id = body.id?.trim();

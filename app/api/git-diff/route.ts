@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync } from "fs";
+import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { errorResponse } from "@/lib/api-utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -39,6 +41,12 @@ export async function GET(req: Request) {
     const cwd = searchParams.get("cwd");
     if (!cwd || !existsSync(cwd)) {
       return NextResponse.json({ error: "Invalid cwd" }, { status: 400 });
+    }
+    // Restrict to allowed roots — without this, the endpoint could probe the git
+    // state (branch, diff counts) of any directory on the host.
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isFilePathAllowed(cwd, allowedRoots)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
     // Check it's a git repo.
@@ -111,6 +119,6 @@ export async function GET(req: Request) {
       untracked,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -2,35 +2,16 @@ import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { ALLOWED_AGENT_COMMANDS } from "@/lib/allowed-commands";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 // POST /api/agent/[id] - Send a command to an existing session
-const ALLOWED_AGENT_COMMANDS = new Set([
-  "prompt",
-  "abort",
-  "get_state",
-  "fork",
-  "navigate_tree",
-  "compact",
-  "set_model",
-  "set_thinking_level",
-  "set_session_name",
-  "get_session_stats",
-  "get_last_assistant_text",
-  "set_auto_compaction",
-  "clear_queue",
-  "steer",
-  "follow_up",
-  "get_tools",
-  "get_commands",
-  "set_tools",
-  "reload",
-  "abort_compaction",
-  "extension_ui_response",
-  "extension_ui_input",
-  "set_auto_retry",
-]);
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
 
   try {
@@ -59,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
@@ -76,6 +57,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const state = await session.send({ type: "get_state" });
     return NextResponse.json({ running: true, state });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

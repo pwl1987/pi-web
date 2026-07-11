@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 export interface PinnedDir {
   path: string;
@@ -77,7 +78,7 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
       try {
         const res = await fetch("/api/pinned-dirs", {
           method: "DELETE",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ path }),
         });
         if (!res.ok) await reload();
@@ -100,7 +101,7 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
       try {
         const res = await fetch("/api/pinned-dirs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ path, alias }),
         });
         if (res.ok) {

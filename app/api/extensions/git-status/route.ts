@@ -3,6 +3,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync } from "fs";
 import { join } from "path";
+import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 
 const execFileAsync = promisify(execFile);
 
@@ -14,6 +15,12 @@ export async function GET(req: NextRequest) {
   const cwd = req.nextUrl.searchParams.get("cwd");
   if (!cwd || !existsSync(cwd)) {
     return NextResponse.json({ error: "Invalid cwd" }, { status: 400 });
+  }
+  // Restrict to allowed roots — the panel is driven by the selected project cwd,
+  // but the endpoint must not let a caller probe arbitrary directories' git state.
+  const allowedRoots = await getAllowedFileRoots();
+  if (!isFilePathAllowed(cwd, allowedRoots)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   // Check if it's a git repo.

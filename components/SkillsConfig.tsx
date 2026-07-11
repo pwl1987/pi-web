@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { SkillSearchResult } from "@/lib/api-types";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface Skill {
   name: string;
@@ -194,7 +195,7 @@ function AddSkillPanel({ cwd, onInstalled }: { cwd: string; onInstalled: () => v
       try {
         const res = await fetch("/api/skills/search", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ query: q.trim() }),
         });
         const d = (await res.json()) as {
@@ -223,7 +224,7 @@ function AddSkillPanel({ cwd, onInstalled }: { cwd: string; onInstalled: () => v
       try {
         const res = await fetch("/api/skills/install", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ package: pkg, scope, cwd }),
         });
         const d = (await res.json()) as { success?: boolean; error?: string };
@@ -523,7 +524,7 @@ export function SkillsConfig({ cwd, onClose }: { cwd: string; onClose: () => voi
     try {
       const res = await fetch("/api/skills", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           filePath: skill.filePath,
           disableModelInvocation: next,

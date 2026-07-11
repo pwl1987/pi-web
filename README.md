@@ -29,11 +29,17 @@ Then open [http://localhost:30141](http://localhost:30141). The CLI will try to 
 
 ```bash
 pi-web --port 8080              # custom port
-pi-web --hostname 127.0.0.1     # local access only
-pi-web -p 8080 -H 127.0.0.1     # combine options
+pi-web --host 0.0.0.0           # listen on all interfaces (UNSAFE — no auth; see below)
+pi-web -p 8080 -H 127.0.0.1     # combine options (--host and -H/--hostname are aliases)
 
 PORT=8080 pi-web                # environment variable is also supported
+PI_WEB_HOST=0.0.0.0 pi-web      # bind address via env
 ```
+
+> **Security:** By default pi-web binds to `127.0.0.1` (loopback only) because it
+> has **no authentication** — anyone who can reach the port can read your files,
+> dispatch agent commands, and access configured API keys. Only use `--host` /
+> `PI_WEB_HOST` to bind a non-loopback address on a network you fully control.
 
 **Auto-start (Linux / macOS):**
 

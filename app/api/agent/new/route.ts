@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { existsSync } from "fs";
 import { allowFileRoot } from "@/lib/file-access";
 import { startRpcSession } from "@/lib/rpc-manager";
+import { isAllowedAgentCommand } from "@/lib/allowed-commands";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 // POST /api/agent/new  body: { cwd: string; type: string; message?: string; ... }
 // Spawns a brand-new pi session. Most calls immediately send the first command;
 // type:"ensure_session" only creates the runtime so clients can query commands.
 // Returns { sessionId, data } where sessionId is pi's real session id.
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as { cwd?: string; [key: string]: unknown };
     const { cwd, ...command } = body;
@@ -50,10 +56,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, sessionId: realSessionId, data: null });
     }
 
+    // Gate the dispatched command through the same allowlist as /api/agent/[id].
+    // Without this, a client could spread arbitrary fields into the body and
+    // invoke any wrapper command type (e.g. reload) bypassing the [id] gate.
+    if (typeof promptCommand.type !== "string" || !isAllowedAgentCommand(promptCommand.type)) {
+      return NextResponse.json(
+        { error: `unknown command: ${promptCommand.type ?? ""}` },
+        { status: 400 },
+      );
+    }
+
     const result = await session.send(promptCommand);
 
     return NextResponse.json({ success: true, sessionId: realSessionId, data: result });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

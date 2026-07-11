@@ -1,8 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { ensureParentDir } from "@/lib/config-file";
+import { errorResponse } from "@/lib/api-utils";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +44,15 @@ export async function GET(req: NextRequest) {
   if (level !== "user" && level !== "project") {
     return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
   }
+  // For project-level reads, validate cwd is within allowed roots — otherwise
+  // an attacker could read AGENTS.md/SYSTEM.md/APPEND_SYSTEM.md from any path.
+  if (level === "project" && cwd) {
+    const resolvedCwd = resolve(cwd);
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isFilePathAllowed(resolvedCwd, allowedRoots)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  }
   try {
     const filePath = resolvePath(file, level, cwd);
     if (!existsSync(filePath)) {
@@ -49,13 +61,16 @@ export async function GET(req: NextRequest) {
     const content = readFileSync(filePath, "utf8");
     return NextResponse.json({ content, exists: true, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PUT /api/agents-md — write content
 const MAX_AGENTS_MD_SIZE = 1_000_000; // 1MB limit
 export async function PUT(req: NextRequest) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as {
       file?: string;
@@ -87,10 +102,10 @@ export async function PUT(req: NextRequest) {
       }
     }
     const filePath = resolvePath(file, body.level, body.cwd);
-    mkdirSync(join(filePath, ".."), { recursive: true });
+    ensureParentDir(filePath);
     writeFileSync(filePath, content, "utf8");
     return NextResponse.json({ success: true, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

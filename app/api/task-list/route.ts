@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
 import { findEntryForTask } from "@/lib/task-entry-resolver";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,6 @@ export async function GET(req: Request) {
     const visible = lastTasks.filter((t) => t.status !== "deleted");
     return NextResponse.json({ tasks: visible, nextId: lastNextId, entryIds });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

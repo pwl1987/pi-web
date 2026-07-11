@@ -51,13 +51,16 @@ export async function POST(req: Request, { params }: Params) {
 }
 
 // DELETE /api/auth/api-key/[provider] — removes stored API key
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { provider } = await params;
   try {
     const authStorage = AuthStorage.create();
     authStorage.remove(provider);
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

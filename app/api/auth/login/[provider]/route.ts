@@ -1,4 +1,5 @@
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,9 @@ function getCallbackRegistry() {
 
 // POST /api/auth/login/[provider] — frontend sends redirect URL or auth code
 export async function POST(req: Request, { params }: { params: Promise<{ provider: string }> }) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { provider } = await params;
   const { token, code } = (await req.json()) as { token?: string; code?: string };
 

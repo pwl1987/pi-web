@@ -34,6 +34,7 @@ import NvidiaColorIcon from "@lobehub/icons/es/Nvidia/components/Color";
 import OpenCodeIcon from "@lobehub/icons/es/OpenCode/components/Mono";
 import XiaomiMiMoIcon from "@lobehub/icons/es/XiaomiMiMo/components/Mono";
 import ZAIIcon from "@lobehub/icons/es/ZAI/components/Mono";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 type IconComponent = React.ComponentType<{ size?: number | string; style?: React.CSSProperties }>;
 
@@ -765,7 +766,7 @@ function ModelDetail({
     try {
       const res = await fetch("/api/models-config/test", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ providerName, provider, model }),
       });
       const d = (await res.json()) as {
@@ -1106,7 +1107,10 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   }, [provider.id, onRefresh, t]);
 
   const handleLogout = useCallback(async () => {
-    await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, { method: "POST" });
+    await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
+      method: "POST",
+      headers: csrfHeaders(),
+    });
     setLoginState({ phase: "idle" });
     onRefresh();
   }, [provider.id, onRefresh]);
@@ -1118,7 +1122,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
       try {
         const res = await fetch(`/api/auth/login/${encodeURIComponent(provider.id)}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ token, code: code.trim() }),
         });
         if (!res.ok) {
@@ -1144,7 +1148,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
       try {
         const res = await fetch(`/api/auth/login/${encodeURIComponent(provider.id)}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ token, code: value }),
         });
         if (!res.ok) {
@@ -1436,7 +1440,7 @@ function ApiKeyDetail({
     try {
       const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ apiKey: apiKey.trim() }),
       });
       const d = (await res.json()) as { success?: boolean; error?: string };
@@ -1461,6 +1465,7 @@ function ApiKeyDetail({
     try {
       const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
         method: "DELETE",
+        headers: csrfHeaders(),
       });
       const d = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || d.error) setError(d.error ?? `HTTP ${res.status}`);
@@ -2114,7 +2119,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
     try {
       const res = await fetch("/api/models-config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(config),
       });
       const d = (await res.json()) as { success?: boolean; error?: string };

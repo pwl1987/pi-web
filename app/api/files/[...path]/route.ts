@@ -18,6 +18,7 @@ import {
   getImageMime,
 } from "@/lib/file-types";
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
+import { errorResponse } from "@/lib/api-utils";
 
 const IGNORED_NAMES = new Set([
   "node_modules",
@@ -506,6 +507,6 @@ export async function GET(
 
     return NextResponse.json({ entries, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

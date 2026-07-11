@@ -4,7 +4,9 @@
 // This source is compiled to index.js (ESM, react/react-dom externalized) so it
 // can be dynamically imported by pi-web at runtime. Uses window.React.
 
-const React = (window as unknown as { React: typeof import("react") }).React;
+import type * as ReactTypes from "react";
+
+const React = (window as unknown as { React: typeof ReactTypes }).React;
 
 // Minimal context types (matches pi-web's extension API contract).
 interface RuntimeContext {

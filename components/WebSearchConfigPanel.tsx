@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -63,7 +64,7 @@ export function WebSearchConfigPanel() {
       }
       await fetch("/api/web-search-config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           provider: data.provider,
           workflow: data.workflow,

@@ -7,6 +7,7 @@ import type { WorkspaceLabelItem } from "@/lib/extensions/types";
 import { useI18n } from "@/hooks/useI18n";
 import { RunningSessionIndicator, UnreadSessionIndicator } from "./StatusIndicators";
 import { formatRelativeTime } from "@/lib/session-utils";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 export function SessionItem({
   session,
@@ -63,7 +64,7 @@ export function SessionItem({
     try {
       await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ name }),
       });
       onRenamed?.();
@@ -83,7 +84,10 @@ export function SessionItem({
       setConfirmDelete(false);
       setDeleting(true);
       try {
-        await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+        await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+          method: "DELETE",
+          headers: csrfHeaders(),
+        });
         onDeleted?.(session.id);
       } catch {
         setDeleting(false);

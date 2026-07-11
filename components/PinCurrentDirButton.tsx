@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface Props {
   /** Working directory to act on. When null, the button renders disabled. */
@@ -48,7 +49,7 @@ export function PinCurrentDirButton({ cwd, isPinned, onPinnedChange }: Props) {
     try {
       const res = await fetch("/api/pinned-dirs", {
         method: nextIsPinned ? "POST" : "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ path: cwd }),
       });
       if (!res.ok) {

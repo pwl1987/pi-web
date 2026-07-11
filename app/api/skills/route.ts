@@ -7,6 +7,7 @@ import {
   parseFrontmatter,
 } from "@earendil-works/pi-coding-agent";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,9 @@ export async function GET(req: Request) {
 
 // PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file
 export async function PATCH(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as { filePath: string; disableModelInvocation: boolean };
     const { filePath, disableModelInvocation } = body;

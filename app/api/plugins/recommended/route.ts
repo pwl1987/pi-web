@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { RECOMMENDED_PLUGINS } from "@/lib/recommended-plugins";
 import { getConfiguredPackages, getAutoInstallStatus } from "@/lib/plugin-auto-install";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,6 @@ export async function GET() {
 
     return NextResponse.json({ plugins });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

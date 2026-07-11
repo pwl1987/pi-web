@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir, userInfo } from "os";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,6 @@ export async function GET() {
 
     return NextResponse.json({ active, completed });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

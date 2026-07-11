@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { validateModelsConfig } from "@/lib/config-validators";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +34,23 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = (await req.json()) as Record<string, unknown>;
+    const [body, parseError] = await safeJsonBody<Record<string, unknown>>(req);
+    if (parseError) return parseError;
+    const validationError = validateModelsConfig(body);
+    if (validationError) {
+      return NextResponse.json(
+        { error: validationError.error },
+        { status: validationError.status },
+      );
+    }
     writeModelsJson(body);
     // Model registry refreshes on each /api/models request (no local cache to invalidate)
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -12,6 +12,7 @@
 // the client can render a single empty state instead of branching on HTTP
 // codes. 5xx is reserved for unexpected local errors.
 
+import type { TokenUsageInfo } from "@/lib/token-usage";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { NextResponse } from "next/server";
 
@@ -103,7 +104,7 @@ async function handleRequest(providerId: string): Promise<Response> {
  * Convert a TokenUsageInfo into a JSON-safe shape so `info` rides the wire
  * without Date serialization surprises.
  */
-function serializeInfo(info: import("@/lib/token-usage").TokenUsageInfo) {
+function serializeInfo(info: TokenUsageInfo) {
   // Pull per-model rows out of the MiniMax envelope so the UI can render a
   // breakdown in a future tooltip without re-fetching. Other providers'
   // `raw` payloads pass through unchanged.

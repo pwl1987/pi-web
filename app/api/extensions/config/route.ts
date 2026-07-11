@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { setExtensionEnabled } from "@/lib/extensions/discovery";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,9 @@ export const dynamic = "force-dynamic";
 // Body: { id: string, enabled: boolean }
 // The change takes effect on next page reload (extensions are imported on load).
 export async function POST(req: NextRequest) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as { id?: string; enabled?: boolean };
     if (typeof body.id !== "string" || typeof body.enabled !== "boolean") {

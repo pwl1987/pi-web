@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface ExtListItem {
   id: string;
@@ -49,7 +50,7 @@ export function ExtensionsConfig({ onClose }: Props) {
     try {
       await fetch("/api/extensions/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ id, enabled: !current }),
       });
     } catch {
@@ -64,7 +65,7 @@ export function ExtensionsConfig({ onClose }: Props) {
     try {
       const res = await fetch("/api/extensions/install", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ path: installPath.trim() }),
       });
       const d = await res.json();
@@ -84,7 +85,7 @@ export function ExtensionsConfig({ onClose }: Props) {
     try {
       const res = await fetch("/api/extensions/uninstall", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ id }),
       });
       const d = await res.json();

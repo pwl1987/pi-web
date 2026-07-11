@@ -9,6 +9,8 @@ import {
   listAllSessions,
 } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
 const MAX_PROJECTED_TREE_DEPTH = 200;
@@ -177,12 +179,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       ...(agentState !== undefined ? { agentState } : {}),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PATCH /api/sessions/[id]  body: { name: string }
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const { name } = (await req.json()) as { name?: string };
@@ -197,12 +202,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     sm.appendSessionInfo(name.trim());
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // DELETE /api/sessions/[id]
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
   try {
     const filePath = await resolveSessionPath(id);
@@ -252,6 +260,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     invalidateSessionPathCache(id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -5,6 +5,7 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -664,7 +665,7 @@ export function PluginsConfig({
       try {
         const res = await fetch("/api/plugins", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ action, source: pkg.source, scope: pkg.scope, cwd }),
         });
         const next = (await res.json()) as PluginsResponse & { error?: string };
@@ -702,7 +703,7 @@ export function PluginsConfig({
     try {
       const res = await fetch("/api/plugins", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ action: "install", source, scope: installScope, cwd }),
       });
       const next = (await res.json()) as PluginsResponse & { error?: string };

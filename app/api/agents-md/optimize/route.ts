@@ -6,6 +6,7 @@ import {
   SettingsManager,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,9 @@ function getAssistantText(message: AssistantMessage): string {
 // body: { content: string, file?: "agents"|"system"|"append", cwd?: string, instruction?: string }
 // → { optimized: string }
 export async function POST(req: NextRequest) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as {
       content?: string;

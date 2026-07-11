@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface McpServerInfo {
   name: string;
@@ -81,7 +82,7 @@ export function McpConfigPanel() {
       }
       await fetch("/api/mcp-config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ mcpServers: servers }),
       });
       setAdding(false);
@@ -113,7 +114,7 @@ export function McpConfigPanel() {
       }
       await fetch("/api/mcp-config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ mcpServers: servers }),
       });
       void reload();

@@ -34,13 +34,40 @@ const { values: cliArgs, positionals } = parseArgs({
   options: {
     port: { type: "string", short: "p" },
     hostname: { type: "string", short: "H" },
+    host: { type: "string" },
   },
   allowPositionals: true,
   strict: false,
 });
 
 const port = cliArgs.port ?? process.env.PORT ?? "30141";
-const hostname = cliArgs.hostname ?? process.env.HOSTNAME ?? null;
+
+/**
+ * Resolve the bind hostname for the dev/start server.
+ *
+ * Precedence (highest first):
+ *   1. CLI flag: --host <addr>  (or the legacy -H/--hostname <addr>)
+ *   2. PI_WEB_HOST environment variable
+ *   3. "127.0.0.1" (loopback only — safe default for an unauthenticated local tool)
+ *
+ * NOTE: the shell-set `HOSTNAME` env var is intentionally NOT consulted.
+ * Many shells export HOSTNAME=<machine-name>, which is not a bind address —
+ * using it as a default would either fail to bind or, worse, expose the
+ * unauthenticated server on a public interface.
+ *
+ * @param {{ hostname?: string; host?: string }} cli - parsed CLI values
+ * @param {NodeJS.ProcessEnv} env - environment (typically process.env)
+ * @returns {string} the address to bind
+ */
+function resolveHostname(cli, env) {
+  const flag = cli.hostname ?? cli.host;
+  if (flag) return flag;
+  const envHost = env.PI_WEB_HOST;
+  if (envHost) return envHost;
+  return "127.0.0.1";
+}
+
+const hostname = resolveHostname(cliArgs, process.env);
 const subcommand = positionals[0]; // "install" | "uninstall" | undefined (= start)
 
 // ============================================================================
@@ -234,45 +261,73 @@ if (subcommand === "uninstall") {
 }
 
 // Default: start the server (original behavior, unchanged)
-if (!fs.existsSync(nextDir)) {
-  console.error("Build artifacts not found. Please report this issue.");
-  process.exit(1);
+// Guarded by import.meta.url === main so importing this module for tests
+// does not spawn a server.
+const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(__filename);
+
+if (isMain) {
+  startServer();
 }
 
-const nextArgs = ["start", "-p", port];
-if (hostname) nextArgs.push("-H", hostname);
-
-// Always run next's JS entry with node directly — avoids .bin symlink issues
-// and path-with-spaces problems on Windows when shell: true is used.
-const child = spawn(process.execPath, [nextBin, ...nextArgs], {
-  cwd: pkgDir,
-  stdio: ["inherit", "pipe", "inherit"],
-  env: { ...process.env },
-});
-
-let browserOpened = false;
-const url = `http://${hostname ?? "localhost"}:${port}`;
-
-child.stdout.on("data", (chunk) => {
-  const text = chunk.toString();
-  process.stdout.write(text);
-  if (!browserOpened && text.includes("Ready")) {
-    browserOpened = true;
-    const isWindows = process.platform === "win32";
-    const isMac = process.platform === "darwin";
-    const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
-    const opener = spawn(openCmd, [url], {
-      shell: isWindows,
-      stdio: "ignore",
-      detached: true,
-    });
-
-    opener.on("error", (error) => {
-      console.warn(`Could not open browser automatically: ${error.message}`);
-    });
-
-    opener.unref();
+function startServer() {
+  if (!fs.existsSync(nextDir)) {
+    console.error("Build artifacts not found. Please report this issue.");
+    process.exit(1);
   }
-});
 
-child.on("exit", (code) => process.exit(code ?? 0));
+  // Security warning when binding to anything other than loopback.
+  // pi-web has no authentication; non-loopback binding exposes the agent,
+  // filesystem, and API keys to anyone who can reach the host.
+  const isLoopback = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+  if (!isLoopback) {
+    console.warn(
+      `\n⚠️  WARNING: pi-web is binding to "${hostname}" (non-loopback).\n` +
+        `   pi-web has NO authentication. Anyone on this network can read your\n` +
+        `   files, dispatch agent commands, and access your API keys.\n` +
+        `   Only continue if you trust the network. Use 127.0.0.1 (the default)\n` +
+        `   for single-user local use.\n`,
+    );
+  }
+
+  const nextArgs = ["start", "-p", port];
+  if (hostname) nextArgs.push("-H", hostname);
+
+  // Always run next's JS entry with node directly — avoids .bin symlink issues
+  // and path-with-spaces problems on Windows when shell: true is used.
+  const child = spawn(process.execPath, [nextBin, ...nextArgs], {
+    cwd: pkgDir,
+    stdio: ["inherit", "pipe", "inherit"],
+    env: { ...process.env },
+  });
+
+  let browserOpened = false;
+  const url = `http://${hostname}:${port}`;
+
+  child.stdout.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    if (!browserOpened && text.includes("Ready")) {
+      browserOpened = true;
+      const isWindows = process.platform === "win32";
+      const isMac = process.platform === "darwin";
+      const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
+      const opener = spawn(openCmd, [url], {
+        shell: isWindows,
+        stdio: "ignore",
+        detached: true,
+      });
+
+      opener.on("error", (error) => {
+        console.warn(`Could not open browser automatically: ${error.message}`);
+      });
+
+      opener.unref();
+    }
+  });
+
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
+// Exports for unit tests (bin/hostname.test.mjs). Only reachable when imported
+// as a module; the start path above is guarded by isMain.
+module.exports = { resolveHostname };

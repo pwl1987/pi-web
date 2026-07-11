@@ -11,6 +11,9 @@
     "url": "https://github.com/agegr/pi-web/issues"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
   "bin": {
     "pi-web": "bin/pi-web.js"
   },
@@ -38,8 +41,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "test:node": "node --test --experimental-strip-types lib/*.test.mjs",
-    "ci": "npm run format:check && npm run lint && npm run type-check && npm run test",
+    "test:node": "node --test --experimental-strip-types lib/*.test.mjs lib/i18n/index.test.mjs bin/*.test.mjs",
+    "ci": "npm run format:check && npm run lint && npm run type-check && npm run test:node && npm run test:coverage",
     "prepare": "husky || true",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
   },

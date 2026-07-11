@@ -18,6 +18,8 @@ import type {
   PluginScope,
   PluginsResponse,
 } from "@/lib/api-types";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -290,12 +292,15 @@ export async function GET(req: Request) {
   try {
     return NextResponse.json(await readPlugins(cwd));
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // POST /api/plugins body: { action, source?, scope?, cwd }
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as {
       action?: PluginAction;

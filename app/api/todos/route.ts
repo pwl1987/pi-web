@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,6 @@ export async function GET(req: Request) {
     const entries = getSessionEntries(filePath);
     return NextResponse.json({ tasks: [], entryCount: entries.length });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

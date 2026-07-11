@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { useI18n } from "@/hooks/useI18n";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 interface Props {
   cwd: string;
@@ -59,7 +60,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
     try {
       const res = await fetch("/api/agents-md", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           file: fileType,
           level,
@@ -87,7 +88,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
     try {
       const res = await fetch("/api/agents-md/optimize", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           content,
           file: fileType,

@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -97,12 +99,15 @@ export async function GET() {
 
     return NextResponse.json(settings);
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // POST /api/settings — update one or more settings fields.
 export async function POST(req: NextRequest) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const mgr = await createManager();
@@ -208,6 +213,6 @@ export async function POST(req: NextRequest) {
     await mgr.flush();
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

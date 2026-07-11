@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useReducer } from "react";
 import type {
   AgentMessage,
+  AssistantMessage,
   ExtensionStatusItem,
   ExtensionUiRequest,
   ExtensionWidgetItem,
@@ -21,6 +22,7 @@ import {
 import { getAgentRuntimeStore } from "@/lib/agent-runtime-store";
 import { getAgentEventBus } from "@/lib/extensions/event-bus";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import { csrfHeaders } from "@/lib/csrf-client";
 
 export interface SessionData {
   sessionId: string;
@@ -468,10 +470,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (msg.role === "toolResult") toolResults += 1;
       if (msg.role !== "assistant") continue;
       assistantMessages += 1;
-      const u = (msg as import("@/lib/types").AssistantMessage).usage;
-      toolCalls += (msg as import("@/lib/types").AssistantMessage).content.filter(
-        (c) => c.type === "toolCall",
-      ).length;
+      const u = (msg as AssistantMessage).usage;
+      toolCalls += (msg as AssistantMessage).content.filter((c) => c.type === "toolCall").length;
       if (!u) continue;
       tokens.input += u.input ?? 0;
       tokens.output += u.output ?? 0;
@@ -634,7 +634,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const toolNames = toolsToToolNames(tools);
       const res = await fetch("/api/agent/new", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: csrfHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           cwd: newSessionCwd,
           type: "ensure_session",

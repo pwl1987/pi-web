@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { join } from "path";
 import { readJsonFile, writeJsonFileAtomic, ensureParentDir, getAgentDir } from "@/lib/config-file";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { validateMcpServers } from "@/lib/config-validators";
 
 export const dynamic = "force-dynamic";
 
@@ -66,17 +69,25 @@ export async function GET() {
       configPath: mcpConfigPath(),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PUT /api/mcp-config — write full config (add/update/remove servers + settings).
 // body: { mcpServers: Record<string, McpServerEntry>, settings?: Record<string, unknown> }
 export async function PUT(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = (await req.json()) as { mcpServers?: unknown; settings?: unknown };
-    if (typeof body.mcpServers !== "object" || body.mcpServers === null) {
-      return NextResponse.json({ error: "mcpServers object required" }, { status: 400 });
+    const [body, parseError] = await safeJsonBody<{ mcpServers?: unknown; settings?: unknown }>(
+      req,
+    );
+    if (parseError) return parseError;
+
+    const serversError = validateMcpServers(body.mcpServers);
+    if (serversError) {
+      return NextResponse.json({ error: serversError.error }, { status: serversError.status });
     }
 
     // Merge with existing config (preserve imports if present).
@@ -94,6 +105,6 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
