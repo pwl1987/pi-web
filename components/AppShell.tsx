@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo, lazy } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
@@ -14,22 +14,13 @@ import { SubagentsPanel } from "./SubagentsPanel";
 import { SubagentBadge } from "./SubagentBadge";
 import { TokenUsageIndicator } from "./TokenUsageIndicator";
 import { LazyLoader } from "./LazyLoader";
-
-// Lazy-loaded: these heavy config panels and the file viewer are only
-// needed when explicitly opened by the user. This reduces initial bundle size.
-const FileViewer = lazy(() => import("./FileViewer").then((m) => ({ default: m.FileViewer })));
-const ModelsConfig = lazy(() =>
-  import("./ModelsConfig").then((m) => ({ default: m.ModelsConfig })),
-);
-const SkillsConfig = lazy(() =>
-  import("./SkillsConfig").then((m) => ({ default: m.SkillsConfig })),
-);
-const PluginsConfig = lazy(() =>
-  import("./PluginsConfig").then((m) => ({ default: m.PluginsConfig })),
-);
-const InspectorPanel = lazy(() =>
-  import("./InspectorPanel").then((m) => ({ default: m.InspectorPanel })),
-);
+import {
+  FileViewer,
+  ModelsConfig,
+  SkillsConfig,
+  PluginsConfig,
+  InspectorPanel,
+} from "./config-panels.registry";
 import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
@@ -38,6 +29,7 @@ import { BranchNavigator } from "./BranchNavigator";
 import { Icons } from "./Icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useExtensions } from "@/hooks/useExtensions";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
@@ -75,17 +67,10 @@ export function AppShell() {
     }
   }, []);
 
-  // Cmd+K / Ctrl+K to open the command palette.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Global shortcuts (Cmd/Ctrl+K command palette, Cmd/Ctrl+J focus chat input).
+  useGlobalShortcuts({
+    onToggleCommandPalette: useCallback(() => setCommandPaletteOpen((v) => !v), []),
+  });
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   // When user clicks +, we only store the cwd — no fake session id
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
@@ -117,21 +102,6 @@ export function AppShell() {
   // down (ref={...}, standard React forwardRef pattern).
   const chatWindowRef = useRef<ChatWindowHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
-
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Ctrl+J / Cmd+J → focus chat input
-      if ((e.ctrlKey || e.metaKey) && e.key === "j") {
-        e.preventDefault();
-        // The ChatInput exposes a ref; focus its textarea via the DOM
-        const textarea = document.querySelector<HTMLTextAreaElement>("[data-chat-input-textarea]");
-        textarea?.focus();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
 
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
   const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
@@ -698,77 +668,6 @@ export function AppShell() {
 
   return (
     <>
-      <style>{`
-      @keyframes session-info-pop {
-        0% {
-          opacity: 0;
-          transform: translateY(-24px);
-          filter: blur(6px);
-          box-shadow: 0 2px 8px rgba(0,0,0,0);
-        }
-        55% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
-        }
-        100% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: var(--bg-panel);
-          box-shadow: 0 10px 28px rgba(0,0,0,0.10);
-        }
-      }
-      @keyframes session-info-light-wash {
-        0% {
-          opacity: 0;
-          transform: translateX(-110%) skewX(-16deg);
-        }
-        24% {
-          opacity: 0.42;
-        }
-        100% {
-          opacity: 0;
-          transform: translateX(115%) skewX(-16deg);
-        }
-      }
-      .session-info-popover {
-        position: relative;
-        overflow: hidden;
-        transform-origin: top right;
-        animation: session-info-pop 360ms ease-out both;
-        will-change: transform, opacity, filter, background, box-shadow;
-      }
-      .session-info-popover::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 44%;
-        pointer-events: none;
-        background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 24%, transparent), transparent);
-        animation: session-info-light-wash 620ms ease-out both;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .session-info-popover,
-        .session-info-popover::after {
-          animation: none;
-        }
-      }
-      @media (max-width: 640px) {
-        .sidebar-overlay-backdrop.sidebar-mobile-pending {
-          opacity: 0 !important;
-          pointer-events: none !important;
-        }
-        .sidebar-container.sidebar-mobile-pending.sidebar-open {
-          transform: translateX(-100%);
-          box-shadow: none;
-        }
-      }
-    `}</style>
       <div
         style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "var(--bg)" }}
       >
