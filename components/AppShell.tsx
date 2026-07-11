@@ -26,6 +26,7 @@ import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
 import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
+import { TopBarButton } from "./TopBarButton";
 import { Icons } from "./Icons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
@@ -846,38 +847,12 @@ export function AppShell() {
                   onToggle={toggleBranchesPanel}
                   hasSession
                 />
-                <button
+                <TopBarButton
                   ref={systemBtnRef}
+                  active={activeTopPanel === "system"}
                   onClick={() => toggleTopPanel("system")}
                   title={t("topbar.systemPrompt")}
                   aria-label={t("topbar.systemPrompt")}
-                  aria-pressed={activeTopPanel === "system"}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: "100%",
-                    padding: "0 12px",
-                    background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
-                    border: "none",
-                    borderTop:
-                      activeTopPanel === "system"
-                        ? "2px solid var(--accent)"
-                        : "2px solid transparent",
-                    borderRight: "1px solid var(--border)",
-                    cursor: "pointer",
-                    color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-                    fontSize: 11,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.1s, background 0.1s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color =
-                      activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)";
-                  }}
                 >
                   <Icons.SystemDoc
                     size={12}
@@ -887,77 +862,25 @@ export function AppShell() {
                     }}
                   />
                   {!isMobile && <span>{t("topbar.system")}</span>}
-                </button>
-                <button
+                </TopBarButton>
+                <TopBarButton
+                  active={activeTopPanel === "subagents"}
                   onClick={() => toggleTopPanel("subagents")}
                   title={t("panels.subagents")}
                   aria-label={t("panels.subagents")}
-                  aria-pressed={activeTopPanel === "subagents"}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: "100%",
-                    padding: "0 12px",
-                    background: activeTopPanel === "subagents" ? "var(--bg-selected)" : "none",
-                    border: "none",
-                    borderTop:
-                      activeTopPanel === "subagents"
-                        ? "2px solid var(--accent)"
-                        : "2px solid transparent",
-                    borderRight: "1px solid var(--border)",
-                    cursor: "pointer",
-                    color: activeTopPanel === "subagents" ? "var(--text)" : "var(--text-muted)",
-                    fontSize: 11,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.1s, background 0.1s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color =
-                      activeTopPanel === "subagents" ? "var(--text)" : "var(--text-muted)";
-                  }}
                 >
                   <Icons.Subagent size={12} style={{ flexShrink: 0 }} />
                   {!isMobile && <span>{t("panels.subagents")}</span>}
-                </button>
-                <button
+                </TopBarButton>
+                <TopBarButton
+                  active={activeTopPanel === "panels"}
                   onClick={() => toggleTopPanel("panels")}
                   title={t("panels.title")}
                   aria-label={t("panels.title")}
-                  aria-pressed={activeTopPanel === "panels"}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: "100%",
-                    padding: "0 12px",
-                    background: activeTopPanel === "panels" ? "var(--bg-selected)" : "none",
-                    border: "none",
-                    borderTop:
-                      activeTopPanel === "panels"
-                        ? "2px solid var(--accent)"
-                        : "2px solid transparent",
-                    borderRight: "1px solid var(--border)",
-                    cursor: "pointer",
-                    color: activeTopPanel === "panels" ? "var(--text)" : "var(--text-muted)",
-                    fontSize: 11,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.1s, background 0.1s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color =
-                      activeTopPanel === "panels" ? "var(--text)" : "var(--text-muted)";
-                  }}
                 >
                   <Icons.Panels size={12} style={{ flexShrink: 0 }} />
                   {!isMobile && <span>{t("panels.title")}</span>}
-                </button>
+                </TopBarButton>
               </div>
             )}
             {/* Subagent status badge — shows when subagents are running */}

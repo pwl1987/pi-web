@@ -1008,3 +1008,34 @@ span.linenumber {
     box-shadow: none;
   }
 }
+
+/* ── Top-bar panel toggle buttons (phase 7/8) ────────────────────────────
+   Extracted from AppShell.tsx where 5 buttons each repeated ~18 inline style
+   props + identical hover handlers. The active variant flips background,
+   border-top accent, and text color. */
+.topbar-panel-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 12px;
+  background: none;
+  border: none;
+  border-top: 2px solid transparent;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+.topbar-panel-btn:hover {
+  color: var(--text);
+}
+.topbar-panel-btn[aria-pressed="true"] {
+  background: var(--bg-selected);
+  border-top: 2px solid var(--accent);
+  color: var(--text);
+}
