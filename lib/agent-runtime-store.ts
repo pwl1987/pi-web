@@ -47,7 +47,9 @@ class AgentRuntimeStore {
 
   subscribe = (cb: () => void): (() => void) => {
     this.listeners.add(cb);
-    return () => { this.listeners.delete(cb); };
+    return () => {
+      this.listeners.delete(cb);
+    };
   };
 
   getSnapshot = (): number => this.version;
@@ -83,7 +85,6 @@ class AgentRuntimeStore {
 }
 
 declare global {
-   
   var __piAgentRuntimeStore: AgentRuntimeStore | undefined;
 }
 

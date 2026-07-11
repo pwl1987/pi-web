@@ -49,7 +49,7 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
         setItems([]);
         return;
       }
-      const data = await res.json() as { pinnedDirs?: PinnedDir[] };
+      const data = (await res.json()) as { pinnedDirs?: PinnedDir[] };
       setItems(data.pinnedDirs ?? []);
     } catch {
       setItems([]);
@@ -64,56 +64,60 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
     return bus.subscribe(reload);
   }, [reload]);
 
-  const unpin = useCallback(async (path: string) => {
-    // Close the alias editor if open — prevents a blur-triggered saveAlias
-    // POST from racing against this DELETE. The × button also has
-    // onMouseDown=preventDefault which stops the blur from firing at all
-    // in real browsers; this is the fallback for keyboard-triggered unpin.
-    setEditingPath(null);
-    // Optimistic local removal so the UI feels instant; revert via
-    // reload() if the API rejects.
-    setItems((prev) => (prev ?? []).filter((d) => d.path !== path));
-    try {
-      const res = await fetch("/api/pinned-dirs", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-      if (!res.ok) await reload();
-    } catch {
-      await reload();
-    }
-  }, [reload]);
-
-  const saveAlias = useCallback(async (path: string, alias: string) => {
-    setEditingPath(null);
-    // Skip the POST when the alias hasn't changed — avoids unnecessary
-    // writes and prevents a POST/DELETE race when the user clicks the
-    // × unpin button while the editor is open (the blur would otherwise
-    // fire a save POST alongside the unpin DELETE).
-    const existing = items?.find((d) => d.path === path);
-    if (existing && (existing.alias ?? "") === alias) return;
-    try {
-      const res = await fetch("/api/pinned-dirs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path, alias }),
-      });
-      if (res.ok) {
-        // Optimistic local update + notify peers.
-        setItems((prev) =>
-          (prev ?? []).map((d) =>
-            d.path === path ? { ...d, alias: alias || undefined } : d,
-          ),
-        );
-        getPinnedDirsBus().emit();
-      } else {
+  const unpin = useCallback(
+    async (path: string) => {
+      // Close the alias editor if open — prevents a blur-triggered saveAlias
+      // POST from racing against this DELETE. The × button also has
+      // onMouseDown=preventDefault which stops the blur from firing at all
+      // in real browsers; this is the fallback for keyboard-triggered unpin.
+      setEditingPath(null);
+      // Optimistic local removal so the UI feels instant; revert via
+      // reload() if the API rejects.
+      setItems((prev) => (prev ?? []).filter((d) => d.path !== path));
+      try {
+        const res = await fetch("/api/pinned-dirs", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+        if (!res.ok) await reload();
+      } catch {
         await reload();
       }
-    } catch {
-      await reload();
-    }
-  }, [reload, items]);
+    },
+    [reload],
+  );
+
+  const saveAlias = useCallback(
+    async (path: string, alias: string) => {
+      setEditingPath(null);
+      // Skip the POST when the alias hasn't changed — avoids unnecessary
+      // writes and prevents a POST/DELETE race when the user clicks the
+      // × unpin button while the editor is open (the blur would otherwise
+      // fire a save POST alongside the unpin DELETE).
+      const existing = items?.find((d) => d.path === path);
+      if (existing && (existing.alias ?? "") === alias) return;
+      try {
+        const res = await fetch("/api/pinned-dirs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, alias }),
+        });
+        if (res.ok) {
+          // Optimistic local update + notify peers.
+          setItems((prev) =>
+            (prev ?? []).map((d) => (d.path === path ? { ...d, alias: alias || undefined } : d)),
+          );
+          getPinnedDirsBus().emit();
+        } else {
+          await reload();
+        }
+      } catch {
+        await reload();
+      }
+    },
+    [reload, items],
+  );
 
   // Empty state — render nothing (no header, no "empty" placeholder).
   if (!items || items.length === 0) return null;
@@ -257,14 +261,24 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
-                      (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-selected)";
+                      (e.currentTarget as HTMLButtonElement).style.background =
+                        "var(--bg-selected)";
                     }}
                     onMouseLeave={(e) => {
                       (e.currentTarget as HTMLButtonElement).style.color = "var(--text-dim)";
                       (e.currentTarget as HTMLButtonElement).style.background = "transparent";
                     }}
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                     </svg>
@@ -302,7 +316,15 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
                   (e.currentTarget as HTMLButtonElement).style.background = "transparent";
                 }}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                >
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>

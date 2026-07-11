@@ -1,6 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { AuthStorage, ModelRegistry, SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+  AuthStorage,
+  ModelRegistry,
+  SettingsManager,
+  getAgentDir,
+} from "@earendil-works/pi-coding-agent";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +23,19 @@ function getAssistantText(message: AssistantMessage): string {
 // → { optimized: string }
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { content?: string; file?: string; cwd?: string; instruction?: string };
+    const body = (await req.json()) as {
+      content?: string;
+      file?: string;
+      cwd?: string;
+      instruction?: string;
+    };
     const content = body.content ?? "";
     const fileType = body.file ?? "agents";
     if (!content.trim()) {
-      return NextResponse.json({ error: "Content is empty — nothing to optimize." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Content is empty — nothing to optimize." },
+        { status: 400 },
+      );
     }
 
     // Read the user's default model + provider from settings.
@@ -32,7 +45,10 @@ export async function POST(req: NextRequest) {
     const defaultProvider = mgr.getDefaultProvider();
     const defaultModel = mgr.getDefaultModel();
     if (!defaultProvider || !defaultModel) {
-      return NextResponse.json({ error: "No default model configured. Set one in Settings." }, { status: 400 });
+      return NextResponse.json(
+        { error: "No default model configured. Set one in Settings." },
+        { status: 400 },
+      );
     }
 
     // Resolve model + API key from the real models.json (not a temp copy).
@@ -40,7 +56,10 @@ export async function POST(req: NextRequest) {
     const registry = ModelRegistry.create(AuthStorage.create(), modelsPath);
     const model = registry.find(defaultProvider, defaultModel);
     if (!model) {
-      return NextResponse.json({ error: `Model not found: ${defaultProvider}/${defaultModel}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Model not found: ${defaultProvider}/${defaultModel}` },
+        { status: 400 },
+      );
     }
 
     const auth = await registry.getApiKeyAndHeaders(model);
@@ -52,11 +71,12 @@ export async function POST(req: NextRequest) {
     }
 
     const customInstruction = body.instruction?.trim();
-    const promptContext = fileType === "system"
-      ? "This is a SYSTEM.md file that COMPLETELY REPLACES the agent's default system prompt. It should define the agent's core identity, available tools, and operating guidelines."
-      : fileType === "append"
-      ? "This is an APPEND_SYSTEM.md file that is APPENDED to the system prompt. It should contain supplementary instructions without repeating the base prompt."
-      : "This is an AGENTS.md file that provides project-specific instructions and guidelines injected as project context.";
+    const promptContext =
+      fileType === "system"
+        ? "This is a SYSTEM.md file that COMPLETELY REPLACES the agent's default system prompt. It should define the agent's core identity, available tools, and operating guidelines."
+        : fileType === "append"
+          ? "This is an APPEND_SYSTEM.md file that is APPENDED to the system prompt. It should contain supplementary instructions without repeating the base prompt."
+          : "This is an AGENTS.md file that provides project-specific instructions and guidelines injected as project context.";
     const systemPrompt = [
       `You are an expert at writing prompt instruction files for AI coding agents. ${promptContext}`,
       "Optimize the following content for clarity, completeness, and structure.",
@@ -64,24 +84,32 @@ export async function POST(req: NextRequest) {
       "Preserve all important technical details, conventions, and warnings.",
       customInstruction ? `Additional instruction: ${customInstruction}` : "",
       "Respond with ONLY the optimized markdown. No explanation, no code fences around the whole thing.",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    const message = await completeSimple(model, {
-      messages: [{
-        role: "user",
-        content: content,
-        timestamp: Date.now(),
-      }],
-    }, {
-      apiKey: auth.apiKey,
-      headers: auth.headers,
-      maxTokens: 8192,
-      timeoutMs: TIMEOUT_MS,
-      maxRetries: 0,
-      cacheRetention: "none",
-      // Inject system prompt via the model's system message capability
-      systemPrompt,
-    } as Parameters<typeof completeSimple>[2]);
+    const message = await completeSimple(
+      model,
+      {
+        messages: [
+          {
+            role: "user",
+            content: content,
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      {
+        apiKey: auth.apiKey,
+        headers: auth.headers,
+        maxTokens: 8192,
+        timeoutMs: TIMEOUT_MS,
+        maxRetries: 0,
+        cacheRetention: "none",
+        // Inject system prompt via the model's system message capability
+        systemPrompt,
+      } as Parameters<typeof completeSimple>[2],
+    );
 
     const optimized = getAssistantText(message);
     if (!optimized.trim()) {

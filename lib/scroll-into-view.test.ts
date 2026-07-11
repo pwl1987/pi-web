@@ -15,7 +15,9 @@ import { scrollIntoView } from "./scroll-into-view";
 /** Create a real DOM element with a mock scrollIntoView (jsdom ships
  *  a no-op one — we want a spy we can assert on). */
 function makeEl(): HTMLDivElement & { scrollIntoView: ReturnType<typeof vi.fn> } {
-  const el = document.createElement("div") as unknown as HTMLDivElement & { scrollIntoView: ReturnType<typeof vi.fn> };
+  const el = document.createElement("div") as unknown as HTMLDivElement & {
+    scrollIntoView: ReturnType<typeof vi.fn>;
+  };
   el.scrollIntoView = vi.fn() as unknown as typeof el.scrollIntoView;
   return el;
 }

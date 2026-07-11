@@ -26,16 +26,23 @@ export function TodoBadge({ sessionId }: { sessionId: string | null }) {
   const [open, setOpen] = useState(false);
 
   const reload = useCallback(async () => {
-    if (!sessionId) { setTasks([]); return; }
+    if (!sessionId) {
+      setTasks([]);
+      return;
+    }
     try {
       const res = await fetch(`/api/task-list?sessionId=${encodeURIComponent(sessionId)}`);
       if (!res.ok) return;
-      const d = await res.json() as { tasks: TodoTask[] };
+      const d = (await res.json()) as { tasks: TodoTask[] };
       setTasks(d.tasks ?? []);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }, [sessionId]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
   // Live refresh — re-fetch when the agent's `todo` tool completes in this session.
   useTodoLiveRefresh(sessionId, reload);
   useEffect(() => {
@@ -59,24 +66,45 @@ export function TodoBadge({ sessionId }: { sessionId: string | null }) {
 
   return (
     <div
-      style={{ position: "relative", display: "flex", alignItems: "center", flexShrink: 0, height: "100%" }}
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        flexShrink: 0,
+        height: "100%",
+      }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <button
         onClick={() => setOpen((v) => !v)}
         title={t("todo.title")}
         style={{
-          display: "flex", alignItems: "center", gap: 4,
-          height: "100%", padding: "0 10px",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          height: "100%",
+          padding: "0 10px",
           background: open ? "var(--bg-selected)" : "none",
           border: "none",
           borderTop: open ? "2px solid var(--accent)" : "2px solid transparent",
-          cursor: "pointer", fontSize: 11, whiteSpace: "nowrap",
+          cursor: "pointer",
+          fontSize: 11,
+          whiteSpace: "nowrap",
           color: completed === total ? "var(--accent)" : "var(--text-muted)",
-          fontWeight: 600, transition: "color 0.1s, background 0.1s",
+          fontWeight: 600,
+          transition: "color 0.1s, background 0.1s",
         }}
       >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           {completed === total ? (
             <>
               <path d="M9 11l3 3L22 4" />
@@ -89,23 +117,38 @@ export function TodoBadge({ sessionId }: { sessionId: string | null }) {
             </>
           )}
         </svg>
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>{completed}/{total}</span>
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>
+          {completed}/{total}
+        </span>
       </button>
       {open && (
-        <div style={{
-          position: "absolute", top: "100%", right: 0, zIndex: 300,
-          background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
-          boxShadow: "0 6px 20px rgba(0,0,0,0.14)", minWidth: 260, maxWidth: 360,
-          maxHeight: "min(500px, 70vh)", overflowY: "auto", padding: 4,
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            right: 0,
+            zIndex: 300,
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.14)",
+            minWidth: 260,
+            maxWidth: 360,
+            maxHeight: "min(500px, 70vh)",
+            overflowY: "auto",
+            padding: 4,
+          }}
+        >
           {inProgress.length > 0 && (
             <TodoGroup label={t("todo.inProgress")} tasks={inProgress} accent />
           )}
-          {pending.length > 0 && (
-            <TodoGroup label={t("todo.pending")} tasks={pending} />
-          )}
+          {pending.length > 0 && <TodoGroup label={t("todo.pending")} tasks={pending} />}
           {completed > 0 && (
-            <TodoGroup label={t("todo.completed")} tasks={tasks.filter((t) => t.status === "completed")} muted />
+            <TodoGroup
+              label={t("todo.completed")}
+              tasks={tasks.filter((t) => t.status === "completed")}
+              muted
+            />
           )}
         </div>
       )}
@@ -113,26 +156,73 @@ export function TodoBadge({ sessionId }: { sessionId: string | null }) {
   );
 }
 
-function TodoGroup({ label, tasks, accent, muted }: {
-  label: string; tasks: TodoTask[]; accent?: boolean; muted?: boolean;
+function TodoGroup({
+  label,
+  tasks,
+  accent,
+  muted,
+}: {
+  label: string;
+  tasks: TodoTask[];
+  accent?: boolean;
+  muted?: boolean;
 }) {
   return (
     <div style={{ marginBottom: 4 }}>
-      <div style={{ padding: "4px 8px 2px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: accent ? "var(--accent)" : "var(--text-dim)" }}>
+      <div
+        style={{
+          padding: "4px 8px 2px",
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: accent ? "var(--accent)" : "var(--text-dim)",
+        }}
+      >
         {label} ({tasks.length})
       </div>
       {tasks.map((task) => (
-        <div key={task.id} style={{
-          display: "flex", alignItems: "flex-start", gap: 6, padding: "4px 8px", borderRadius: 5,
-        }}>
-          <span style={{
-            width: 12, height: 12, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-            border: task.status === "completed" ? "none" : accent ? "2px solid var(--accent)" : "2px solid var(--border)",
-            background: task.status === "completed" ? "var(--accent)" : accent ? "var(--accent)" : "none",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
+        <div
+          key={task.id}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 6,
+            padding: "4px 8px",
+            borderRadius: 5,
+          }}
+        >
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              flexShrink: 0,
+              marginTop: 1,
+              border:
+                task.status === "completed"
+                  ? "none"
+                  : accent
+                    ? "2px solid var(--accent)"
+                    : "2px solid var(--border)",
+              background:
+                task.status === "completed" ? "var(--accent)" : accent ? "var(--accent)" : "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             {task.status === "completed" && (
-              <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="var(--bg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="8"
+                height="8"
+                viewBox="0 0 10 10"
+                fill="none"
+                stroke="var(--bg)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <polyline points="1.5 5 4 7.5 8.5 2.5" />
               </svg>
             )}
@@ -141,14 +231,23 @@ function TodoGroup({ label, tasks, accent, muted }: {
             )}
           </span>
           <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontSize: 11, lineHeight: 1.3,
-              color: muted ? "var(--text-dim)" : "var(--text)",
-              textDecoration: task.status === "completed" ? "line-through" : "none",
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>{task.subject}</div>
+            <div
+              style={{
+                fontSize: 11,
+                lineHeight: 1.3,
+                color: muted ? "var(--text-dim)" : "var(--text)",
+                textDecoration: task.status === "completed" ? "line-through" : "none",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {task.subject}
+            </div>
             {task.activeForm && accent && (
-              <div style={{ fontSize: 10, color: "var(--accent)", fontStyle: "italic" }}>⟳ {task.activeForm}</div>
+              <div style={{ fontSize: 10, color: "var(--accent)", fontStyle: "italic" }}>
+                ⟳ {task.activeForm}
+              </div>
             )}
           </div>
         </div>

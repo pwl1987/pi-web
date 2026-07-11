@@ -9,7 +9,15 @@ export const DROPDOWN_ANIMATION_MS = 140;
  * Applies translateY + scale + opacity on open/close.
  * `open=false` unmounts children after the transition completes.
  */
-export function AnimatedDropdown({ open, children, style }: { open: boolean; children: ReactNode; style: CSSProperties }) {
+export function AnimatedDropdown({
+  open,
+  children,
+  style,
+}: {
+  open: boolean;
+  children: ReactNode;
+  style: CSSProperties;
+}) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(open);
 

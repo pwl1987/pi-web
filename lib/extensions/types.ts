@@ -153,7 +153,10 @@ export type WorkspaceLabelItem =
 // Internal types (qualified contributions stored by registry)
 // ============================================================================
 
-export interface QualifiedAction extends Omit<ExtensionAction, "id" | "enabled" | "disabledReason" | "run"> {
+export interface QualifiedAction extends Omit<
+  ExtensionAction,
+  "id" | "enabled" | "disabledReason" | "run"
+> {
   qualifiedId: QualifiedContributionId;
   extensionId: ExtensionId;
   enabled?: (ctx: ExtensionRuntimeContext) => boolean;
@@ -161,7 +164,10 @@ export interface QualifiedAction extends Omit<ExtensionAction, "id" | "enabled" 
   run: (ctx: ExtensionRuntimeContext) => void | Promise<void>;
 }
 
-export interface QualifiedPanel extends Omit<WorkspacePanelContribution, "id" | "visible" | "badge" | "render"> {
+export interface QualifiedPanel extends Omit<
+  WorkspacePanelContribution,
+  "id" | "visible" | "badge" | "render"
+> {
   qualifiedId: QualifiedContributionId;
   extensionId: ExtensionId;
   visible?: (ctx: WorkspacePanelContext) => boolean;
@@ -226,7 +232,8 @@ export interface LoadedExtensionInfo {
 
 export function isPiWebExtension(value: unknown): value is PiWebExtension {
   return (
-    typeof value === "object" && value !== null &&
+    typeof value === "object" &&
+    value !== null &&
     (value as PiWebExtension).apiVersion === 1 &&
     typeof (value as PiWebExtension).name === "string" &&
     typeof (value as PiWebExtension).activate === "function"

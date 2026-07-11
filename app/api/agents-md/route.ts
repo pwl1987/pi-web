@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, resolve } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
   const cwd = req.nextUrl.searchParams.get("cwd") ?? undefined;
 
   if (!FILE_NAMES[file]) {
-    return NextResponse.json({ error: "file must be 'agents', 'system', or 'append'" }, { status: 400 });
+    return NextResponse.json(
+      { error: "file must be 'agents', 'system', or 'append'" },
+      { status: 400 },
+    );
   }
   if (level !== "user" && level !== "project") {
     return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
@@ -54,10 +57,18 @@ export async function GET(req: NextRequest) {
 const MAX_AGENTS_MD_SIZE = 1_000_000; // 1MB limit
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json() as { file?: string; level?: string; cwd?: string; content?: string };
+    const body = (await req.json()) as {
+      file?: string;
+      level?: string;
+      cwd?: string;
+      content?: string;
+    };
     const file = (body.file ?? "agents") as PromptFile;
     if (!FILE_NAMES[file]) {
-      return NextResponse.json({ error: "file must be 'agents', 'system', or 'append'" }, { status: 400 });
+      return NextResponse.json(
+        { error: "file must be 'agents', 'system', or 'append'" },
+        { status: 400 },
+      );
     }
     if (body.level !== "user" && body.level !== "project") {
       return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });

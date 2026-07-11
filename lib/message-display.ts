@@ -1,10 +1,18 @@
-import type { AssistantContentBlock, AssistantMessage, ThinkingContent, ToolCallContent } from "./types";
+import type {
+  AssistantContentBlock,
+  AssistantMessage,
+  ThinkingContent,
+  ToolCallContent,
+} from "./types";
 
 interface DisplayOptions {
   isStreaming?: boolean;
 }
 
-export function isEmptyThinkingBlock(block: AssistantContentBlock, options: DisplayOptions = {}): block is ThinkingContent {
+export function isEmptyThinkingBlock(
+  block: AssistantContentBlock,
+  options: DisplayOptions = {},
+): block is ThinkingContent {
   return block.type === "thinking" && !options.isStreaming && block.thinking.trim() === "";
 }
 

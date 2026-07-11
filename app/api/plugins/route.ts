@@ -42,10 +42,14 @@ function getPackageSource(entry: PackageSource): string {
 function isDisabledPackage(entry: PackageSource): boolean {
   if (typeof entry === "string") return false;
   return (
-    Array.isArray(entry.extensions) && entry.extensions.length === 0 &&
-    Array.isArray(entry.skills) && entry.skills.length === 0 &&
-    Array.isArray(entry.prompts) && entry.prompts.length === 0 &&
-    Array.isArray(entry.themes) && entry.themes.length === 0
+    Array.isArray(entry.extensions) &&
+    entry.extensions.length === 0 &&
+    Array.isArray(entry.skills) &&
+    entry.skills.length === 0 &&
+    Array.isArray(entry.prompts) &&
+    entry.prompts.length === 0 &&
+    Array.isArray(entry.themes) &&
+    entry.themes.length === 0
   );
 }
 
@@ -66,9 +70,10 @@ function setPackageDisabled(
   scope: PluginScope,
   disabled: boolean,
 ): boolean {
-  const current = scope === "project"
-    ? settingsManager.getProjectSettings().packages ?? []
-    : settingsManager.getGlobalSettings().packages ?? [];
+  const current =
+    scope === "project"
+      ? (settingsManager.getProjectSettings().packages ?? [])
+      : (settingsManager.getGlobalSettings().packages ?? []);
   let changed = false;
   const next = current.map((entry): PackageSource => {
     if (getPackageSource(entry) !== source) return entry;
@@ -167,13 +172,14 @@ function collectResource(
   addCount(totals, kind);
   countsByPackage.set(key, counts);
   const resources = resourcesByPackage.get(key) ?? [];
-  const resourceKind = kind === "extensions"
-    ? "extension"
-    : kind === "skills"
-      ? "skill"
-      : kind === "prompts"
-        ? "prompt"
-        : "theme";
+  const resourceKind =
+    kind === "extensions"
+      ? "extension"
+      : kind === "skills"
+        ? "skill"
+        : kind === "prompts"
+          ? "prompt"
+          : "theme";
   resources.push({
     kind: resourceKind,
     name: getResourceName(resource.path, resourceKind),
@@ -191,10 +197,14 @@ function collectResources(paths: ResolvedPaths): {
   const countsByPackage = new Map<string, PluginResourceCounts>();
   const resourcesByPackage = new Map<string, PluginResourceInfo[]>();
   const totals = emptyCounts();
-  for (const resource of paths.extensions) collectResource(resource, "extensions", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.skills) collectResource(resource, "skills", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.prompts) collectResource(resource, "prompts", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.themes) collectResource(resource, "themes", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.extensions)
+    collectResource(resource, "extensions", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.skills)
+    collectResource(resource, "skills", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.prompts)
+    collectResource(resource, "prompts", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.themes)
+    collectResource(resource, "themes", countsByPackage, resourcesByPackage, totals);
   return { countsByPackage, resourcesByPackage, totals };
 }
 
@@ -255,7 +265,13 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
       configuredVersion: getConfiguredVersion(pkg.source),
       counts,
       resources,
-      status: disabled ? "disabled" : resourceCount > 0 ? "loaded" : pkg.installedPath ? "installed" : "missing",
+      status: disabled
+        ? "disabled"
+        : resourceCount > 0
+          ? "loaded"
+          : pkg.installedPath
+            ? "installed"
+            : "missing",
     } satisfies PluginPackageInfo;
   });
 
@@ -281,7 +297,7 @@ export async function GET(req: Request) {
 // POST /api/plugins body: { action, source?, scope?, cwd }
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as {
+    const body = (await req.json()) as {
       action?: PluginAction;
       source?: string;
       scope?: PluginScope;
@@ -321,6 +337,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json(await readPlugins(body.cwd));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
   }
 }

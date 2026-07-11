@@ -38,7 +38,7 @@ export function McpConfigPanel() {
     try {
       const res = await fetch("/api/mcp-config");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as McpConfigData;
+      const d = (await res.json()) as McpConfigData;
       setData(d);
       setError(null);
     } catch (e) {
@@ -48,7 +48,9 @@ export function McpConfigPanel() {
     }
   }, []);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const handleAdd = useCallback(async () => {
     const name = newName.trim();
@@ -59,7 +61,12 @@ export function McpConfigPanel() {
       // Preserve existing
       for (const s of data?.servers ?? []) {
         const entry: Record<string, unknown> = { lifecycle: s.lifecycle };
-        if (s.transport === "url") { entry.url = s.url; } else { entry.command = s.command; entry.args = s.args; }
+        if (s.transport === "url") {
+          entry.url = s.url;
+        } else {
+          entry.command = s.command;
+          entry.args = s.args;
+        }
         servers[s.name] = entry;
       }
       // Add new
@@ -78,7 +85,10 @@ export function McpConfigPanel() {
         body: JSON.stringify({ mcpServers: servers }),
       });
       setAdding(false);
-      setNewName(""); setNewCommand(""); setNewUrl(""); setNewArgs("");
+      setNewName("");
+      setNewCommand("");
+      setNewUrl("");
+      setNewArgs("");
       void reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -87,49 +97,105 @@ export function McpConfigPanel() {
     }
   }, [newName, newUrl, newCommand, newArgs, data, reload]);
 
-  const handleRemove = useCallback(async (name: string) => {
-    const servers: Record<string, unknown> = {};
-    for (const s of data?.servers ?? []) {
-      if (s.name === name) continue;
-      const entry: Record<string, unknown> = { lifecycle: s.lifecycle };
-      if (s.transport === "url") { entry.url = s.url; } else { entry.command = s.command; entry.args = s.args; }
-      servers[s.name] = entry;
-    }
-    await fetch("/api/mcp-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mcpServers: servers }),
-    });
-    void reload();
-  }, [data, reload]);
+  const handleRemove = useCallback(
+    async (name: string) => {
+      const servers: Record<string, unknown> = {};
+      for (const s of data?.servers ?? []) {
+        if (s.name === name) continue;
+        const entry: Record<string, unknown> = { lifecycle: s.lifecycle };
+        if (s.transport === "url") {
+          entry.url = s.url;
+        } else {
+          entry.command = s.command;
+          entry.args = s.args;
+        }
+        servers[s.name] = entry;
+      }
+      await fetch("/api/mcp-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mcpServers: servers }),
+      });
+      void reload();
+    },
+    [data, reload],
+  );
 
-  if (loading) return <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>{t("common.loading")}</div>;
+  if (loading)
+    return (
+      <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>
+        {t("common.loading")}
+      </div>
+    );
   if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
 
   return (
     <div style={{ padding: 12, fontSize: 12, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{t("mcp.title")}</h3>
-        <button onClick={() => void reload()} style={btnStyle}>{t("common.refresh")}</button>
+        <button onClick={() => void reload()} style={btnStyle}>
+          {t("common.refresh")}
+        </button>
       </div>
 
       {data && data.servers.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
           {data.servers.map((s) => (
             <div key={s.name} style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+              >
                 <span style={{ fontWeight: 600, fontFamily: "var(--font-mono)" }}>{s.name}</span>
-                <span style={badgeStyle(s.transport === "url" ? "var(--accent)" : "var(--text-dim)")}>{s.transport}</span>
+                <span
+                  style={badgeStyle(s.transport === "url" ? "var(--accent)" : "var(--text-dim)")}
+                >
+                  {s.transport}
+                </span>
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  marginTop: 4,
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
                 {s.transport === "url" ? s.url : `${s.command} ${(s.args ?? []).join(" ")}`}
               </div>
-              <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--text-dim)" }}>
-                <span>{t("mcp.lifecycle")}: {s.lifecycle}</span>
-                {s.toolCount > 0 && <span>{t("mcp.tools")}: {s.toolCount}</span>}
-                {s.resourceCount > 0 && <span>{t("mcp.resources")}: {s.resourceCount}</span>}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  marginTop: 6,
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                }}
+              >
+                <span>
+                  {t("mcp.lifecycle")}: {s.lifecycle}
+                </span>
+                {s.toolCount > 0 && (
+                  <span>
+                    {t("mcp.tools")}: {s.toolCount}
+                  </span>
+                )}
+                {s.resourceCount > 0 && (
+                  <span>
+                    {t("mcp.resources")}: {s.resourceCount}
+                  </span>
+                )}
               </div>
-              <button onClick={() => void handleRemove(s.name)} style={{ ...btnStyle, marginTop: 8, color: "#f87171" }}>
+              <button
+                onClick={() => void handleRemove(s.name)}
+                style={{ ...btnStyle, marginTop: 8, color: "#f87171" }}
+              >
                 {t("common.remove")}
               </button>
             </div>
@@ -141,25 +207,64 @@ export function McpConfigPanel() {
 
       {adding ? (
         <div style={{ ...cardStyle, borderColor: "var(--accent)" }}>
-          <input placeholder={t("mcp.serverName")} value={newName} onChange={(e) => setNewName(e.target.value)} style={inputStyle} />
-          <div style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 4px" }}>{t("mcp.stdioMode")}</div>
-          <input placeholder="command (npx)" value={newCommand} onChange={(e) => setNewCommand(e.target.value)} style={inputStyle} />
-          <input placeholder="args (-y server-mcp@latest)" value={newArgs} onChange={(e) => setNewArgs(e.target.value)} style={{ ...inputStyle, marginTop: 4 }} />
-          <div style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 4px" }}>{t("mcp.urlMode")}</div>
-          <input placeholder="https://..." value={newUrl} onChange={(e) => setNewUrl(e.target.value)} style={inputStyle} />
+          <input
+            placeholder={t("mcp.serverName")}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 4px" }}>
+            {t("mcp.stdioMode")}
+          </div>
+          <input
+            placeholder="command (npx)"
+            value={newCommand}
+            onChange={(e) => setNewCommand(e.target.value)}
+            style={inputStyle}
+          />
+          <input
+            placeholder="args (-y server-mcp@latest)"
+            value={newArgs}
+            onChange={(e) => setNewArgs(e.target.value)}
+            style={{ ...inputStyle, marginTop: 4 }}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-dim)", margin: "8px 0 4px" }}>
+            {t("mcp.urlMode")}
+          </div>
+          <input
+            placeholder="https://..."
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            style={inputStyle}
+          />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button onClick={() => void handleAdd()} disabled={saving || !newName.trim()} style={btnStyle}>
+            <button
+              onClick={() => void handleAdd()}
+              disabled={saving || !newName.trim()}
+              style={btnStyle}
+            >
               {saving ? t("common.saving") : t("common.add")}
             </button>
-            <button onClick={() => setAdding(false)} style={btnStyle}>{t("common.cancel")}</button>
+            <button onClick={() => setAdding(false)} style={btnStyle}>
+              {t("common.cancel")}
+            </button>
           </div>
         </div>
       ) : (
-        <button onClick={() => setAdding(true)} style={btnStyle}>{t("mcp.addServer")}</button>
+        <button onClick={() => setAdding(true)} style={btnStyle}>
+          {t("mcp.addServer")}
+        </button>
       )}
 
       {data?.configPath && (
-        <div style={{ marginTop: 12, fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 10,
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
           {data.configPath}
         </div>
       )}
@@ -168,17 +273,38 @@ export function McpConfigPanel() {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 6,
-  padding: "5px 12px", fontSize: 11, color: "var(--text)", cursor: "pointer",
+  background: "var(--bg-hover)",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "5px 12px",
+  fontSize: 11,
+  color: "var(--text)",
+  cursor: "pointer",
 };
 const cardStyle: React.CSSProperties = {
-  background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 10,
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: 10,
 };
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "5px 8px", fontSize: 11, fontFamily: "var(--font-mono)",
-  background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5,
-  color: "var(--text)", boxSizing: "border-box",
+  width: "100%",
+  padding: "5px 8px",
+  fontSize: 11,
+  fontFamily: "var(--font-mono)",
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  borderRadius: 5,
+  color: "var(--text)",
+  boxSizing: "border-box",
 };
 function badgeStyle(color: string): React.CSSProperties {
-  return { fontSize: 10, padding: "1px 6px", borderRadius: 3, background: `${color}22`, color, fontWeight: 600 };
+  return {
+    fontSize: 10,
+    padding: "1px 6px",
+    borderRadius: 3,
+    background: `${color}22`,
+    color,
+    fontWeight: 600,
+  };
 }

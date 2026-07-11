@@ -26,8 +26,11 @@ import { useMessageScroll } from "@/hooks/useMessageScroll";
  * InspectorTaskRow) has its own unit tests; this test verifies they
  * connect without surprises.
  */
-function TestHarness({ tasks, entryIds }: {
-  tasks: { id: number; subject: string; status: "in_progress" | "completed" | "pending" }[];
+function TestHarness({
+  tasks,
+  entryIds,
+}: {
+  tasks: Array<{ id: number; subject: string; status: "in_progress" | "completed" | "pending" }>;
   entryIds: Record<number, string>;
 }) {
   // Simulate AppShell state: entryId held in state, cleared after scroll.
@@ -53,7 +56,12 @@ function TestHarness({ tasks, entryIds }: {
           onTaskClick={(eid) => setEntryId(eid)}
         />
       ))}
-      <li data-testid="fake-message" ref={(el) => { if (el) register("entry-task-1", el); }}>
+      <li
+        data-testid="fake-message"
+        ref={(el) => {
+          if (el) register("entry-task-1", el);
+        }}
+      >
         fake message for entry-task-1
       </li>
     </ul>

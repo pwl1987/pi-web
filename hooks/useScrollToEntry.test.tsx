@@ -34,10 +34,9 @@ describe("useScrollToEntry", () => {
 
   it("fires onJump when entryId transitions from null to a string", () => {
     const onJump = vi.fn();
-    const { rerender } = renderHook(
-      ({ entryId }) => useScrollToEntry(entryId, onJump),
-      { initialProps: { entryId: null as string | null } },
-    );
+    const { rerender } = renderHook(({ entryId }) => useScrollToEntry(entryId, onJump), {
+      initialProps: { entryId: null as string | null },
+    });
     rerender({ entryId: "entry-aaa" });
     expect(onJump).toHaveBeenCalledExactlyOnceWith("entry-aaa");
   });
@@ -92,8 +91,7 @@ describe("useScrollToEntry", () => {
   it("does NOT fire onJump when entryId transitions to undefined", () => {
     const onJump = vi.fn();
     const { rerender } = renderHook(
-      ({ entryId }: { entryId: string | null | undefined }) =>
-        useScrollToEntry(entryId, onJump),
+      ({ entryId }: { entryId: string | null | undefined }) => useScrollToEntry(entryId, onJump),
       { initialProps: { entryId: "abc" } as { entryId: string | null | undefined } },
     );
     expect(onJump).toHaveBeenCalledTimes(1);

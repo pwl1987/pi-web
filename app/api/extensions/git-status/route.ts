@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync } from "fs";
@@ -25,15 +25,21 @@ export async function GET(req: NextRequest) {
   try {
     // Get branch name.
     const { stdout: branchOut } = await execFileAsync(
-      "git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, timeout: 5000 },
+      "git",
+      ["rev-parse", "--abbrev-ref", "HEAD"],
+      { cwd, timeout: 5000 },
     ).catch(() => ({ stdout: "" }));
 
     // Get porcelain status counts.
-    const { stdout: statusOut } = await execFileAsync(
-      "git", ["status", "--porcelain"], { cwd, timeout: 5000, maxBuffer: 1024 * 1024 },
-    ).catch(() => ({ stdout: "" }));
+    const { stdout: statusOut } = await execFileAsync("git", ["status", "--porcelain"], {
+      cwd,
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    }).catch(() => ({ stdout: "" }));
 
-    let modified = 0, staged = 0, untracked = 0;
+    let modified = 0,
+      staged = 0,
+      untracked = 0;
     for (const line of statusOut.trim().split("\n")) {
       if (!line) continue;
       const x = line[0];

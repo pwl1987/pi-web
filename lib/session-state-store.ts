@@ -50,7 +50,11 @@ export function loadSessionState(): PiWebState {
     const file = stateFilePath();
     if (!existsSync(file)) return emptyState();
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as { version?: unknown; activeSessions?: unknown; pinnedDirs?: unknown };
+    const parsed = JSON.parse(raw) as {
+      version?: unknown;
+      activeSessions?: unknown;
+      pinnedDirs?: unknown;
+    };
     // Accept both v1 (no pinnedDirs) and v2 (with pinnedDirs); upgrade v1 in place.
     if (parsed.version !== 1 && parsed.version !== 2) {
       return emptyState();
@@ -59,10 +63,15 @@ export function loadSessionState(): PiWebState {
       return emptyState();
     }
     // Upgrade v1 → v2 by adding an empty pinnedDirs array.
-    const pinnedDirs = parsed.version === 2 && Array.isArray(parsed.pinnedDirs)
-      ? (parsed.pinnedDirs as unknown[]).filter(isValidPinnedDir)
-      : [];
-    return { version: 2, activeSessions: (parsed.activeSessions as unknown[]).filter(isValidEntry), pinnedDirs };
+    const pinnedDirs =
+      parsed.version === 2 && Array.isArray(parsed.pinnedDirs)
+        ? (parsed.pinnedDirs as unknown[]).filter(isValidPinnedDir)
+        : [];
+    return {
+      version: 2,
+      activeSessions: (parsed.activeSessions as unknown[]).filter(isValidEntry),
+      pinnedDirs,
+    };
   } catch {
     return emptyState();
   }
@@ -71,17 +80,21 @@ export function loadSessionState(): PiWebState {
 function isValidEntry(e: unknown): e is ActiveSessionEntry {
   if (typeof e !== "object" || e === null) return false;
   const obj = e as Record<string, unknown>;
-  return typeof obj.sessionId === "string"
-    && typeof obj.lastActive === "number"
-    && typeof obj.toolsDisabled === "boolean";
+  return (
+    typeof obj.sessionId === "string" &&
+    typeof obj.lastActive === "number" &&
+    typeof obj.toolsDisabled === "boolean"
+  );
 }
 
 function isValidPinnedDir(e: unknown): e is PinnedDir {
   if (typeof e !== "object" || e === null) return false;
   const obj = e as Record<string, unknown>;
-  return typeof obj.path === "string"
-    && typeof obj.pinnedAt === "number"
-    && (obj.alias === undefined || typeof obj.alias === "string");
+  return (
+    typeof obj.path === "string" &&
+    typeof obj.pinnedAt === "number" &&
+    (obj.alias === undefined || typeof obj.alias === "string")
+  );
 }
 
 /** Atomically write the sidecar (write .tmp then rename to avoid corruption on crash). */

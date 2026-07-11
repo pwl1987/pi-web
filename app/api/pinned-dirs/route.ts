@@ -24,7 +24,7 @@ export async function GET() {
 // Validates the path exists, registers it as an allowed file root, and pins it.
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as { path?: unknown; alias?: unknown };
+    const body = (await req.json()) as { path?: unknown; alias?: unknown };
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
     const alias = typeof body.alias === "string" ? body.alias : undefined;
 
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 // Unpins the directory matching `path` (normalized before comparison).
 export async function DELETE(req: Request) {
   try {
-    const body = await req.json() as { path?: unknown };
+    const body = (await req.json()) as { path?: unknown };
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
 
     if (!rawPath) {
@@ -68,4 +68,3 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
-

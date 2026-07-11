@@ -49,7 +49,7 @@ describe("PinnedDirsList", () => {
   it("removes the dir from the list after unpin is clicked", async () => {
     mockFetchSequence([
       { body: { pinnedDirs: sample } }, // initial GET
-      { body: { removed: true } },        // DELETE response
+      { body: { removed: true } }, // DELETE response
     ]);
     render(<PinnedDirsList onCwdChange={() => {}} />);
     await waitFor(() => {
@@ -106,7 +106,9 @@ describe("PinnedDirsList", () => {
   it("Enter saves the alias via POST and emits the bus", async () => {
     mockFetchSequence([
       { body: { pinnedDirs: sample } },
-      { body: { pinnedDir: { path: "/Users/me/projects/pi-web", alias: "my-alias", pinnedAt: 0 } } },
+      {
+        body: { pinnedDir: { path: "/Users/me/projects/pi-web", alias: "my-alias", pinnedAt: 0 } },
+      },
     ]);
     render(<PinnedDirsList onCwdChange={() => {}} />);
     await waitFor(() => {
@@ -166,10 +168,7 @@ describe("PinnedDirsList", () => {
 
   it("clicking unpin while editing does not race with a save POST", async () => {
     // Initial GET + DELETE response for the unpin.
-    mockFetchSequence([
-      { body: { pinnedDirs: sample } },
-      { body: { removed: true } },
-    ]);
+    mockFetchSequence([{ body: { pinnedDirs: sample } }, { body: { removed: true } }]);
     render(<PinnedDirsList onCwdChange={() => {}} />);
     await waitFor(() => {
       expect(document.querySelectorAll("[data-pinned-row]").length).toBe(2);

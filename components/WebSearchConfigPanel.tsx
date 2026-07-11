@@ -13,8 +13,13 @@ interface WebSearchData {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  openai: "OpenAI", brave: "Brave", tavily: "Tavily", exa: "Exa",
-  perplexity: "Perplexity", parallel: "Parallel", gemini: "Gemini",
+  openai: "OpenAI",
+  brave: "Brave",
+  tavily: "Tavily",
+  exa: "Exa",
+  perplexity: "Perplexity",
+  parallel: "Parallel",
+  gemini: "Gemini",
 };
 
 export function WebSearchConfigPanel() {
@@ -31,7 +36,7 @@ export function WebSearchConfigPanel() {
     try {
       const res = await fetch("/api/web-search-config");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as WebSearchData;
+      const d = (await res.json()) as WebSearchData;
       setData(d);
       setKeyInputs({});
       setShowKeys({});
@@ -43,7 +48,9 @@ export function WebSearchConfigPanel() {
     }
   }, []);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const handleSave = useCallback(async () => {
     if (!data) return;
@@ -74,20 +81,36 @@ export function WebSearchConfigPanel() {
     }
   }, [data, keyInputs, reload]);
 
-  if (loading) return <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>{t("common.loading")}</div>;
+  if (loading)
+    return (
+      <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>
+        {t("common.loading")}
+      </div>
+    );
   if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
   if (!data) return null;
 
   return (
     <div style={{ padding: 12, fontSize: 12, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{t("webSearch.title")}</h3>
-        <button onClick={() => void reload()} style={btnStyle}>{t("common.refresh")}</button>
+        <button onClick={() => void reload()} style={btnStyle}>
+          {t("common.refresh")}
+        </button>
       </div>
 
       {/* Default provider */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+        <label
+          style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}
+        >
           {t("webSearch.defaultProvider")}
         </label>
         <select
@@ -98,7 +121,8 @@ export function WebSearchConfigPanel() {
           <option value="auto">auto</option>
           {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
             <option key={key} value={key} disabled={!data.providers[key]}>
-              {label}{data.providers[key] ? "" : ` (${t("webSearch.notConfigured")})`}
+              {label}
+              {data.providers[key] ? "" : ` (${t("webSearch.notConfigured")})`}
             </option>
           ))}
         </select>
@@ -106,7 +130,9 @@ export function WebSearchConfigPanel() {
 
       {/* Workflow */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+        <label
+          style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}
+        >
           {t("webSearch.workflow")}
         </label>
         <select
@@ -123,7 +149,8 @@ export function WebSearchConfigPanel() {
       {/* Toggle */}
       <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
         <input
-          type="checkbox" checked={data.webSearchEnabled}
+          type="checkbox"
+          checked={data.webSearchEnabled}
           onChange={(e) => setData({ ...data, webSearchEnabled: e.target.checked })}
         />
         <span>{t("webSearch.enabled")}</span>
@@ -131,7 +158,9 @@ export function WebSearchConfigPanel() {
 
       {/* Provider API keys */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>{t("webSearch.apiKeys")}</div>
+        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
+          {t("webSearch.apiKeys")}
+        </div>
         {Object.entries(PROVIDER_LABELS).map(([key, label]) => {
           const configured = data.providers[key];
           return (
@@ -139,7 +168,9 @@ export function WebSearchConfigPanel() {
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                 <span style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{label}</span>
                 {configured && <span style={badgeStyle("var(--accent)")}>✓</span>}
-                {key === "parallel" && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>(env)</span>}
+                {key === "parallel" && (
+                  <span style={{ fontSize: 10, color: "var(--text-dim)" }}>(env)</span>
+                )}
               </div>
               {key !== "parallel" && (
                 <div style={{ display: "flex", gap: 4 }}>
@@ -167,11 +198,20 @@ export function WebSearchConfigPanel() {
         <button onClick={() => void handleSave()} disabled={saving} style={btnStyle}>
           {saving ? t("common.saving") : t("common.save")}
         </button>
-        {saved && <span style={{ fontSize: 11, color: "var(--accent)" }}>✓ {t("common.saved")}</span>}
+        {saved && (
+          <span style={{ fontSize: 11, color: "var(--accent)" }}>✓ {t("common.saved")}</span>
+        )}
       </div>
 
       {data.configPath && (
-        <div style={{ marginTop: 12, fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 10,
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
           {data.configPath}
         </div>
       )}
@@ -180,17 +220,30 @@ export function WebSearchConfigPanel() {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 6,
-  padding: "5px 12px", fontSize: 11, color: "var(--text)", cursor: "pointer",
+  background: "var(--bg-hover)",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "5px 12px",
+  fontSize: 11,
+  color: "var(--text)",
+  cursor: "pointer",
 };
 const inputStyle: React.CSSProperties = {
-  flex: 1, padding: "5px 8px", fontSize: 11,
-  background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5,
+  flex: 1,
+  padding: "5px 8px",
+  fontSize: 11,
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  borderRadius: 5,
   color: "var(--text)",
 };
 const selectStyle: React.CSSProperties = {
-  width: "100%", padding: "5px 8px", fontSize: 11,
-  background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5,
+  width: "100%",
+  padding: "5px 8px",
+  fontSize: 11,
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  borderRadius: 5,
   color: "var(--text)",
 };
 function badgeStyle(color: string): React.CSSProperties {

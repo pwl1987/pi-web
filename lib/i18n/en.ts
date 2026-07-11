@@ -63,7 +63,8 @@ export const en = {
   "sessionInfo.context": "Context",
   // Top-bar token-plan / quota indicator
   "tokenUsage.usage": "Usage",
-  "tokenUsage.usageTooltip": "{provider} quota — {used} of {total} used ({pct}%). Resets in {reset}.",
+  "tokenUsage.usageTooltip":
+    "{provider} quota — {used} of {total} used ({pct}%). Resets in {reset}.",
   "tokenUsage.usageTooltipNoTotal": "{provider} quota — {used} used.",
   "tokenUsage.usageTooltipNoReset": "{provider} quota — {used} of {total} used ({pct}%).",
   "tokenUsage.configure": "Add API key",
@@ -108,6 +109,7 @@ export const en = {
   "slashGroup.prompt": "Prompts",
   "slashGroup.skill": "Skills",
   // Input bar — placeholders
+  "input.label": "Chat input",
   "input.placeholderSteer": "Steer now / queue follow-up...",
   "input.placeholderRunning": "Agent is running…",
   "input.placeholderIdle": "Message… Type / for commands, @ for files (Ctrl+J to focus)",
@@ -249,7 +251,10 @@ export const en = {
   "sidebar.hoursAgo": "{count}h ago",
   "sidebar.daysAgo": "{count}d ago",
   // Project picker / new session
+  "sidebar.newSession": "New",
   "sidebar.newSessionIn": "New session in {cwd}",
+  "sidebar.useDefaultDirectory": "Use default directory",
+  "sidebar.customPath": "Custom path…",
   "sidebar.selectProjectFirst": "Select a project first",
   "sidebar.refresh": "Refresh",
   "sidebar.selectProject": "Select project…",
@@ -320,7 +325,8 @@ export const en = {
   "msg.noMessage": "(no message)",
   "msg.noSummary": "(no summary)",
   "msg.conversationCompacted": "Conversation compacted",
-  "msg.compactionSummaryHint": "The conversation history before this point was compacted into the following summary:",
+  "msg.compactionSummaryHint":
+    "The conversation history before this point was compacted into the following summary:",
   "msg.nRead": "{count} read",
   "msg.nModified": "{count} modified",
   "msg.fileContext": "File context: {parts}",
@@ -388,7 +394,8 @@ export const en = {
   "models.alreadyConnected": "Already connected. You can re-login or disconnect.",
   "models.connectAccount": "Connect your {name} account.",
   "models.openingBrowser": "Opening browser…",
-  "models.completeSignIn": "Complete sign-in in the browser, then copy the redirect URL from the address bar and paste it below.",
+  "models.completeSignIn":
+    "Complete sign-in in the browser, then copy the redirect URL from the address bar and paste it below.",
   "models.browserDidNotOpenBefore": "If the browser window did not open,",
   "models.clickToOpenLogin": "click here to open the login page",
   "models.browserDidNotOpenAfter": ".",
@@ -408,7 +415,8 @@ export const en = {
   // API Key detail
   "models.configured": "configured",
   "models.notConfigured": "not configured",
-  "models.apiKeyStored": "API key is stored. Enter a new key below to replace it, or disconnect to remove it.",
+  "models.apiKeyStored":
+    "API key is stored. Enter a new key below to replace it, or disconnect to remove it.",
   "models.enterApiKey": "Enter your {name} API key to enable {count} model(s).",
   "models.enterNewKey": "Enter new key to replace…",
   "models.save": "Save",
@@ -678,7 +686,6 @@ export const en = {
 
   // ----- AGENTS.md management -----
 
-
   // ----- Prompts management (AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md) -----
   "prompts.title": "Prompt Files",
   "prompts.userLevel": "User",
@@ -695,7 +702,8 @@ export const en = {
   "prompts.apply": "Apply Optimized",
   "prompts.discard": "Discard",
   "prompts.notExists": "File does not exist. Save to create.",
-  "prompts.agentsDesc": "Project instructions injected as context. The most common way to guide the agent.",
+  "prompts.agentsDesc":
+    "Project instructions injected as context. The most common way to guide the agent.",
   "prompts.systemDesc": "Completely replaces the default system prompt. Use with caution.",
   "prompts.appendDesc": "Appended to the system prompt. Supplements without replacing.",
   "settings.openPrompts": "Prompt Files",
@@ -703,11 +711,12 @@ export const en = {
   // New extension management keys
   "extensions.bundled": "built-in",
   "extensions.uninstall": "Uninstall",
-  "extensions.uninstallConfirm": "Uninstall extension \"{id}\"?",
+  "extensions.uninstallConfirm": 'Uninstall extension "{id}"?',
   "extensions.install": "Install Extension",
   "extensions.installPath": "Local path to extension directory",
   "extensions.installBtn": "Install",
-  "extensions.installHint": "Directory must contain package.json with piWeb.extensions declaration.",
+  "extensions.installHint":
+    "Directory must contain package.json with piWeb.extensions declaration.",
   "extensions.installed": "Installed: {id}. Reload page to activate.",
   "extensions.contributions": "contributions",
 
@@ -722,6 +731,5 @@ export const en = {
   "sidebar.offline": "Offline",
   "sidebar.failedToLoadSessions": "Couldn't load your sessions.",
 
-  "chat.loadingSession": "Loading session…",
   "chat.failedToLoadSession": "Couldn't load this session.",
 } satisfies Record<string, string>;

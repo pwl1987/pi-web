@@ -1,5 +1,7 @@
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { NextResponse } from "next/server";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -13,22 +15,38 @@ export async function GET(_req: Request, { params }: Params) {
   const status = registry.getProviderAuthStatus(provider);
   const displayName = registry.getProviderDisplayName(provider);
   const models = registry.getAll().filter((m) => m.provider === provider).length;
-  return NextResponse.json({ provider, displayName, configured: status.configured, source: status.source, models });
+  return NextResponse.json({
+    provider,
+    displayName,
+    configured: status.configured,
+    source: status.source,
+    models,
+  });
 }
 
 // POST /api/auth/api-key/[provider]  body: { apiKey: string }
 export async function POST(req: Request, { params }: Params) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { provider } = await params;
   try {
-    const { apiKey } = await req.json() as { apiKey?: string };
+    const [body, parseError] = await safeJsonBody<{ apiKey?: string }>(req, 16_384);
+    if (parseError) return parseError;
+
+    const apiKey = body?.apiKey;
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
       return NextResponse.json({ error: "apiKey is required" }, { status: 400 });
+    }
+    // Reject unreasonably long API keys (> 16KB trimmed)
+    if (apiKey.trim().length > 16_384) {
+      return NextResponse.json({ error: "apiKey too long" }, { status: 400 });
     }
     const authStorage = AuthStorage.create();
     authStorage.set(provider, { type: "api_key", key: apiKey.trim() });
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 

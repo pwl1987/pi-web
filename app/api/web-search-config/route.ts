@@ -7,8 +7,13 @@ export const dynamic = "force-dynamic";
 
 // Provider config keys that store API keys — never returned in GET responses.
 const API_KEY_FIELDS = [
-  "openaiApiKey", "braveApiKey", "tavilyApiKey", "exaApiKey",
-  "perplexityApiKey", "geminiApiKey", "cloudflareApiKey",
+  "openaiApiKey",
+  "braveApiKey",
+  "tavilyApiKey",
+  "exaApiKey",
+  "perplexityApiKey",
+  "geminiApiKey",
+  "cloudflareApiKey",
 ] as const;
 
 interface WebSearchConfig {
@@ -62,7 +67,7 @@ export async function GET() {
 // PUT /api/web-search-config — update config. API keys are set only if provided.
 export async function PUT(req: Request) {
   try {
-    const body = await req.json() as {
+    const body = (await req.json()) as {
       provider?: string;
       workflow?: string;
       curatorTimeoutSeconds?: number;
@@ -75,13 +80,14 @@ export async function PUT(req: Request) {
 
     if (body.provider !== undefined) updated.provider = body.provider;
     if (body.workflow !== undefined) updated.workflow = body.workflow;
-    if (body.curatorTimeoutSeconds !== undefined) updated.curatorTimeoutSeconds = body.curatorTimeoutSeconds;
+    if (body.curatorTimeoutSeconds !== undefined)
+      updated.curatorTimeoutSeconds = body.curatorTimeoutSeconds;
     if (body.webSearchEnabled !== undefined) {
       updated.webSearch = { ...(updated.webSearch ?? {}), enabled: body.webSearchEnabled };
     }
     if (body.apiKeys) {
       for (const [key, value] of Object.entries(body.apiKeys)) {
-        if (API_KEY_FIELDS.includes(key as typeof API_KEY_FIELDS[number])) {
+        if (API_KEY_FIELDS.includes(key as (typeof API_KEY_FIELDS)[number])) {
           if (value) (updated as Record<string, unknown>)[key] = value;
           else delete (updated as Record<string, unknown>)[key];
         }

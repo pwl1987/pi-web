@@ -109,6 +109,7 @@ export const zh = {
   "slashGroup.prompt": "提示词",
   "slashGroup.skill": "技能",
   // 输入栏 — 占位符
+  "input.label": "聊天输入",
   "input.placeholderSteer": "立即介入 / 排队后续消息...",
   "input.placeholderRunning": "Agent 运行中…",
   "input.placeholderIdle": "输入消息… 输入 / 查看命令,@ 查找文件 (Ctrl+J 聚焦)",
@@ -250,7 +251,10 @@ export const zh = {
   "sidebar.hoursAgo": "{count}小时前",
   "sidebar.daysAgo": "{count}天前",
   // 项目选择 / 新建会话
+  "sidebar.newSession": "新建",
   "sidebar.newSessionIn": "在 {cwd} 新建会话",
+  "sidebar.useDefaultDirectory": "使用默认目录",
+  "sidebar.customPath": "自定义路径…",
   "sidebar.selectProjectFirst": "请先选择一个项目",
   "sidebar.refresh": "刷新",
   "sidebar.selectProject": "选择项目…",
@@ -301,7 +305,7 @@ export const zh = {
   "sidebar.collapseForks": "折叠分叉",
   "sidebar.rename": "重命名",
   "sidebar.delete": "删除",
-  "sidebar.deleteConfirm": "删除 \"{name}\"?",
+  "sidebar.deleteConfirm": '删除 "{name}"?',
 
   // ----- MessageView.tsx -----
   "msg.copy": "复制",
@@ -679,7 +683,6 @@ export const zh = {
 
   // ----- AGENTS.md 管理 -----
 
-
   // ----- 提示词管理 (AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md) -----
   "prompts.title": "提示词文件",
   "prompts.userLevel": "用户级",
@@ -704,7 +707,7 @@ export const zh = {
   // 扩展管理新 key
   "extensions.bundled": "内置",
   "extensions.uninstall": "卸载",
-  "extensions.uninstallConfirm": "卸载扩展 \"{id}\"?",
+  "extensions.uninstallConfirm": '卸载扩展 "{id}"?',
   "extensions.install": "安装扩展",
   "extensions.installPath": "扩展目录的本地路径",
   "extensions.installBtn": "安装",
@@ -723,6 +726,5 @@ export const zh = {
   "sidebar.offline": "离线",
   "sidebar.failedToLoadSessions": "无法加载你的会话。",
 
-  "chat.loadingSession": "正在加载会话…",
   "chat.failedToLoadSession": "无法加载该会话。",
 } satisfies Record<keyof TranslationKeys, string>;

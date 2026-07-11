@@ -49,7 +49,9 @@ describe("pinned-dirs bus", () => {
 
   it("does not throw if a subscriber throws", () => {
     const bus = getPinnedDirsBus();
-    const bad = vi.fn(() => { throw new Error("boom"); });
+    const bad = vi.fn(() => {
+      throw new Error("boom");
+    });
     const good = vi.fn();
     bus.subscribe(bad); // stay subscribed
     bus.subscribe(good);

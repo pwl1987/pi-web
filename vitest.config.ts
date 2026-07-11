@@ -24,6 +24,34 @@ export default defineConfig({
       "hooks/**/*.test.{ts,tsx}",
     ],
     setupFiles: ["./vitest.setup.ts"],
+
+    // Coverage powered by v8 (spiritual successor of c8, same engine)
+    coverage: {
+      provider: "v8",
+      include: [
+        "app/**/*.{ts,tsx}",
+        "components/**/*.{ts,tsx}",
+        "hooks/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+      ],
+      exclude: [
+        "**/*.test.{mjs,ts,tsx}",
+        "**/*.test.mjs",
+        "**/*.d.ts",
+        "next-env.d.ts",
+        ".next/**",
+        "node_modules/**",
+      ],
+      reporter: ["text", "lcov", "html"],
+      // Coverage thresholds — fail if coverage drops below baseline.
+      // Baseline reflects current test coverage; increase as new tests are added.
+      thresholds: {
+        lines: 60,
+        functions: 55,
+        branches: 45,
+        statements: 60,
+      },
+    },
   },
   resolve: {
     alias: {

@@ -61,19 +61,25 @@ export async function GET(req: Request) {
     try {
       branch = await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
       if (branch === "HEAD") branch = null; // detached
-    } catch { /* detached or error */ }
+    } catch {
+      /* detached or error */
+    }
 
     // Unstaged changes (worktree vs index).
     let unstaged = { added: 0, deleted: 0 };
     try {
       unstaged = sumNumstat(await git(cwd, ["diff", "--numstat"]));
-    } catch { /* no changes or error */ }
+    } catch {
+      /* no changes or error */
+    }
 
     // Staged changes (index vs HEAD).
     let staged = { added: 0, deleted: 0 };
     try {
       staged = sumNumstat(await git(cwd, ["diff", "--cached", "--numstat"]));
-    } catch { /* no changes or error */ }
+    } catch {
+      /* no changes or error */
+    }
 
     // File counts from porcelain status.
     let modified = 0;
@@ -91,7 +97,9 @@ export async function GET(req: Request) {
           if (y !== " " && y !== "?") modified++;
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return NextResponse.json({
       isGit: true,

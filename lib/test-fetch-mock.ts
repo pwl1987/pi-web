@@ -16,9 +16,7 @@ import { vi } from "vitest";
  *     { body: { removed: true } },         // DELETE response
  *   ]);
  */
-export function mockFetchSequence(
-  responses: { body: unknown; status?: number }[],
-): void {
+export function mockFetchSequence(responses: Array<{ body: unknown; status?: number }>): void {
   const fn = vi.fn();
   for (const r of responses) {
     fn.mockResolvedValueOnce({
@@ -36,10 +34,7 @@ export function mockFetchSequence(
  * re-fetch on bus events where the response doesn't change between
  * calls.
  */
-export function mockFetchAlways(
-  body: unknown,
-  status = 200,
-): void {
+export function mockFetchAlways(body: unknown, status = 200): void {
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: status === 200,
     status,

@@ -29,7 +29,7 @@ export function useIsCwdPinned(cwd: string | null | undefined): boolean {
       try {
         const res = await fetch("/api/pinned-dirs");
         if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { pinnedDirs?: { path: string }[] };
+        const data = (await res.json()) as { pinnedDirs?: Array<{ path: string }> };
         if (cancelled) return;
         setIsPinned((data.pinnedDirs ?? []).some((d) => d.path === cwd));
       } catch {
@@ -38,7 +38,9 @@ export function useIsCwdPinned(cwd: string | null | undefined): boolean {
     };
     void check();
     const bus = getPinnedDirsBus();
-    const off = bus.subscribe(() => { void check(); });
+    const off = bus.subscribe(() => {
+      void check();
+    });
     return () => {
       cancelled = true;
       off();

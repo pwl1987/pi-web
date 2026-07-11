@@ -44,7 +44,10 @@ export async function GET(req: Request) {
     let lastTasks: TodoTask[] = [];
     let lastNextId = 0;
     for (const entry of entries) {
-      const msg = ("message" in entry ? (entry as { message?: { role?: string; toolName?: string; details?: unknown } }).message : undefined);
+      const msg =
+        "message" in entry
+          ? (entry as { message?: { role?: string; toolName?: string; details?: unknown } }).message
+          : undefined;
       if (!msg || msg.role !== "toolResult" || msg.toolName !== "todo") continue;
       if (isTodoDetails(msg.details)) {
         lastTasks = msg.details.tasks;

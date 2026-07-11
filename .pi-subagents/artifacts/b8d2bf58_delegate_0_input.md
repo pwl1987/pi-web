@@ -1,6 +1,7 @@
 # Task for delegate
 
 List the contents of the current working directory (/data/Code/pi-web) and report:
+
 1. Top-level directories/files
 2. How many .ts/.tsx files exist under app/ and components/
 3. Whether package.json exists and what scripts it defines
@@ -8,16 +9,19 @@ List the contents of the current working directory (/data/Code/pi-web) and repor
 Just a quick recon — return a concise summary.
 
 ## Acceptance Contract
+
 Acceptance level: attested
 Completion is not accepted from prose alone. End with a structured acceptance report.
 
 Criteria:
+
 - criterion-1: Return a concise result and residual risks when applicable
 
 Required evidence: manual-notes, residual-risks
 
 Finish with a fenced JSON block tagged `acceptance-report` in this shape:
 Use empty arrays when no items apply; array fields contain strings unless object entries are shown.
+
 ```acceptance-report
 {
   "criteriaSatisfied": [

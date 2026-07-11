@@ -32,14 +32,14 @@ try {
 
 const { values: cliArgs, positionals } = parseArgs({
   options: {
-    port:     { type: "string", short: "p" },
+    port: { type: "string", short: "p" },
     hostname: { type: "string", short: "H" },
   },
   allowPositionals: true,
   strict: false,
 });
 
-const port     = cliArgs.port     ?? process.env.PORT     ?? "30141";
+const port = cliArgs.port ?? process.env.PORT ?? "30141";
 const hostname = cliArgs.hostname ?? process.env.HOSTNAME ?? null;
 const subcommand = positionals[0]; // "install" | "uninstall" | undefined (= start)
 
@@ -62,7 +62,9 @@ function binAbsPath() {
 /** Run a shell command, throwing on failure with a readable message. */
 function run(cmd, opts) {
   try {
-    return execSync(cmd, { stdio: "pipe", ...opts }).toString().trim();
+    return execSync(cmd, { stdio: "pipe", ...opts })
+      .toString()
+      .trim();
   } catch (e) {
     const stderr = e.stderr ? e.stderr.toString().trim() : e.message;
     throw new Error(`Command failed: ${cmd}\n${stderr}`);
@@ -114,8 +116,16 @@ function installLinux(port) {
 }
 
 function uninstallLinux() {
-  try { run(`systemctl --user stop ${SERVICE_NAME}`); } catch { /* not running */ }
-  try { run(`systemctl --user disable ${SERVICE_NAME}`); } catch { /* not enabled */ }
+  try {
+    run(`systemctl --user stop ${SERVICE_NAME}`);
+  } catch {
+    /* not running */
+  }
+  try {
+    run(`systemctl --user disable ${SERVICE_NAME}`);
+  } catch {
+    /* not enabled */
+  }
 
   const unitFile = path.join(os.homedir(), ".config", "systemd", "user", `${SERVICE_NAME}.service`);
   if (fs.existsSync(unitFile)) {
@@ -136,7 +146,7 @@ function installMac(port) {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0">',
-    '<dict>',
+    "<dict>",
     `  <key>Label</key><string>${LABEL}</string>`,
     "  <key>ProgramArguments</key>",
     "  <array>",
@@ -157,7 +167,11 @@ function installMac(port) {
   fs.writeFileSync(plistFile, plist, "utf8");
   console.log(`Written ${plistFile}`);
 
-  try { run(`launchctl unload ${plistFile}`); } catch { /* not loaded */ }
+  try {
+    run(`launchctl unload ${plistFile}`);
+  } catch {
+    /* not loaded */
+  }
   run(`launchctl load ${plistFile}`);
   console.log(`\n✓ pi-web installed. Auto-starts on login, restarts on crash.`);
   console.log(`  Status:  launchctl list | grep ${LABEL}`);
@@ -167,7 +181,11 @@ function installMac(port) {
 
 function uninstallMac() {
   const plistFile = path.join(os.homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
-  try { run(`launchctl unload ${plistFile}`); } catch { /* not loaded */ }
+  try {
+    run(`launchctl unload ${plistFile}`);
+  } catch {
+    /* not loaded */
+  }
   if (fs.existsSync(plistFile)) {
     fs.unlinkSync(plistFile);
     console.log(`Removed ${plistFile}`);
@@ -181,13 +199,18 @@ function uninstallMac() {
 
 if (subcommand === "install") {
   if (!fs.existsSync(nextDir)) {
-    console.error("Build artifacts not found. Run `pi-web` once first (or `npm run build`), then `pi-web install`.");
+    console.error(
+      "Build artifacts not found. Run `pi-web` once first (or `npm run build`), then `pi-web install`.",
+    );
     process.exit(1);
   }
   try {
     if (process.platform === "darwin") installMac(port);
     else if (process.platform === "linux") installLinux(port);
-    else { console.error(`Auto-start is not supported on ${process.platform}.`); process.exit(1); }
+    else {
+      console.error(`Auto-start is not supported on ${process.platform}.`);
+      process.exit(1);
+    }
   } catch (e) {
     console.error(e.message);
     process.exit(1);
@@ -199,7 +222,10 @@ if (subcommand === "uninstall") {
   try {
     if (process.platform === "darwin") uninstallMac();
     else if (process.platform === "linux") uninstallLinux();
-    else { console.error(`Auto-start is not supported on ${process.platform}.`); process.exit(1); }
+    else {
+      console.error(`Auto-start is not supported on ${process.platform}.`);
+      process.exit(1);
+    }
   } catch (e) {
     console.error(e.message);
     process.exit(1);

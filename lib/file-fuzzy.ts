@@ -130,10 +130,12 @@ export function filterFileEntries(
     const score = scoreEntry(entry, lowerQuery);
     if (score > 0) scored.push({ entry, score });
   }
-  scored.sort((a, b) =>
-    b.score - a.score
-    || pathDepth(a.entry.path) - pathDepth(b.entry.path)
-    || a.entry.path.localeCompare(b.entry.path));
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      pathDepth(a.entry.path) - pathDepth(b.entry.path) ||
+      a.entry.path.localeCompare(b.entry.path),
+  );
   return scored.slice(0, limit).map((s) => s.entry);
 }
 
@@ -154,7 +156,11 @@ export interface AtInsertion {
  *   placed before the closing quote, so both further typing and manual
  *   completion keep the token well-formed.
  */
-export function buildAtInsertText(entryPath: string, isDir: boolean, forceQuotes = false): AtInsertion {
+export function buildAtInsertText(
+  entryPath: string,
+  isDir: boolean,
+  forceQuotes = false,
+): AtInsertion {
   const p = isDir ? `${entryPath}/` : entryPath;
   const needsQuotes = forceQuotes || p.includes(" ");
   if (isDir) {

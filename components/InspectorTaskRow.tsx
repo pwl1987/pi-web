@@ -85,7 +85,16 @@ export function InspectorTaskRow({ task, variant, entryId, onTaskClick }: Inspec
       }}
     >
       {variant === "done" && (
-        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--bg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="var(--bg)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polyline points="1.5 5 4 7.5 8.5 2.5" />
         </svg>
       )}

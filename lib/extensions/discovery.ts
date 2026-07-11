@@ -10,9 +10,23 @@
 // The module path must be a safe relative path within the package dir (no "..",
 // no absolute). The file must exist and be a file (not directory).
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from "fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+  mkdirSync,
+  symlinkSync,
+  rmSync,
+} from "fs";
 import { join, resolve, relative, isAbsolute } from "path";
-import type { ExtensionManifest, ExtensionManifestEntry, ExtensionRecord, ExtensionSource } from "./types";
+import type {
+  ExtensionManifest,
+  ExtensionManifestEntry,
+  ExtensionRecord,
+  ExtensionSource,
+} from "./types";
 
 /** Get the user-level extensions dir (~/.pi-web/extensions/). */
 export function getExtensionsDir(): string {
@@ -46,8 +60,10 @@ function parseExtensionEntries(pkgPath: string): RawExtensionEntry[] {
     if (!Array.isArray(entries)) return [];
     return entries.filter(
       (e): e is RawExtensionEntry =>
-        typeof e === "object" && e !== null &&
-        typeof e.id === "string" && typeof e.module === "string",
+        typeof e === "object" &&
+        e !== null &&
+        typeof e.id === "string" &&
+        typeof e.module === "string",
     );
   } catch {
     return [];
@@ -65,7 +81,11 @@ function readEnabledState(): Record<string, boolean> {
     if (typeof ext !== "object" || ext === null) return {};
     const result: Record<string, boolean> = {};
     for (const [id, val] of Object.entries(ext)) {
-      if (typeof val === "object" && val !== null && typeof (val as { enabled?: unknown }).enabled === "boolean") {
+      if (
+        typeof val === "object" &&
+        val !== null &&
+        typeof (val as { enabled?: unknown }).enabled === "boolean"
+      ) {
         result[id] = (val as { enabled: boolean }).enabled;
       }
     }
@@ -86,16 +106,23 @@ export function setExtensionEnabled(id: string, enabled: boolean): void {
     if (existsSync(configPath)) {
       config = JSON.parse(readFileSync(configPath, "utf8"));
     }
-  } catch { /* start fresh */ }
+  } catch {
+    /* start fresh */
+  }
 
-  const ext = (config.extensions ?? {}) as Record<string, { enabled?: boolean; settings?: unknown }>;
+  const ext = (config.extensions ?? {}) as Record<
+    string,
+    { enabled?: boolean; settings?: unknown }
+  >;
   ext[id] = { ...ext[id], enabled };
   config.extensions = ext;
 
   try {
     mkdirSync(configDir, { recursive: true });
     writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** Scan a single root dir for extension packages. */
@@ -231,7 +258,11 @@ export function installLocalExtension(sourcePath: string): { id: string; name?: 
   for (const entry of entries) {
     const targetDir = join(extDir, entry.id);
     // Remove existing symlink/dir if present
-    try { rmSync(targetDir, { recursive: true, force: true }); } catch { /* not present */ }
+    try {
+      rmSync(targetDir, { recursive: true, force: true });
+    } catch {
+      /* not present */
+    }
 
     symlinkSync(sourcePath, targetDir);
     results.id = entry.id;
@@ -241,7 +272,9 @@ export function installLocalExtension(sourcePath: string): { id: string; name?: 
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
     results.name = typeof pkg?.name === "string" ? pkg.name : undefined;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   return results;
 }
@@ -266,6 +299,7 @@ export function uninstallExtension(id: string): void {
         writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
       }
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
-

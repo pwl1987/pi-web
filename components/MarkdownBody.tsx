@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState, memo, type ComponentType, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  memo,
+  type ComponentType,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
@@ -20,66 +29,75 @@ interface MarkdownBodyProps {
 // react-syntax-highlighter (and its Prism style tables) is large and only
 // needed once a fenced code block is actually rendered. Load it lazily inside
 // the code-block component so it stays out of the initial client chunk.
-export const MarkdownBody = memo(function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
+export const MarkdownBody = memo(function MarkdownBody({
+  children,
+  className,
+  isStreaming,
+  cwd,
+  onOpenFile,
+}: MarkdownBodyProps) {
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
 
   // Recreating `components` every render forces ReactMarkdown to re-parse even
   // when the markdown text is identical. Cache it; its only dependencies are
   // the (stable) callbacks/props passed down from the chat tree.
-  const components = useMemo(() => ({
-    code({ className, children, ...props }: { className?: string; children?: ReactNode }) {
-      const lang = className?.replace("language-", "").toLowerCase() ?? "";
-      const raw = String(children ?? "");
-      const isBlock = className?.includes("language-") || raw.includes("\n");
-      if (isBlock) {
-        if (lang === "mermaid") {
-          return <MermaidBlock code={raw.replace(/\n$/, "")} isStreaming={isStreaming} />;
+  const components = useMemo(
+    () => ({
+      code({ className, children, ...props }: { className?: string; children?: ReactNode }) {
+        const lang = className?.replace("language-", "").toLowerCase() ?? "";
+        const raw = String(children ?? "");
+        const isBlock = className?.includes("language-") || raw.includes("\n");
+        if (isBlock) {
+          if (lang === "mermaid") {
+            return <MermaidBlock code={raw.replace(/\n$/, "")} isStreaming={isStreaming} />;
+          }
+          return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
         }
-        return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
-      }
-      return (
-        <code className="markdown-inline-code" {...props}>
-          {children}
-        </code>
-      );
-    },
-    pre({ children }: { children?: ReactNode }) {
-      return <>{children}</>;
-    },
-    a({ href, children, ...props }: { href?: string; children?: ReactNode }) {
-      const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
-      const openFile = onOpenFile;
-      if (!filePath || !openFile) {
         return (
-          <a href={href} {...props}>
+          <code className="markdown-inline-code" {...props}>
+            {children}
+          </code>
+        );
+      },
+      pre({ children }: { children?: ReactNode }) {
+        return <>{children}</>;
+      },
+      a({ href, children, ...props }: { href?: string; children?: ReactNode }) {
+        const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
+        const openFile = onOpenFile;
+        if (!filePath || !openFile) {
+          return (
+            <a href={href} {...props}>
+              {children}
+            </a>
+          );
+        }
+
+        const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+          if (event.defaultPrevented || event.button !== 0) return;
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          const target = event.currentTarget.getAttribute("target");
+          if (target && target !== "_self") return;
+          event.preventDefault();
+          openFile(filePath);
+        };
+
+        return (
+          <a href={href} {...props} onClick={handleClick}>
             {children}
           </a>
         );
-      }
-
-      const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-        if (event.defaultPrevented || event.button !== 0) return;
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        const target = event.currentTarget.getAttribute("target");
-        if (target && target !== "_self") return;
-        event.preventDefault();
-        openFile(filePath);
-      };
-
-      return (
-        <a href={href} {...props} onClick={handleClick}>
-          {children}
-        </a>
-      );
-    },
-    table({ children }: { children?: ReactNode }) {
-      return (
-        <div className="markdown-table-wrap">
-          <table>{children}</table>
-        </div>
-      );
-    },
-  }), [cwd, onOpenFile, isStreaming]);
+      },
+      table({ children }: { children?: ReactNode }) {
+        return (
+          <div className="markdown-table-wrap">
+            <table>{children}</table>
+          </div>
+        );
+      },
+    }),
+    [cwd, onOpenFile, isStreaming],
+  );
 
   return (
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>
@@ -174,7 +192,13 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
     <button
       onClick={() => setShowPreview((v) => !v)}
       disabled={isStreaming}
-      title={isStreaming ? t("md.previewAvailableAfterStreaming") : (showPreview ? t("md.showMermaidSource") : t("md.previewMermaidDiagram"))}
+      title={
+        isStreaming
+          ? t("md.previewAvailableAfterStreaming")
+          : showPreview
+            ? t("md.showMermaidSource")
+            : t("md.previewMermaidDiagram")
+      }
       className={["markdown-code-action", showPreview ? "is-active" : ""].filter(Boolean).join(" ")}
     >
       {showPreview ? t("md.source") : t("md.preview")}
@@ -189,12 +213,12 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
     failedKey === currentKey ? (
       <div className="mermaid-block mermaid-block-error">{t("md.invalidMermaidDiagram")}</div>
     ) : !svg || renderedKey !== currentKey ? (
-      <div className="mermaid-block mermaid-block-loading" aria-label={t("md.renderingMermaidDiagram")} />
-    ) : (
       <div
-        className="mermaid-block"
-        dangerouslySetInnerHTML={{ __html: svg }}
+        className="mermaid-block mermaid-block-loading"
+        aria-label={t("md.renderingMermaidDiagram")}
       />
+    ) : (
+      <div className="mermaid-block" dangerouslySetInnerHTML={{ __html: svg }} />
     );
 
   return (
@@ -208,7 +232,11 @@ function MermaidBlock({ code, isStreaming }: { code: string; isStreaming?: boole
   );
 }
 
-const SyntaxHighlighterFallback = memo(function SyntaxHighlighterFallback({ code }: { code: string }) {
+const SyntaxHighlighterFallback = memo(function SyntaxHighlighterFallback({
+  code,
+}: {
+  code: string;
+}) {
   return (
     <pre
       className="markdown-code-fallback"
@@ -230,12 +258,24 @@ const SyntaxHighlighterFallback = memo(function SyntaxHighlighterFallback({ code
   );
 });
 
-export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction }: { code: string; lang: string; headerAction?: ReactNode }) {
+export const CodeBlock = memo(function CodeBlock({
+  code,
+  lang,
+  headerAction,
+}: {
+  code: string;
+  lang: string;
+  headerAction?: ReactNode;
+}) {
   const { isDark } = useTheme();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
-  const [Highlighter, setHighlighter] = useState<ComponentType<Record<string, unknown>> | null>(null);
-  const [highlighterStyle, setHighlighterStyle] = useState<Record<string, CSSProperties> | null>(null);
+  const [Highlighter, setHighlighter] = useState<ComponentType<Record<string, unknown>> | null>(
+    null,
+  );
+  const [highlighterStyle, setHighlighterStyle] = useState<Record<string, CSSProperties> | null>(
+    null,
+  );
 
   // Lazy-load the heavy syntax highlighter + its Prism style table only when a
   // code block mounts. Keeps these out of the initial client bundle.
@@ -250,8 +290,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction }: {
         if (cancelled) return;
         const rawStyle = isDark ? darkStyleMod : lightStyleMod;
         const style =
-          (rawStyle as { default?: Record<string, CSSProperties> }).default
-          ?? (rawStyle as unknown as Record<string, CSSProperties>);
+          (rawStyle as { default?: Record<string, CSSProperties> }).default ??
+          (rawStyle as unknown as Record<string, CSSProperties>);
         setHighlighter(() => mod.Prism as unknown as ComponentType<Record<string, unknown>>);
         setHighlighterStyle(sanitizeSyntaxHighlighterTheme(style));
       })
@@ -276,10 +316,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction }: {
         <span className="markdown-code-lang">{lang || t("md.codeLangFallback")}</span>
         <div className="markdown-code-actions">
           {headerAction}
-          <button
-            onClick={copy}
-            className="markdown-code-action"
-          >
+          <button onClick={copy} className="markdown-code-action">
             {copied ? t("md.copied") : t("md.copy")}
           </button>
         </div>

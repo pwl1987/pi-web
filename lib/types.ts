@@ -47,7 +47,7 @@ export type AssistantContentBlock = TextContent | ImageContent | ThinkingContent
 
 export interface UserMessage {
   role: "user";
-  content: string | (TextContent | ImageContent)[];
+  content: string | Array<TextContent | ImageContent>;
   timestamp?: number;
 }
 
@@ -78,7 +78,7 @@ export interface ToolResultMessage {
   role: "toolResult";
   toolCallId: string;
   toolName?: string;
-  content: (TextContent | ImageContent)[];
+  content: Array<TextContent | ImageContent>;
   isError?: boolean;
   details?: unknown;
   timestamp?: number;
@@ -87,7 +87,7 @@ export interface ToolResultMessage {
 export interface CustomMessage {
   role: "custom";
   customType: string;
-  content: string | (TextContent | ImageContent)[];
+  content: string | Array<TextContent | ImageContent>;
   display: boolean;
   details?: unknown;
   timestamp?: number;
@@ -232,7 +232,7 @@ export interface CustomEntry extends SessionEntryBase {
 export interface CustomMessageEntry extends SessionEntryBase {
   type: "custom_message";
   customType: string;
-  content: string | (TextContent | ImageContent)[];
+  content: string | Array<TextContent | ImageContent>;
   details?: unknown;
   display: boolean;
 }

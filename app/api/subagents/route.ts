@@ -62,7 +62,9 @@ export async function GET() {
         try {
           const status = JSON.parse(readFileSync(statusFile, "utf8")) as AsyncStatus;
           active.push({ ...status, runId });
-        } catch { /* skip corrupt */ }
+        } catch {
+          /* skip corrupt */
+        }
       }
     }
 
@@ -73,9 +75,13 @@ export async function GET() {
       for (const file of readdirSync(resultsDir)) {
         if (!file.endsWith(".json")) continue;
         try {
-          const result = JSON.parse(readFileSync(join(resultsDir, file), "utf8")) as CompletedResult;
+          const result = JSON.parse(
+            readFileSync(join(resultsDir, file), "utf8"),
+          ) as CompletedResult;
           completed.push(result);
-        } catch { /* skip corrupt */ }
+        } catch {
+          /* skip corrupt */
+        }
       }
     }
 

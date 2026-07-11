@@ -1,9 +1,35 @@
 "use client";
 
-import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
-import type { AgentMessage, AssistantContentBlock, AssistantMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
+import {
+  Fragment,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
+import type {
+  AgentMessage,
+  AssistantContentBlock,
+  AssistantMessage,
+  ExtensionUiRequest,
+  SessionInfo,
+  SessionTreeNode,
+  TextContent,
+  ToolResultMessage,
+  UserMessage,
+} from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
-import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
+import {
+  countToolCallBlocks,
+  getDisplayableAssistantBlocks,
+  splitFinalAssistantBlocks,
+} from "@/lib/message-display";
 import { MessageView } from "./MessageView";
 import { ErrorState } from "./ErrorState";
 import { SkeletonLines } from "./Skeleton";
@@ -14,6 +40,7 @@ import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAg
 import { useAudio } from "@/hooks/useAudio";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { Icons } from "./Icons";
 import { useI18n } from "@/hooks/useI18n";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 
@@ -29,11 +56,17 @@ interface Props {
    *  scroll position, draft, EventSource all preserved). */
   pluginsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
-  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
+  onBranchDataChange?: (
+    tree: SessionTreeNode[],
+    activeLeafId: string | null,
+    onLeafChange: (leafId: string | null) => void,
+  ) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
-  onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
+  onContextUsageChange?: (
+    usage: { percent: number | null; contextWindow: number; tokens: number | null } | null,
+  ) => void;
   onOpenFile?: (filePath: string) => void;
 }
 
@@ -47,7 +80,10 @@ export interface ChatWindowHandle {
   scrollToEntry: (entryId: string) => void;
 }
 
-function phaseLabel(phase: AgentPhase, tt: (key: string, vars?: Record<string, string | number>) => string): string {
+function phaseLabel(
+  phase: AgentPhase,
+  tt: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   if (phase?.kind === "running_tools") {
     const names = phase.tools.map((t) => t.name);
     if (names.length === 0) return tt("chat.runningTool");
@@ -66,12 +102,16 @@ const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
-  return splitFinalAssistantBlocks(message as AssistantMessage).answerBlocks.some((block) => (
-    block.type === "image" || (block.type === "text" && block.text.trim().length > 0)
-  ));
+  return splitFinalAssistantBlocks(message as AssistantMessage).answerBlocks.some(
+    (block) => block.type === "image" || (block.type === "text" && block.text.trim().length > 0),
+  );
 }
 
-function findFinalAssistantIndex(messages: AgentMessage[], userIdx: number, endIdx: number): number {
+function findFinalAssistantIndex(
+  messages: AgentMessage[],
+  userIdx: number,
+  endIdx: number,
+): number {
   for (let candidateIdx = endIdx - 1; candidateIdx > userIdx; candidateIdx--) {
     if (hasFinalAssistantAnswer(messages[candidateIdx])) return candidateIdx;
   }
@@ -108,11 +148,25 @@ function withAssistantBlocks(
   return next;
 }
 
-function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messageCount: number; toolCallCount: number; children: ReactNode }) {
+function ProcessDetailsGroup({
+  messageCount,
+  toolCallCount,
+  children,
+}: {
+  messageCount: number;
+  toolCallCount: number;
+  children: ReactNode;
+}) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const parts = [t("chat.processDetails"), t(messageCount === 1 ? "chat.oneMessage" : "chat.countMessages", { count: messageCount })];
-  if (toolCallCount > 0) parts.push(t(toolCallCount === 1 ? "chat.oneToolCall" : "chat.countToolCalls", { count: toolCallCount }));
+  const parts = [
+    t("chat.processDetails"),
+    t(messageCount === 1 ? "chat.oneMessage" : "chat.countMessages", { count: messageCount }),
+  ];
+  if (toolCallCount > 0)
+    parts.push(
+      t(toolCallCount === 1 ? "chat.oneToolCall" : "chat.countToolCalls", { count: toolCallCount }),
+    );
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -136,23 +190,58 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, children }: { messag
         }}
         title={expanded ? t("chat.collapseProcessDetails") : t("chat.expandProcessDetails")}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            flexShrink: 0,
+            transform: expanded ? "rotate(90deg)" : "none",
+            transition: "transform 0.15s",
+          }}
+        >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {parts.join(" · ")}
         </span>
       </button>
-      {expanded && (
-        <div style={{ marginTop: 8 }}>
-          {children}
-        </div>
-      )}
+      {expanded && <div style={{ marginTop: 8 }}>{children}</div>}
     </div>
   );
 }
 
-export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked, modelsRefreshKey, pluginsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile }: Props, ref: Ref<ChatWindowHandle>) {
+export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindow(
+  {
+    session,
+    newSessionCwd,
+    onAgentEnd,
+    onSessionCreated,
+    onSessionForked,
+    modelsRefreshKey,
+    pluginsRefreshKey,
+    chatInputRef,
+    onBranchDataChange,
+    onSystemPromptChange,
+    onSessionStatsChange,
+    onSessionStatsPanelOpen,
+    onContextUsageChange,
+    onOpenFile,
+  }: Props,
+  ref: Ref<ChatWindowHandle>,
+) {
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
   const { t } = useI18n();
@@ -173,27 +262,74 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   }, [onAgentEnd]);
 
   const {
-    loading, error, messages, entryIds, streamState,
-    agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, tools, thinkingLevel,
-    retryInfo, contextUsage, forkingEntryId,
-    isCompacting, compactError, compactResult, displayModel: displayModelValue, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    loading,
+    error,
+    messages,
+    entryIds,
+    streamState,
+    agentRunning,
+    modelNames,
+    modelList,
+    modelThinkingLevels,
+    modelThinkingLevelMaps,
+    toolPreset,
+    tools,
+    thinkingLevel,
+    retryInfo,
+    contextUsage,
+    forkingEntryId,
+    isCompacting,
+    compactError,
+    compactResult,
+    displayModel: displayModelValue,
+    sessionStats,
+    slashCommands,
+    slashCommandsLoading,
+    queuedMessages,
+    notices,
+    extensionDialog,
+    extensionCustomUi,
+    extensionStatuses,
+    extensionWidgets,
+    respondToExtensionUi,
+    sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
     isNew,
-    messagesEndRef, scrollContainerRef,
+    messagesEndRef,
+    scrollContainerRef,
     lastUserMsgRef,
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
-    handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
+    handleSend,
+    handleAbort,
+    handleFork,
+    handleNavigate,
+    handleModelChange,
+    handleCompact,
+    handleSteer,
+    handleFollowUp,
+    handlePromptWithStreamingBehavior,
+    handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
     reloadSession,
-    handleToolPresetChange, handleToolsChange, handleThinkingLevelChange, loadSlashCommands,
-    isAtBottom, scrollToBottomAction,
+    handleToolPresetChange,
+    handleToolsChange,
+    handleThinkingLevelChange,
+    loadSlashCommands,
+    isAtBottom,
+    scrollToBottomAction,
   } = useAgentSession({
-    session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
-    modelsRefreshKey, pluginsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    session,
+    newSessionCwd,
+    onAgentEnd: wrappedOnAgentEnd,
+    onSessionCreated,
+    onSessionForked,
+    modelsRefreshKey,
+    pluginsRefreshKey,
+    chatInputRef,
+    onBranchDataChange,
+    onSystemPromptChange,
+    onSessionStatsPanelOpen,
   });
 
   // ── Search state ──────────────────────────────────────────────────────
@@ -211,7 +347,8 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         // Don't steal browser find when already in an input
         const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable)
+          return;
         e.preventDefault();
         setSearchActive((prev) => !prev);
         setSearchQuery("");
@@ -235,22 +372,23 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   const searcheableItems = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase();
-    const items: { msgIdx: number; text: string; snippet: string }[] = [];
+    const items: Array<{ msgIdx: number; text: string; snippet: string }> = [];
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       let text = "";
       if (msg.role === "user") {
-        text = msg.content ?? "";
+        const c = (msg as UserMessage).content;
+        text = typeof c === "string" ? c : "";
       } else if (msg.role === "assistant") {
-        text = (msg as import("@/lib/types").AssistantMessage).content
+        text = (msg as AssistantMessage).content
           .filter((b) => b.type === "text")
-          .map((b) => (b as import("@/lib/types").TextBlock).text)
+          .map((b) => (b as TextContent).text)
           .join(" ");
-      } else if (msg.role === "toolCall") {
-        const tc = msg;
-        text = `${tc.name} ${JSON.stringify(tc.input ?? {})}`;
       } else if (msg.role === "toolResult") {
-        text = (msg as ToolResultMessage).content ?? "";
+        text = (msg as ToolResultMessage).content
+          .filter((b) => b.type === "text")
+          .map((b) => (b as TextContent).text)
+          .join(" ");
       }
       if (text.toLowerCase().includes(q)) {
         const idx = text.toLowerCase().indexOf(q);
@@ -281,47 +419,55 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [safeIndex, searchActive, searcheableItems]);
 
-  const handleSearchKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (e.shiftKey) {
-        setSearchIndex((prev) => (prev <= 0 ? searcheableItems.length - 1 : prev - 1));
-      } else {
-        setSearchIndex((prev) => (prev >= searcheableItems.length - 1 ? 0 : prev + 1));
+  const handleSearchKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          setSearchIndex((prev) => (prev <= 0 ? searcheableItems.length - 1 : prev - 1));
+        } else {
+          setSearchIndex((prev) => (prev >= searcheableItems.length - 1 ? 0 : prev + 1));
+        }
       }
-    }
-    if (e.key === "Escape") {
-      setSearchActive(false);
-      setSearchQuery("");
-    }
-  }, [searcheableItems.length]);
+      if (e.key === "Escape") {
+        setSearchActive(false);
+        setSearchQuery("");
+      }
+    },
+    [searcheableItems.length],
+  );
 
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats
     ? [
-      sessionStats.sessionId,
-      sessionStats.sessionFile ?? "",
-      sessionStats.sessionName ?? "",
-      sessionStats.userMessages,
-      sessionStats.assistantMessages,
-      sessionStats.toolCalls,
-      sessionStats.toolResults,
-      sessionStats.totalMessages,
-      sessionStats.tokens.input,
-      sessionStats.tokens.output,
-      sessionStats.tokens.cacheRead,
-      sessionStats.tokens.cacheWrite,
-      sessionStats.tokens.total,
-      sessionStats.cost ?? 0,
-    ].join("|")
+        sessionStats.sessionId,
+        sessionStats.sessionFile ?? "",
+        sessionStats.sessionName ?? "",
+        sessionStats.userMessages,
+        sessionStats.assistantMessages,
+        sessionStats.toolCalls,
+        sessionStats.toolResults,
+        sessionStats.totalMessages,
+        sessionStats.tokens.input,
+        sessionStats.tokens.output,
+        sessionStats.tokens.cacheRead,
+        sessionStats.tokens.cacheWrite,
+        sessionStats.tokens.total,
+        sessionStats.cost ?? 0,
+      ].join("|")
     : null;
   const sessionStatsRef = useRef(sessionStats);
   sessionStatsRef.current = sessionStats;
   useEffect(() => {
     onSessionStatsChange?.(sessionStatsRef.current);
   }, [statsKey, onSessionStatsChange]);
-  useEffect(() => () => { onSessionStatsChange?.(null); }, [onSessionStatsChange]);
+  useEffect(
+    () => () => {
+      onSessionStatsChange?.(null);
+    },
+    [onSessionStatsChange],
+  );
 
   // Push context usage up to AppShell as well.
   const ctxKey = contextUsage
@@ -332,14 +478,23 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   useEffect(() => {
     onContextUsageChange?.(contextUsageRef.current);
   }, [ctxKey, onContextUsageChange]);
-  useEffect(() => () => { onContextUsageChange?.(null); }, [onContextUsageChange]);
+  useEffect(
+    () => () => {
+      onContextUsageChange?.(null);
+    },
+    [onContextUsageChange],
+  );
 
-  const onDrop = useCallback((files: File[]) => {
-    if (agentRunning) return;
-    chatInputRef?.current?.addImages(files);
-  }, [agentRunning, chatInputRef]);
+  const onDrop = useCallback(
+    (files: File[]) => {
+      if (agentRunning) return;
+      chatInputRef?.current?.addImages(files);
+    },
+    [agentRunning, chatInputRef],
+  );
 
-  const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
+  const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } =
+    useDragDrop(onDrop);
 
   const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const messageRefs = useMessageRefs(visibleMessages.length);
@@ -406,8 +561,12 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     />
   );
 
-  const aboveEditorWidgets = extensionWidgets.filter((widget) => widget.placement !== "belowEditor");
-  const belowEditorWidgets = extensionWidgets.filter((widget) => widget.placement === "belowEditor");
+  const aboveEditorWidgets = extensionWidgets.filter(
+    (widget) => widget.placement !== "belowEditor",
+  );
+  const belowEditorWidgets = extensionWidgets.filter(
+    (widget) => widget.placement === "belowEditor",
+  );
 
   // Build the toolResult lookup once per `messages` change (not per render).
   // A stable Map reference is what lets the memoized <MessageView> children
@@ -424,9 +583,12 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
 
   // Stable callback so memoized <MessageView> children don't re-render on every
   // parent render.
-  const handleEditContent = useCallback((content: string) => {
-    chatInputRef?.current?.insertIfEmpty(content);
-  }, [chatInputRef]);
+  const handleEditContent = useCallback(
+    (content: string) => {
+      chatInputRef?.current?.insertIfEmpty(content);
+    },
+    [chatInputRef],
+  );
 
   if (loading) {
     return (
@@ -473,38 +635,58 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
             ))}
           </div>
           <svg
-            width="280" height="280" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg"
+            width="280"
+            height="280"
+            viewBox="0 0 140 140"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
             className="drop-shadow-[0_6px_18px_rgba(37,99,235,0.18)]"
           >
-            <rect x="28" y="44" width="84" height="60" rx="8" fill="rgba(37,99,235,0.08)" stroke="rgba(37,99,235,0.50)" strokeWidth="1.8"/>
-            <path d="M36 100 L54 72 L68 88 L80 74 L104 100Z" fill="rgba(37,99,235,0.16)" stroke="rgba(37,99,235,0.40)" strokeWidth="1.4" strokeLinejoin="round"/>
-            <circle cx="96" cy="58" r="8" fill="rgba(37,99,235,0.22)" stroke="rgba(37,99,235,0.55)" strokeWidth="1.6"/>
+            <rect
+              x="28"
+              y="44"
+              width="84"
+              height="60"
+              rx="8"
+              fill="rgba(37,99,235,0.08)"
+              stroke="rgba(37,99,235,0.50)"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M36 100 L54 72 L68 88 L80 74 L104 100Z"
+              fill="rgba(37,99,235,0.16)"
+              stroke="rgba(37,99,235,0.40)"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <circle
+              cx="96"
+              cy="58"
+              r="8"
+              fill="rgba(37,99,235,0.22)"
+              stroke="rgba(37,99,235,0.55)"
+              strokeWidth="1.6"
+            />
             <g stroke="rgba(37,99,235,0.45)" strokeWidth="1.4" strokeLinecap="round">
-              <line x1="96" y1="46" x2="96" y2="43"/>
-              <line x1="96" y1="70" x2="96" y2="73"/>
-              <line x1="84" y1="58" x2="81" y2="58"/>
-              <line x1="108" y1="58" x2="111" y2="58"/>
-              <line x1="87.5" y1="49.5" x2="85.4" y2="47.4"/>
-              <line x1="104.5" y1="66.5" x2="106.6" y2="68.6"/>
-              <line x1="104.5" y1="49.5" x2="106.6" y2="47.4"/>
-              <line x1="87.5" y1="66.5" x2="85.4" y2="68.6"/>
+              <line x1="96" y1="46" x2="96" y2="43" />
+              <line x1="96" y1="70" x2="96" y2="73" />
+              <line x1="84" y1="58" x2="81" y2="58" />
+              <line x1="108" y1="58" x2="111" y2="58" />
+              <line x1="87.5" y1="49.5" x2="85.4" y2="47.4" />
+              <line x1="104.5" y1="66.5" x2="106.6" y2="68.6" />
+              <line x1="104.5" y1="49.5" x2="106.6" y2="47.4" />
+              <line x1="87.5" y1="66.5" x2="85.4" y2="68.6" />
             </g>
           </svg>
         </div>
       )}
 
       {extensionDialog && (
-        <ExtensionDialog
-          request={extensionDialog}
-          onRespond={respondToExtensionUi}
-        />
+        <ExtensionDialog request={extensionDialog} onRespond={respondToExtensionUi} />
       )}
 
       {extensionCustomUi && (
-        <ExtensionCustomPanel
-          request={extensionCustomUi}
-          onInput={sendExtensionCustomInput}
-        />
+        <ExtensionCustomPanel request={extensionCustomUi} onInput={sendExtensionCustomInput} />
       )}
 
       {isEmptyNew ? (
@@ -522,16 +704,62 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
                 fontFamily: "var(--font-mono)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Agent Web</span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                  lineHeight: 1.4,
+                  overflow: "hidden",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 700,
+                    letterSpacing: 0,
+                    color: "var(--text)",
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  π
+                </span>
+                <span
+                  style={{
+                    fontSize: 22,
+                    color: "var(--text)",
+                    fontWeight: 700,
+                    letterSpacing: 0,
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Pi Agent Web
+                </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 2,
+                  flexShrink: 0,
+                }}
+              >
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
+                  web{" "}
+                  <span style={{ color: "var(--text)" }}>
+                    v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}
+                  </span>
                 </span>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
+                  pi{" "}
+                  <span style={{ color: "var(--text)" }}>
+                    v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}
+                  </span>
                 </span>
               </div>
             </div>
@@ -540,329 +768,436 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
           </div>
         </div>
       ) : (
-      <>
-      <div className="relative flex flex-1 overflow-hidden">
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            left: 0,
-            right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
-            zIndex: 40,
-            padding: `0 ${CHAT_COLUMN_PADDING}px`,
-            pointerEvents: "none",
-          }}
-        >
-          <div style={{ maxWidth: 820, margin: "0 auto" }}>
-            <NoticeShelf notices={notices} floating align="right" />
-          </div>
-        </div>
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-4 [scrollbar-width:none]">
-          <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
-            <div style={{ maxWidth: 820, margin: "0 auto" }}>
-              <ExtensionStatusBar statuses={extensionStatuses} />
-              <ExtensionWidgets widgets={aboveEditorWidgets} />
-
-              {searchActive && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 12px",
-                    marginBottom: 10,
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    background: "var(--bg-panel)",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setSearchIndex(0); }}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder={t("chat.searchMessages")}
-                    style={{
-                      flex: 1,
-                      border: "none",
-                      background: "transparent",
-                      outline: "none",
-                      fontSize: 13,
-                      color: "var(--text)",
-                      fontFamily: "inherit",
-                    }}
-                  />
-                  {searcheableItems.length > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                      {safeIndex + 1} / {searcheableItems.length}
-                    </span>
-                  )}
-                  {searchQuery && searcheableItems.length === 0 && (
-                    <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                      {t("chat.noMatches")}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => { setSearchActive(false); setSearchQuery(""); }}
-                    title={t("common.close")}
-                    aria-label={t("common.close")}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 22,
-                      height: 22,
-                      borderRadius: 4,
-                      border: "none",
-                      background: "transparent",
-                      color: "var(--text-dim)",
-                      cursor: "pointer",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-
-            {(() => {
-              let lastUserIdx = -1;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].role === "user") { lastUserIdx = i; break; }
-              }
-
-              const visibleRefIndexByMessage = new Map<number, number>();
-              let refIdx = 0;
-              messages.forEach((msg, idx) => {
-                if (msg.role === "user" || msg.role === "assistant") {
-                  visibleRefIndexByMessage.set(idx, refIdx++);
-                }
-              });
-
-              const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
-                messageRefs.current[refIndex] = el;
-                if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
-                // Also register for click-to-jump. entryIds[idx] may be null
-                // for entries that haven't been loaded — only register when
-                // we have an id, so the map stays clean.
-                const eid = entryIds[idx];
-                if (eid) registerMessageEl(eid, el);
-              };
-
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean } = {}): ReactNode => {
-                const msg = options.messageOverride ?? messages[idx];
-                const prevAssistantEntryId =
-                  msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
-                    ? entryIds[idx - 1]
-                    : undefined;
-                const isVisible = msg.role === "user" || msg.role === "assistant";
-                const currentRefIdx = visibleRefIndexByMessage.get(idx);
-                const keyPrefix = options.keyPrefix ?? "message";
-                let showTimestamp = false;
-                if (msg.role === "assistant") {
-                  showTimestamp = true;
-                  for (let j = idx + 1; j < messages.length; j++) {
-                    const r = messages[j].role;
-                    if (r === "user") break;
-                    if (r === "assistant") { showTimestamp = false; break; }
-                  }
-                  // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
-                  if (showTimestamp && streamState.isStreaming && idx === messages.length - 1) {
-                    showTimestamp = false;
-                  }
-                }
-                if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
-                const view = (
-                  <MessageView
-                    key={`${keyPrefix}-view-${idx}`}
-                    message={msg}
-                    toolResults={toolResultsMap}
-                    modelNames={modelNames}
-                    cwd={messageCwd}
-                    onOpenFile={onOpenFile}
-                    entryId={entryIds[idx]}
-                    onFork={agentRunning || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork}
-                    forking={forkingEntryId === entryIds[idx]}
-                    onNavigate={agentRunning ? undefined : handleNavigate}
-                    prevAssistantEntryId={agentRunning ? undefined : prevAssistantEntryId}
-                    onEditContent={handleEditContent}
-                    showTimestamp={showTimestamp}
-                    prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
-                  />
-                );
-                if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
-                return (
-                  <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
-                    {view}
-                  </div>
-                );
-              };
-
-              const rendered: ReactNode[] = [];
-              for (let idx = 0; idx < messages.length;) {
-                const msg = messages[idx];
-                if (msg.role !== "user") {
-                  rendered.push(renderMessage(idx));
-                  idx += 1;
-                  continue;
-                }
-
-                const userIdx = idx;
-                let endIdx = userIdx + 1;
-                while (endIdx < messages.length && messages[endIdx].role !== "user") endIdx += 1;
-
-                const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-                if (finalAssistantIdx === -1) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
-                }
-
-                const isLiveTail = (agentRunning || streamState.isStreaming) && endIdx === messages.length && userIdx === lastUserIdx;
-                if (isLiveTail) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
-                }
-
-                rendered.push(renderMessage(userIdx));
-
-                const processIndices: number[] = [];
-                for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
-                  processIndices.push(processIdx);
-                }
-                const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
-                const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-                const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalProcessMessage = finalSplit.processBlocks.length > 0
-                  ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
-                  : null;
-                const finalAnswerMessage = finalSplit.answerBlocks.length > 0
-                  ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
-                  : null;
-
-                const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
-                if (processCount > 0) {
-                  const processRefIdx = visibleProcessIndices
-                    .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
-                    .find((value): value is number => typeof value === "number")
-                    ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
-                  const processGroup = (
-                    <ProcessDetailsGroup
-                      messageCount={processCount}
-                      toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
-                    >
-                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
-                    </ProcessDetailsGroup>
-                  );
-                  rendered.push(
-                    <div
-                      key={`process-group-${userIdx}-${finalAssistantIdx}`}
-                      ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
-                    >
-                      {processGroup}
-                    </div>,
-                  );
-                }
-
-                if (finalAnswerMessage) {
-                  rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }));
-                }
-                for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-                  rendered.push(renderMessage(renderIdx));
-                }
-                idx = endIdx;
-              }
-              return rendered;
-            })()}
-
-            {streamState.isStreaming && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} />
-            )}
-
-            {agentRunning && !streamState.streamingMessage && (
-              <div className="py-2 text-[13px] text-text-muted">
-                <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t)}</span>
+        <>
+          <div className="relative flex flex-1 overflow-hidden">
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                left: 0,
+                right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
+                zIndex: 40,
+                padding: `0 ${CHAT_COLUMN_PADDING}px`,
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ maxWidth: 820, margin: "0 auto" }}>
+                <NoticeShelf notices={notices} floating align="right" />
               </div>
-            )}
-
-            {agentRunning && (
-              <div style={{ height: scrollContainerRef.current ? scrollContainerRef.current.clientHeight : "80vh" }} />
-            )}
-
-            <div ref={messagesEndRef} />
             </div>
-          </div>
-        </div>
-        {!isAtBottom && messages.length > 0 && (
-          <button
-            onClick={scrollToBottomAction}
-            aria-label={t("chat.scrollToBottom")}
-            title={t("chat.scrollToBottom")}
-            style={{
-              position: "absolute",
-              bottom: 20,
-              right: isMobile ? 20 : CHAT_MINIMAP_WIDTH + 20,
-              zIndex: 30,
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-              color: "var(--text)",
-              cursor: "pointer",
-              transition: "background 0.12s, transform 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-panel)"; }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-        )}
-        {isMobile ? null : (
-          <ChatMinimap
-            messages={messages}
-            streamingMessage={streamState.streamingMessage}
-            scrollContainer={scrollContainerRef}
-            messageRefs={messageRefs}
-          />
-        )}
-      </div>
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto pt-4 [scrollbar-width:none]"
+            >
+              <div style={{ padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
+                <div style={{ maxWidth: 820, margin: "0 auto" }}>
+                  <ExtensionStatusBar statuses={extensionStatuses} />
+                  <ExtensionWidgets widgets={aboveEditorWidgets} />
 
-      <div className="relative">
-        <div
-          style={{
-            padding: `0 ${CHAT_COLUMN_PADDING}px`,
-            paddingRight: isMobile ? CHAT_COLUMN_PADDING : CHAT_INPUT_RIGHT_PADDING,
-          }}
-        >
-          <div style={{ maxWidth: 820, margin: "0 auto" }}>
-            <ExtensionWidgets widgets={belowEditorWidgets} />
+                  {searchActive && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 12px",
+                        marginBottom: 10,
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--bg-panel)",
+                      }}
+                    >
+                      <Icons.Search size={14} style={{ flexShrink: 0, color: "var(--text-dim)" }} />
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setSearchIndex(0);
+                        }}
+                        onKeyDown={handleSearchKeyDown}
+                        placeholder={t("chat.searchMessages")}
+                        style={{
+                          flex: 1,
+                          border: "none",
+                          background: "transparent",
+                          outline: "none",
+                          fontSize: 13,
+                          color: "var(--text)",
+                          fontFamily: "inherit",
+                        }}
+                      />
+                      {searcheableItems.length > 0 && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text-muted)",
+                            whiteSpace: "nowrap",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {safeIndex + 1} / {searcheableItems.length}
+                        </span>
+                      )}
+                      {searchQuery && searcheableItems.length === 0 && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text-dim)",
+                            whiteSpace: "nowrap",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {t("chat.noMatches")}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSearchActive(false);
+                          setSearchQuery("");
+                        }}
+                        title={t("common.close")}
+                        aria-label={t("common.close")}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 22,
+                          height: 22,
+                          borderRadius: 4,
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--text-dim)",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icons.Close size={12} />
+                      </button>
+                    </div>
+                  )}
+
+                  {(() => {
+                    let lastUserIdx = -1;
+                    for (let i = messages.length - 1; i >= 0; i--) {
+                      if (messages[i].role === "user") {
+                        lastUserIdx = i;
+                        break;
+                      }
+                    }
+
+                    const visibleRefIndexByMessage = new Map<number, number>();
+                    let refIdx = 0;
+                    messages.forEach((msg, idx) => {
+                      if (msg.role === "user" || msg.role === "assistant") {
+                        visibleRefIndexByMessage.set(idx, refIdx++);
+                      }
+                    });
+
+                    const attachVisibleRef =
+                      (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
+                        messageRefs.current[refIndex] = el;
+                        if (idx === lastUserIdx) {
+                          (lastUserMsgRef as { current: HTMLDivElement | null }).current = el;
+                        }
+                        // Also register for click-to-jump. entryIds[idx] may be null
+                        // for entries that haven't been loaded — only register when
+                        // we have an id, so the map stays clean.
+                        const eid = entryIds[idx];
+                        if (eid) registerMessageEl(eid, el);
+                      };
+
+                    const renderMessage = (
+                      idx: number,
+                      options: {
+                        attachRef?: boolean;
+                        keyPrefix?: string;
+                        messageOverride?: AgentMessage;
+                        showTimestamp?: boolean;
+                      } = {},
+                    ): ReactNode => {
+                      const msg = options.messageOverride ?? messages[idx];
+                      const prevAssistantEntryId =
+                        msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
+                          ? entryIds[idx - 1]
+                          : undefined;
+                      const isVisible = msg.role === "user" || msg.role === "assistant";
+                      const currentRefIdx = visibleRefIndexByMessage.get(idx);
+                      const keyPrefix = options.keyPrefix ?? "message";
+                      let showTimestamp = false;
+                      if (msg.role === "assistant") {
+                        showTimestamp = true;
+                        for (let j = idx + 1; j < messages.length; j++) {
+                          const r = messages[j].role;
+                          if (r === "user") break;
+                          if (r === "assistant") {
+                            showTimestamp = false;
+                            break;
+                          }
+                        }
+                        // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
+                        if (
+                          showTimestamp &&
+                          streamState.isStreaming &&
+                          idx === messages.length - 1
+                        ) {
+                          showTimestamp = false;
+                        }
+                      }
+                      if (options.showTimestamp !== undefined)
+                        showTimestamp = options.showTimestamp;
+                      const view = (
+                        <MessageView
+                          key={`${keyPrefix}-view-${idx}`}
+                          message={msg}
+                          toolResults={toolResultsMap}
+                          modelNames={modelNames}
+                          cwd={messageCwd}
+                          onOpenFile={onOpenFile}
+                          entryId={entryIds[idx]}
+                          onFork={
+                            agentRunning || isNew || (idx === 0 && msg.role === "user")
+                              ? undefined
+                              : handleFork
+                          }
+                          forking={forkingEntryId === entryIds[idx]}
+                          onNavigate={agentRunning ? undefined : handleNavigate}
+                          prevAssistantEntryId={agentRunning ? undefined : prevAssistantEntryId}
+                          onEditContent={handleEditContent}
+                          showTimestamp={showTimestamp}
+                          prevTimestamp={
+                            idx > 0
+                              ? (messages[idx - 1] as AgentMessage & { timestamp?: number })
+                                  .timestamp
+                              : undefined
+                          }
+                        />
+                      );
+                      if (!isVisible || options.attachRef === false || currentRefIdx === undefined)
+                        return view;
+                      return (
+                        <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
+                          {view}
+                        </div>
+                      );
+                    };
+
+                    const rendered: ReactNode[] = [];
+                    for (let idx = 0; idx < messages.length;) {
+                      const msg = messages[idx];
+                      if (msg.role !== "user") {
+                        rendered.push(renderMessage(idx));
+                        idx += 1;
+                        continue;
+                      }
+
+                      const userIdx = idx;
+                      let endIdx = userIdx + 1;
+                      while (endIdx < messages.length && messages[endIdx].role !== "user")
+                        endIdx += 1;
+
+                      const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
+
+                      if (finalAssistantIdx === -1) {
+                        for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+                          rendered.push(renderMessage(renderIdx));
+                        }
+                        idx = endIdx;
+                        continue;
+                      }
+
+                      const isLiveTail =
+                        (agentRunning || streamState.isStreaming) &&
+                        endIdx === messages.length &&
+                        userIdx === lastUserIdx;
+                      if (isLiveTail) {
+                        for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+                          rendered.push(renderMessage(renderIdx));
+                        }
+                        idx = endIdx;
+                        continue;
+                      }
+
+                      rendered.push(renderMessage(userIdx));
+
+                      const processIndices: number[] = [];
+                      for (
+                        let processIdx = userIdx + 1;
+                        processIdx < finalAssistantIdx;
+                        processIdx++
+                      ) {
+                        processIndices.push(processIdx);
+                      }
+                      const visibleProcessIndices = processIndices.filter((processIdx) =>
+                        hasDisplayableProcessMessage(messages[processIdx]),
+                      );
+                      const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
+                      const finalSplit = splitFinalAssistantBlocks(finalAssistant);
+                      const finalProcessMessage =
+                        finalSplit.processBlocks.length > 0
+                          ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, {
+                              omitUsage: true,
+                            })
+                          : null;
+                      const finalAnswerMessage =
+                        finalSplit.answerBlocks.length > 0
+                          ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
+                          : null;
+
+                      const processCount =
+                        visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
+                      if (processCount > 0) {
+                        const processRefIdx =
+                          visibleProcessIndices
+                            .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
+                            .find((value): value is number => typeof value === "number") ??
+                          (finalAnswerMessage
+                            ? undefined
+                            : visibleRefIndexByMessage.get(finalAssistantIdx));
+                        const processGroup = (
+                          <ProcessDetailsGroup
+                            messageCount={processCount}
+                            toolCallCount={
+                              countToolCalls(messages, visibleProcessIndices) +
+                              countToolCallBlocks(finalSplit.processBlocks)
+                            }
+                          >
+                            {visibleProcessIndices.map((processIdx) =>
+                              renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }),
+                            )}
+                            {finalProcessMessage &&
+                              renderMessage(finalAssistantIdx, {
+                                attachRef: false,
+                                keyPrefix: "process-final",
+                                messageOverride: finalProcessMessage,
+                                showTimestamp: false,
+                              })}
+                          </ProcessDetailsGroup>
+                        );
+                        rendered.push(
+                          <div
+                            key={`process-group-${userIdx}-${finalAssistantIdx}`}
+                            ref={
+                              processRefIdx === undefined
+                                ? undefined
+                                : (el) => {
+                                    messageRefs.current[processRefIdx] = el;
+                                  }
+                            }
+                          >
+                            {processGroup}
+                          </div>,
+                        );
+                      }
+
+                      if (finalAnswerMessage) {
+                        rendered.push(
+                          renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage }),
+                        );
+                      }
+                      for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
+                        rendered.push(renderMessage(renderIdx));
+                      }
+                      idx = endIdx;
+                    }
+                    return rendered;
+                  })()}
+
+                  {streamState.isStreaming && streamState.streamingMessage && (
+                    <MessageView
+                      message={streamState.streamingMessage as AgentMessage}
+                      isStreaming
+                      modelNames={modelNames}
+                      cwd={messageCwd}
+                      onOpenFile={onOpenFile}
+                    />
+                  )}
+
+                  {agentRunning && !streamState.streamingMessage && (
+                    <div className="py-2 text-[13px] text-text-muted">
+                      <span className="animate-[pulse_1.5s_infinite]">
+                        {phaseLabel(agentPhase, t)}
+                      </span>
+                    </div>
+                  )}
+
+                  {agentRunning && (
+                    <div
+                      style={{
+                        height: scrollContainerRef.current
+                          ? scrollContainerRef.current.clientHeight
+                          : "80vh",
+                      }}
+                    />
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
+            </div>
+            {!isAtBottom && messages.length > 0 && (
+              <button
+                onClick={scrollToBottomAction}
+                aria-label={t("chat.scrollToBottom")}
+                title={t("chat.scrollToBottom")}
+                className="animate-scale-in"
+                style={{
+                  position: "absolute",
+                  bottom: 20,
+                  right: isMobile ? 20 : CHAT_MINIMAP_WIDTH + 20,
+                  zIndex: 30,
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "var(--bg-panel)",
+                  border: "1px solid var(--border)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  color: "var(--text)",
+                  cursor: "pointer",
+                  transition: "background 0.15s, transform 0.15s, box-shadow 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.18)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--bg-panel)";
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+                }}
+              >
+                <Icons.ChevronDown size={16} />
+              </button>
+            )}
+            {isMobile ? null : (
+              <ChatMinimap
+                messages={messages}
+                streamingMessage={streamState.streamingMessage}
+                scrollContainer={scrollContainerRef}
+                messageRefs={messageRefs}
+              />
+            )}
           </div>
-        </div>
-        {chatInputElement}
-      </div>
-      </>
+
+          <div className="relative">
+            <div
+              style={{
+                padding: `0 ${CHAT_COLUMN_PADDING}px`,
+                paddingRight: isMobile ? CHAT_COLUMN_PADDING : CHAT_INPUT_RIGHT_PADDING,
+              }}
+            >
+              <div style={{ maxWidth: 820, margin: "0 auto" }}>
+                <ExtensionWidgets widgets={belowEditorWidgets} />
+              </div>
+            </div>
+            {chatInputElement}
+          </div>
+        </>
       )}
     </div>
   );
@@ -888,8 +1223,19 @@ function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text:
             fontSize: 12,
           }}
         >
-          <span style={{ color: "var(--accent)", fontFamily: "var(--font-mono)", fontSize: 11 }}>{status.key}</span>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status.text}</span>
+          <span style={{ color: "var(--accent)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+            {status.key}
+          </span>
+          <span
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {status.text}
+          </span>
         </div>
       ))}
     </div>
@@ -910,10 +1256,29 @@ function ExtensionWidgets({ widgets }: { widgets: Array<{ key: string; lines: st
             overflow: "hidden",
           }}
         >
-          <div style={{ padding: "5px 9px", borderBottom: "1px solid var(--border)", color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+          <div
+            style={{
+              padding: "5px 9px",
+              borderBottom: "1px solid var(--border)",
+              color: "var(--text-dim)",
+              fontSize: 11,
+              fontFamily: "var(--font-mono)",
+            }}
+          >
             {widget.key}
           </div>
-          <pre style={{ margin: 0, padding: "8px 9px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "var(--font-mono)" }}>
+          <pre
+            style={{
+              margin: 0,
+              padding: "8px 9px",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              lineHeight: 1.5,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
             {widget.lines.join("\n")}
           </pre>
         </div>
@@ -922,7 +1287,15 @@ function ExtensionWidgets({ widgets }: { widgets: Array<{ key: string; lines: st
   );
 }
 
-function NoticeShelf({ notices, floating = false, align = "left" }: { notices: NoticeItem[]; floating?: boolean; align?: "left" | "right" }) {
+function NoticeShelf({
+  notices,
+  floating = false,
+  align = "left",
+}: {
+  notices: NoticeItem[];
+  floating?: boolean;
+  align?: "left" | "right";
+}) {
   if (notices.length === 0) return null;
   return (
     <div
@@ -934,13 +1307,14 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
       }}
     >
       {notices.map((notice, index) => {
-        const color = notice.type === "error"
-          ? "var(--color-error)"
-          : notice.type === "warning"
-            ? "var(--color-warning)"
-            : notice.type === "success"
-              ? "var(--color-success-soft)"
-              : "var(--accent)";
+        const color =
+          notice.type === "error"
+            ? "var(--color-error)"
+            : notice.type === "warning"
+              ? "var(--color-warning)"
+              : notice.type === "success"
+                ? "var(--color-success-soft)"
+                : "var(--accent)";
         return (
           <div
             key={notice.id}
@@ -981,7 +1355,16 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
                 flexShrink: 0,
               }}
             />
-            <span style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                padding: "14px 0",
+                minWidth: 0,
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {notice.message}
             </span>
           </div>
@@ -991,20 +1374,26 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
   );
 }
 
-type ExtensionDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
+type ExtensionDialogRequest = Extract<
+  ExtensionUiRequest,
+  { method: "select" | "confirm" | "input" | "editor" }
+>;
 
 function ExtensionDialog({
   request,
   onRespond,
 }: {
   request: ExtensionDialogRequest;
-  onRespond: (request: ExtensionDialogRequest, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => void;
+  onRespond: (
+    request: ExtensionDialogRequest,
+    response: { value: string } | { confirmed: boolean } | { cancelled: true },
+  ) => void;
 }) {
   const { t } = useI18n();
-  const [value, setValue] = useState(request.method === "editor" ? request.prefill ?? "" : "");
+  const [value, setValue] = useState(request.method === "editor" ? (request.prefill ?? "") : "");
 
   useEffect(() => {
-    setValue(request.method === "editor" ? request.prefill ?? "" : "");
+    setValue(request.method === "editor" ? (request.prefill ?? "") : "");
   }, [request]);
 
   const submitValue = () => {
@@ -1042,12 +1431,30 @@ function ExtensionDialog({
       >
         <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 650 }}>{request.title}</div>
-          <div style={{ marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>extension request</div>
+          <div
+            style={{
+              marginTop: 3,
+              color: "var(--text-dim)",
+              fontSize: 11,
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            extension request
+          </div>
         </div>
 
         <div style={{ padding: 14 }}>
           {request.method === "confirm" && (
-            <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{request.message}</div>
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: 13,
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {request.message}
+            </div>
           )}
           {request.method === "select" && (
             <div style={{ display: "grid", gap: 8 }}>
@@ -1121,7 +1528,16 @@ function ExtensionDialog({
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "10px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-panel)" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+            padding: "10px 14px",
+            borderTop: "1px solid var(--border)",
+            background: "var(--bg-panel)",
+          }}
+        >
           <button
             onClick={() => onRespond(request, { cancelled: true })}
             style={{
@@ -1206,11 +1622,15 @@ function toTerminalKeyData(e: KeyboardEvent): string | null {
 }
 
 function renderAnsiLine(line: string, keyPrefix: string): ReactNode[] {
-  return parseAnsiLine(line).map((segment, index) => (
-    Object.keys(segment.style).length > 0
-      ? <span key={`${keyPrefix}-${index}`} style={segment.style}>{segment.text}</span>
-      : segment.text
-  ));
+  return parseAnsiLine(line).map((segment, index) =>
+    Object.keys(segment.style).length > 0 ? (
+      <span key={`${keyPrefix}-${index}`} style={segment.style}>
+        {segment.text}
+      </span>
+    ) : (
+      segment.text
+    ),
+  );
 }
 
 function ExtensionCustomPanel({
@@ -1263,7 +1683,16 @@ function ExtensionCustomPanel({
           outline: "none",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "10px 12px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
           <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 650 }}>Extension panel</div>
           <button
             onClick={() => onInput(request, "\x03")}

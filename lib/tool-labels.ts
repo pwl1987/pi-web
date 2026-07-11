@@ -20,13 +20,16 @@ export interface ToolLabel {
 export const TOOL_LABELS_ZH: Record<string, ToolLabel> = {
   // --- Built-in coding tools ---
   read: {
-    description: "读取文件内容。支持文本和图片（jpg/png/gif/webp/bmp）。文本文件截断到 2000 行或 50KB，大文件用 offset/limit 分段读取。",
+    description:
+      "读取文件内容。支持文本和图片（jpg/png/gif/webp/bmp）。文本文件截断到 2000 行或 50KB，大文件用 offset/limit 分段读取。",
   },
   bash: {
-    description: "在当前工作目录执行 bash 命令，返回 stdout 和 stderr。输出截断到最后 2000 行或 50KB。",
+    description:
+      "在当前工作目录执行 bash 命令，返回 stdout 和 stderr。输出截断到最后 2000 行或 50KB。",
   },
   edit: {
-    description: "用精确文本替换编辑单个文件。每次替换必须唯一匹配、不重叠，用尽可能小的上下文定位改动。",
+    description:
+      "用精确文本替换编辑单个文件。每次替换必须唯一匹配、不重叠，用尽可能小的上下文定位改动。",
   },
   write: {
     description: "写入文件。不存在则创建，存在则覆盖。自动创建父目录。",

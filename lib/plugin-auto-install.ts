@@ -18,9 +18,8 @@ export interface PluginInstallResult {
 }
 
 declare global {
-   
   var __piAutoInstallResults: PluginInstallResult[] | undefined;
-   
+
   var __piAutoInstallLock: Promise<PluginInstallResult[]> | undefined;
 }
 
@@ -52,13 +51,20 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
 
     // All already installed — cache and return.
     if (missing.length === 0) {
-      results.push(...RECOMMENDED_PLUGINS.map((p) => ({ source: p.source, name: p.name, status: "already" as const })));
+      results.push(
+        ...RECOMMENDED_PLUGINS.map((p) => ({
+          source: p.source,
+          name: p.name,
+          status: "already" as const,
+        })),
+      );
       globalThis.__piAutoInstallResults = results;
       return results;
     }
 
     // Lazy import — only load the SDK when we actually need to install.
-    const { DefaultPackageManager, SettingsManager } = await import("@earendil-works/pi-coding-agent");
+    const { DefaultPackageManager, SettingsManager } =
+      await import("@earendil-works/pi-coding-agent");
 
     // Use the repo root as cwd (process.cwd() is the pi-web root in both dev and prod).
     const cwd = process.cwd();
@@ -75,7 +81,12 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
         await packageManager.installAndPersist(plugin.source, { local: false });
         results.push({ source: plugin.source, name: plugin.name, status: "installed" });
       } catch (e) {
-        results.push({ source: plugin.source, name: plugin.name, status: "failed", error: e instanceof Error ? e.message : String(e) });
+        results.push({
+          source: plugin.source,
+          name: plugin.name,
+          status: "failed",
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
 

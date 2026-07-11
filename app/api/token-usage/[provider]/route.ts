@@ -15,10 +15,7 @@
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { NextResponse } from "next/server";
 
-import {
-  SUPPORTED_TOKEN_USAGE_PROVIDERS,
-  fetchTokenPlanRemains,
-} from "@/lib/token-usage";
+import { SUPPORTED_TOKEN_USAGE_PROVIDERS, fetchTokenPlanRemains } from "@/lib/token-usage";
 
 export const dynamic = "force-dynamic";
 
@@ -57,10 +54,7 @@ export async function GET(_req: Request, { params }: Params) {
 async function handleRequest(providerId: string): Promise<Response> {
   const cfg = SUPPORTED_TOKEN_USAGE_PROVIDERS[providerId];
   if (!cfg) {
-    return NextResponse.json(
-      { ok: false, reason: "unsupported" },
-      { status: 404 },
-    );
+    return NextResponse.json({ ok: false, reason: "unsupported" }, { status: 404 });
   }
 
   let apiKey: string | undefined;
@@ -85,9 +79,17 @@ async function handleRequest(providerId: string): Promise<Response> {
     if (!info) {
       // Server responded but the payload didn't carry usable fields.
       // Treat as a soft "no data" so the UI doesn't flap on transient shapes.
-      return NextResponse.json({ ok: false, reason: "error", error: "Empty or unparseable token-plan response" });
+      return NextResponse.json({
+        ok: false,
+        reason: "error",
+        error: "Empty or unparseable token-plan response",
+      });
     }
-    return NextResponse.json({ ok: true, info: serializeInfo(info), providerDisplayName: cfg.displayName });
+    return NextResponse.json({
+      ok: true,
+      info: serializeInfo(info),
+      providerDisplayName: cfg.displayName,
+    });
   } catch (err) {
     return NextResponse.json({
       ok: false,
@@ -106,14 +108,26 @@ function serializeInfo(info: import("@/lib/token-usage").TokenUsageInfo) {
   // breakdown in a future tooltip without re-fetching. Other providers'
   // `raw` payloads pass through unchanged.
   const breakdown =
-    info.raw && typeof info.raw === "object" && Array.isArray((info.raw as { model_remains?: unknown }).model_remains)
+    info.raw &&
+    typeof info.raw === "object" &&
+    Array.isArray((info.raw as { model_remains?: unknown }).model_remains)
       ? (info.raw as { model_remains: Array<Record<string, unknown>> }).model_remains.map((m) => ({
           model_name: m.model_name,
-          current_interval_total_count: typeof m.current_interval_total_count === "number" ? m.current_interval_total_count : null,
-          current_interval_usage_count: typeof m.current_interval_usage_count === "number" ? m.current_interval_usage_count : null,
-          current_interval_remaining_percent: typeof m.current_interval_remaining_percent === "number" ? m.current_interval_remaining_percent : null,
+          current_interval_total_count:
+            typeof m.current_interval_total_count === "number"
+              ? m.current_interval_total_count
+              : null,
+          current_interval_usage_count:
+            typeof m.current_interval_usage_count === "number"
+              ? m.current_interval_usage_count
+              : null,
+          current_interval_remaining_percent:
+            typeof m.current_interval_remaining_percent === "number"
+              ? m.current_interval_remaining_percent
+              : null,
           end_time: typeof m.end_time === "number" ? m.end_time : null,
-          current_interval_status: typeof m.current_interval_status === "number" ? m.current_interval_status : null,
+          current_interval_status:
+            typeof m.current_interval_status === "number" ? m.current_interval_status : null,
         }))
       : undefined;
 

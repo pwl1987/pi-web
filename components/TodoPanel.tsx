@@ -38,7 +38,7 @@ export function TodoPanel() {
     try {
       const res = await fetch(`/api/task-list?sessionId=${encodeURIComponent(sessionId)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as { tasks: TodoTask[] };
+      const d = (await res.json()) as { tasks: TodoTask[] };
       setTasks(d.tasks ?? []);
       setError(null);
     } catch (e) {
@@ -48,7 +48,9 @@ export function TodoPanel() {
     }
   }, [sessionId]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
   // Live refresh — re-fetch when the agent's `todo` tool completes in this session.
   useTodoLiveRefresh(sessionId, reload);
   // Re-fetch when agent finishes a run (new todo tool calls may have happened).
@@ -56,7 +58,12 @@ export function TodoPanel() {
     if (!runtime.agentRunning && sessionId) void reload();
   }, [runtime.agentRunning, sessionId, reload]);
 
-  if (loading) return <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>{t("common.loading")}</div>;
+  if (loading)
+    return (
+      <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>
+        {t("common.loading")}
+      </div>
+    );
   if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
 
   const inProgress = tasks.filter((t) => t.status === "in_progress");
@@ -65,12 +72,25 @@ export function TodoPanel() {
 
   return (
     <div style={{ padding: 12, fontSize: 12, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
           {t("todo.title")}
-          {tasks.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 400, marginLeft: 6 }}>({completed.length}/{tasks.length})</span>}
+          {tasks.length > 0 && (
+            <span style={{ color: "var(--text-dim)", fontWeight: 400, marginLeft: 6 }}>
+              ({completed.length}/{tasks.length})
+            </span>
+          )}
         </h3>
-        <button onClick={() => void reload()} style={btnStyle}>{t("common.refresh")}</button>
+        <button onClick={() => void reload()} style={btnStyle}>
+          {t("common.refresh")}
+        </button>
       </div>
 
       {tasks.length === 0 ? (
@@ -82,9 +102,7 @@ export function TodoPanel() {
             <TodoSection label={t("todo.inProgress")} tasks={inProgress} accent />
           )}
           {/* Pending */}
-          {pending.length > 0 && (
-            <TodoSection label={t("todo.pending")} tasks={pending} />
-          )}
+          {pending.length > 0 && <TodoSection label={t("todo.pending")} tasks={pending} />}
           {/* Completed */}
           {completed.length > 0 && (
             <TodoSection label={t("todo.completed")} tasks={completed} collapsed />
@@ -95,7 +113,12 @@ export function TodoPanel() {
   );
 }
 
-function TodoSection({ label, tasks, accent, collapsed }: {
+function TodoSection({
+  label,
+  tasks,
+  accent,
+  collapsed,
+}: {
   label: string;
   tasks: TodoTask[];
   accent?: boolean;
@@ -106,13 +129,25 @@ function TodoSection({ label, tasks, accent, collapsed }: {
     <div style={{ marginBottom: 12 }}>
       <button
         onClick={() => setShow((v) => !v)}
-        style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: accent ? "var(--accent)" : "var(--text-dim)" }}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "4px 0",
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: accent ? "var(--accent)" : "var(--text-dim)",
+        }}
       >
         {show ? "▾" : "▸"} {label} ({tasks.length})
       </button>
       {show && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-          {tasks.map((task) => <TodoRow key={task.id} task={task} />)}
+          {tasks.map((task) => (
+            <TodoRow key={task.id} task={task} />
+          ))}
         </div>
       )}
     </div>
@@ -123,40 +158,74 @@ function TodoRow({ task }: { task: TodoTask }) {
   const done = task.status === "completed";
   const active = task.status === "in_progress";
   return (
-    <div style={{
-      display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 8px",
-      background: active ? "var(--bg-selected)" : "var(--bg-panel)",
-      border: "1px solid var(--border)", borderRadius: 6,
-    }}>
-      <span style={{
-        width: 14, height: 14, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-        border: done ? "none" : active ? "2px solid var(--accent)" : "2px solid var(--border)",
-        background: done ? "var(--accent)" : active ? "var(--accent)" : "none",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        padding: "6px 8px",
+        background: active ? "var(--bg-selected)" : "var(--bg-panel)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+      }}
+    >
+      <span
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: "50%",
+          flexShrink: 0,
+          marginTop: 1,
+          border: done ? "none" : active ? "2px solid var(--accent)" : "2px solid var(--border)",
+          background: done ? "var(--accent)" : active ? "var(--accent)" : "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         {done && (
-          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--bg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="9"
+            height="9"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="var(--bg)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <polyline points="1.5 5 4 7.5 8.5 2.5" />
           </svg>
         )}
-        {active && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--bg)" }} />}
+        {active && (
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--bg)" }} />
+        )}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 12, fontWeight: active ? 600 : 400,
-          color: done ? "var(--text-dim)" : "var(--text)",
-          textDecoration: done ? "line-through" : "none",
-        }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: active ? 600 : 400,
+            color: done ? "var(--text-dim)" : "var(--text)",
+            textDecoration: done ? "line-through" : "none",
+          }}
+        >
           {task.subject}
         </div>
         {task.description && (
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{task.description}</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            {task.description}
+          </div>
         )}
         {task.activeForm && active && (
-          <div style={{ fontSize: 10, color: "var(--accent)", marginTop: 2, fontStyle: "italic" }}>⟳ {task.activeForm}</div>
+          <div style={{ fontSize: 10, color: "var(--accent)", marginTop: 2, fontStyle: "italic" }}>
+            ⟳ {task.activeForm}
+          </div>
         )}
         {task.blockedBy && task.blockedBy.length > 0 && (
-          <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>⛔ blocked by: {task.blockedBy.join(", ")}</div>
+          <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
+            ⛔ blocked by: {task.blockedBy.join(", ")}
+          </div>
         )}
       </div>
     </div>
@@ -164,6 +233,11 @@ function TodoRow({ task }: { task: TodoTask }) {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 6,
-  padding: "5px 12px", fontSize: 11, color: "var(--text)", cursor: "pointer",
+  background: "var(--bg-hover)",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "5px 12px",
+  fontSize: 11,
+  color: "var(--text)",
+  cursor: "pointer",
 };

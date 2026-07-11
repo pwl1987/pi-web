@@ -23,7 +23,7 @@ export async function GET() {
           usesCallbackServer: p.usesCallbackServer ?? false,
           loggedIn,
         };
-      })
+      }),
   );
 
   return Response.json({ providers: result });

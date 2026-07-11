@@ -34,7 +34,7 @@ export function Skeleton({
         height,
         borderRadius: circle ? "50%" : radius,
         background:
-          "linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-active, color-mix(in srgb, var(--text-muted) 14%, transparent)) 37%, var(--bg-hover) 63%)",
+          "linear-gradient(90deg, var(--bg-hover) 25%, color-mix(in srgb, var(--text-muted) 12%, transparent) 37%, var(--bg-hover) 63%)",
         backgroundSize: "400% 100%",
         animation: "skeleton-shimmer 1.4s ease infinite",
         verticalAlign: "middle",
@@ -67,11 +67,7 @@ export function SkeletonLines({
       style={{ display: "flex", flexDirection: "column", gap, width: "100%", ...style }}
     >
       {Array.from({ length: lines }).map((_, i) => (
-        <Skeleton
-          key={i}
-          height={lineHeight}
-          width={i === lines - 1 ? lastLineWidth : "100%"}
-        />
+        <Skeleton key={i} height={lineHeight} width={i === lines - 1 ? lastLineWidth : "100%"} />
       ))}
     </span>
   );

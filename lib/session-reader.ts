@@ -1,6 +1,13 @@
-import { SessionManager, buildSessionContext as piBuildSessionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  buildSessionContext as piBuildSessionContext,
+  getAgentDir,
+} from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, SessionEntry, SessionInfo, SessionContext } from "./types";
-import type { SessionEntry as PiSessionEntry, SessionInfo as PiSessionInfo } from "@earendil-works/pi-coding-agent";
+import type {
+  SessionEntry as PiSessionEntry,
+  SessionInfo as PiSessionInfo,
+} from "@earendil-works/pi-coding-agent";
 import { normalizeToolCalls } from "./normalize";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
@@ -15,9 +22,11 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
   // worktrees). resolveProject caches per-cwd, so this is cheap after warmup.
   const uniqueCwds = [...new Set(piSessions.map((s) => s.cwd).filter(Boolean))];
   const projectByCwd = new Map<string, ProjectInfo>();
-  await Promise.all(uniqueCwds.map(async (cwd) => {
-    projectByCwd.set(cwd, await resolveProject(cwd));
-  }));
+  await Promise.all(
+    uniqueCwds.map(async (cwd) => {
+      projectByCwd.set(cwd, await resolveProject(cwd));
+    }),
+  );
 
   const cache = getPathCache();
   const ttl = Date.now() + PATH_CACHE_TTL_MS;
@@ -84,12 +93,19 @@ export function getSessionEntries(filePath: string): SessionEntry[] {
   return entries as unknown as SessionEntry[];
 }
 
-export function buildSessionContext(entries: SessionEntry[], leafId?: string | null): SessionContext {
+export function buildSessionContext(
+  entries: SessionEntry[],
+  leafId?: string | null,
+): SessionContext {
   const byId = new Map<string, SessionEntry>();
   for (const e of entries) byId.set(e.id, e);
 
   const piEntries = entries as unknown as PiSessionEntry[];
-  const piCtx = piBuildSessionContext(piEntries, leafId, byId as unknown as Map<string, PiSessionEntry>);
+  const piCtx = piBuildSessionContext(
+    piEntries,
+    leafId,
+    byId as unknown as Map<string, PiSessionEntry>,
+  );
 
   // Build entryIds: parallel array to messages[], mapping each message back to its entry id.
   // Needed for fork and navigate_tree calls from the UI.

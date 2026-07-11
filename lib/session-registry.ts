@@ -15,7 +15,8 @@ export interface SessionHandle {
 
 declare global {
   var __piSessions: Map<string, SessionHandle> | undefined;
-  var __piStartLocks: Map<string, Promise<{ session: SessionHandle; realSessionId: string }>> | undefined;
+  var __piStartLocks:
+    Map<string, Promise<{ session: SessionHandle; realSessionId: string }>> | undefined;
   var __piRunningListeners: Set<(ids: string[]) => void> | undefined;
 }
 
@@ -26,7 +27,10 @@ export function getRegistry(): Map<string, SessionHandle> {
   return globalThis.__piSessions;
 }
 
-export function getLocks(): Map<string, Promise<{ session: SessionHandle; realSessionId: string }>> {
+export function getLocks(): Map<
+  string,
+  Promise<{ session: SessionHandle; realSessionId: string }>
+> {
   if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
   return globalThis.__piStartLocks;
 }
@@ -55,7 +59,9 @@ function getRunningListeners(): Set<(ids: string[]) => void> {
 export function subscribeRunningSessions(listener: (ids: string[]) => void): () => void {
   const listeners = getRunningListeners();
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 let lastRunningSnapshot = "";
@@ -70,7 +76,11 @@ export function notifyRunningChange(): void {
   if (snapshot === lastRunningSnapshot) return;
   lastRunningSnapshot = snapshot;
   for (const listener of getRunningListeners()) {
-    try { listener(ids); } catch { /* ignore listener errors */ }
+    try {
+      listener(ids);
+    } catch {
+      /* ignore listener errors */
+    }
   }
 }
 

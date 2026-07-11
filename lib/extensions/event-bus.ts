@@ -43,7 +43,9 @@ export class AgentEventBus {
       this.listeners.set(type, set);
     }
     set.add(cb);
-    return () => { set!.delete(cb); };
+    return () => {
+      set!.delete(cb);
+    };
   }
 
   /** Emit an event to all subscribers of its type. */
@@ -51,13 +53,16 @@ export class AgentEventBus {
     const set = this.listeners.get(event.type);
     if (!set) return;
     for (const cb of set) {
-      try { cb(event); } catch { /* listener errors are non-fatal */ }
+      try {
+        cb(event);
+      } catch {
+        /* listener errors are non-fatal */
+      }
     }
   }
 }
 
 declare global {
-   
   var __piWebAgentEventBus: AgentEventBus | undefined;
 }
 

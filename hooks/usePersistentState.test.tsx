@@ -20,12 +20,9 @@ describe("usePersistentState", () => {
   });
 
   it("returns referentially equal values across rerenders when storage is unchanged", () => {
-    window.localStorage.setItem(
-      "__piPersistent:file-tabs",
-      JSON.stringify([{ id: "a" }]),
-    );
+    window.localStorage.setItem("__piPersistent:file-tabs", JSON.stringify([{ id: "a" }]));
     const { result, rerender } = renderHook(() =>
-      usePersistentState<{ id: string }[]>("file-tabs", []),
+      usePersistentState<Array<{ id: string }>>("file-tabs", []),
     );
     const first = result.current[0];
     rerender();
@@ -36,9 +33,7 @@ describe("usePersistentState", () => {
   });
 
   it("yields a fresh reference only after setValue writes a different value", () => {
-    const { result } = renderHook(() =>
-      usePersistentState<{ id: string }[]>("file-tabs", []),
-    );
+    const { result } = renderHook(() => usePersistentState<Array<{ id: string }>>("file-tabs", []));
     const before = result.current[0];
     act(() => {
       result.current[1]([{ id: "new" }]);
@@ -67,7 +62,7 @@ describe("usePersistentState", () => {
     // re-fired forever — AppShell.tsx's "reconcile persisted UI state" effect
     // hit "Maximum update depth exceeded" because of this.
     const { result, rerender } = renderHook(() =>
-      usePersistentState<{ id: string }[]>("items", []),
+      usePersistentState<Array<{ id: string }>>("items", []),
     );
     const first = result.current[0];
     rerender();

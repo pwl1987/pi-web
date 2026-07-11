@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { resolveExtensionAsset } from "@/lib/extensions/discovery";

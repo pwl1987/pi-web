@@ -74,7 +74,7 @@ export async function GET() {
 // body: { mcpServers: Record<string, McpServerEntry>, settings?: Record<string, unknown> }
 export async function PUT(req: Request) {
   try {
-    const body = await req.json() as { mcpServers?: unknown; settings?: unknown };
+    const body = (await req.json()) as { mcpServers?: unknown; settings?: unknown };
     if (typeof body.mcpServers !== "object" || body.mcpServers === null) {
       return NextResponse.json({ error: "mcpServers object required" }, { status: 400 });
     }

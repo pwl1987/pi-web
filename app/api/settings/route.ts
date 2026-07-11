@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 
 export const dynamic = "force-dynamic";
@@ -104,7 +104,7 @@ export async function GET() {
 // POST /api/settings — update one or more settings fields.
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as Record<string, unknown>;
+    const body = (await req.json()) as Record<string, unknown>;
     const mgr = await createManager();
 
     // Model defaults
@@ -124,59 +124,85 @@ export async function POST(req: NextRequest) {
       mgr.setDefaultModel(body.defaultModel as string);
     }
     if (body.defaultThinkingLevel !== undefined) {
-      mgr.setDefaultThinkingLevel(body.defaultThinkingLevel as "off"|"minimal"|"low"|"medium"|"high"|"xhigh");
+      mgr.setDefaultThinkingLevel(
+        body.defaultThinkingLevel as "off" | "minimal" | "low" | "medium" | "high" | "xhigh",
+      );
     }
     if (body.enabledModels !== undefined) {
       mgr.setEnabledModels(body.enabledModels as string[] | undefined);
     }
 
     // Compaction (only enabled has a setter; sub-fields are read-only in SDK)
-    if (body.compactionEnabled !== undefined) mgr.setCompactionEnabled(body.compactionEnabled as boolean);
+    if (body.compactionEnabled !== undefined)
+      mgr.setCompactionEnabled(body.compactionEnabled as boolean);
 
     // Retry (only enabled has a setter)
     if (body.retryEnabled !== undefined) mgr.setRetryEnabled(body.retryEnabled as boolean);
 
     // Modes
-    if (body.steeringMode !== undefined) mgr.setSteeringMode(body.steeringMode as "all"|"one-at-a-time");
-    if (body.followUpMode !== undefined) mgr.setFollowUpMode(body.followUpMode as "all"|"one-at-a-time");
+    if (body.steeringMode !== undefined)
+      mgr.setSteeringMode(body.steeringMode as "all" | "one-at-a-time");
+    if (body.followUpMode !== undefined)
+      mgr.setFollowUpMode(body.followUpMode as "all" | "one-at-a-time");
 
     // Network
-    if (body.transport !== undefined) mgr.setTransport(body.transport as "sse"|"websocket"|"websocket-cached"|"auto");
-    if (body.httpIdleTimeoutMs !== undefined) mgr.setHttpIdleTimeoutMs(body.httpIdleTimeoutMs as number);
+    if (body.transport !== undefined)
+      mgr.setTransport(body.transport as "sse" | "websocket" | "websocket-cached" | "auto");
+    if (body.httpIdleTimeoutMs !== undefined)
+      mgr.setHttpIdleTimeoutMs(body.httpIdleTimeoutMs as number);
 
     // Shell
     if (body.shellPath !== undefined) mgr.setShellPath((body.shellPath as string) || undefined);
-    if (body.shellCommandPrefix !== undefined) mgr.setShellCommandPrefix((body.shellCommandPrefix as string) || undefined);
+    if (body.shellCommandPrefix !== undefined)
+      mgr.setShellCommandPrefix((body.shellCommandPrefix as string) || undefined);
     if (body.npmCommand !== undefined) mgr.setNpmCommand(body.npmCommand as string[] | undefined);
 
     // Trust
-    if (body.defaultProjectTrust !== undefined) mgr.setDefaultProjectTrust(body.defaultProjectTrust as "ask"|"always"|"never");
+    if (body.defaultProjectTrust !== undefined)
+      mgr.setDefaultProjectTrust(body.defaultProjectTrust as "ask" | "always" | "never");
 
     // Display
-    if (body.hideThinkingBlock !== undefined) mgr.setHideThinkingBlock(body.hideThinkingBlock as boolean);
+    if (body.hideThinkingBlock !== undefined)
+      mgr.setHideThinkingBlock(body.hideThinkingBlock as boolean);
     if (body.quietStartup !== undefined) mgr.setQuietStartup(body.quietStartup as boolean);
-    if (body.collapseChangelog !== undefined) mgr.setCollapseChangelog?.(body.collapseChangelog as boolean);
+    if (body.collapseChangelog !== undefined)
+      mgr.setCollapseChangelog?.(body.collapseChangelog as boolean);
     if (body.showImages !== undefined) mgr.setShowImages?.(body.showImages as boolean);
-    if (body.imageWidthCells !== undefined) mgr.setImageWidthCells?.(body.imageWidthCells as number);
+    if (body.imageWidthCells !== undefined)
+      mgr.setImageWidthCells?.(body.imageWidthCells as number);
     if (body.clearOnShrink !== undefined) mgr.setClearOnShrink?.(body.clearOnShrink as boolean);
-    if (body.showTerminalProgress !== undefined) mgr.setShowTerminalProgress?.(body.showTerminalProgress as boolean);
-    if (body.imageAutoResize !== undefined) mgr.setImageAutoResize?.(body.imageAutoResize as boolean);
+    if (body.showTerminalProgress !== undefined)
+      mgr.setShowTerminalProgress?.(body.showTerminalProgress as boolean);
+    if (body.imageAutoResize !== undefined)
+      mgr.setImageAutoResize?.(body.imageAutoResize as boolean);
     if (body.blockImages !== undefined) mgr.setBlockImages?.(body.blockImages as boolean);
     if (body.editorPaddingX !== undefined) mgr.setEditorPaddingX?.(body.editorPaddingX as number);
-    if (body.outputPad !== undefined) mgr.setOutputPad?.(body.outputPad as 0|1);
-    if (body.autocompleteMaxVisible !== undefined) mgr.setAutocompleteMaxVisible?.(body.autocompleteMaxVisible as number);
-    if (body.showHardwareCursor !== undefined) mgr.setShowHardwareCursor?.(body.showHardwareCursor as boolean);
-    if (body.doubleEscapeAction !== undefined) mgr.setDoubleEscapeAction?.(body.doubleEscapeAction as "fork"|"tree"|"none");
-    if (body.treeFilterMode !== undefined) mgr.setTreeFilterMode?.(body.treeFilterMode as "default"|"no-tools"|"user-only"|"labeled-only"|"all");
-    if (body.enableSkillCommands !== undefined) mgr.setEnableSkillCommands?.(body.enableSkillCommands as boolean);
+    if (body.outputPad !== undefined) mgr.setOutputPad?.(body.outputPad as 0 | 1);
+    if (body.autocompleteMaxVisible !== undefined)
+      mgr.setAutocompleteMaxVisible?.(body.autocompleteMaxVisible as number);
+    if (body.showHardwareCursor !== undefined)
+      mgr.setShowHardwareCursor?.(body.showHardwareCursor as boolean);
+    if (body.doubleEscapeAction !== undefined)
+      mgr.setDoubleEscapeAction?.(body.doubleEscapeAction as "fork" | "tree" | "none");
+    if (body.treeFilterMode !== undefined)
+      mgr.setTreeFilterMode?.(
+        body.treeFilterMode as "default" | "no-tools" | "user-only" | "labeled-only" | "all",
+      );
+    if (body.enableSkillCommands !== undefined)
+      mgr.setEnableSkillCommands?.(body.enableSkillCommands as boolean);
 
     // Telemetry
-    if (body.enableInstallTelemetry !== undefined) mgr.setEnableInstallTelemetry?.(body.enableInstallTelemetry as boolean);
-    if (body.enableAnalytics !== undefined) mgr.setEnableAnalytics?.(body.enableAnalytics as boolean);
+    if (body.enableInstallTelemetry !== undefined)
+      mgr.setEnableInstallTelemetry?.(body.enableInstallTelemetry as boolean);
+    if (body.enableAnalytics !== undefined)
+      mgr.setEnableAnalytics?.(body.enableAnalytics as boolean);
 
     // Warnings
     if (body.warningsAnthropicExtraUsage !== undefined) {
-      mgr.setWarnings?.({ ...(mgr.getWarnings() ?? {}), anthropicExtraUsage: body.warningsAnthropicExtraUsage as boolean });
+      mgr.setWarnings?.({
+        ...(mgr.getWarnings() ?? {}),
+        anthropicExtraUsage: body.warningsAnthropicExtraUsage as boolean,
+      });
     }
 
     await mgr.flush();

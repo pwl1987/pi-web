@@ -87,12 +87,7 @@ describe("InspectorTaskRow right-click copy", () => {
   it("right-click on a clickable row copies the subject to clipboard", () => {
     render(
       <ul>
-        <InspectorTaskRow
-          task={sampleTask}
-          variant="active"
-          entryId="e1"
-          onTaskClick={() => {}}
-        />
+        <InspectorTaskRow task={sampleTask} variant="active" entryId="e1" onTaskClick={() => {}} />
       </ul>,
     );
     const btn = screen.getByRole("button", { name: /click me/i });
@@ -135,8 +130,12 @@ describe("InspectorTaskRow right-click copy", () => {
 });
 
 describe("InspectorTaskRow click feedback", () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("adds a 'task-row-clicked' class immediately after a click", () => {
     const onTaskClick = vi.fn();
@@ -161,12 +160,7 @@ describe("InspectorTaskRow click feedback", () => {
   it("removes the 'task-row-clicked' class after the feedback duration", () => {
     render(
       <ul>
-        <InspectorTaskRow
-          task={sampleTask}
-          variant="active"
-          entryId="e1"
-          onTaskClick={() => {}}
-        />
+        <InspectorTaskRow task={sampleTask} variant="active" entryId="e1" onTaskClick={() => {}} />
       </ul>,
     );
     const btn = screen.getByRole("button", { name: /click me/i });

@@ -96,8 +96,7 @@ export function usePersistentState<T>(
       try {
         const raw = window.localStorage.getItem(fullKey);
         const prev: T = raw === null ? defaultRef.current : (JSON.parse(raw) as T);
-        const resolved =
-          typeof next === "function" ? (next as (p: T) => T)(prev) : next;
+        const resolved = typeof next === "function" ? (next as (p: T) => T)(prev) : next;
         window.localStorage.setItem(fullKey, JSON.stringify(resolved));
       } catch {
         // Storage quota / private mode — best-effort, drop the write.

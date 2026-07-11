@@ -66,11 +66,7 @@ export function PinCurrentDirButton({ cwd, isPinned, onPinnedChange }: Props) {
   }, [cwd, isPinned, onPinnedChange, bus]);
 
   const disabled = cwd === null;
-  const title = !cwd
-    ? ""
-    : isPinned
-      ? t("sidebar.unpinDir")
-      : t("sidebar.pinDir");
+  const title = !cwd ? "" : isPinned ? t("sidebar.unpinDir") : t("sidebar.pinDir");
 
   return (
     <button
@@ -111,12 +107,30 @@ export function PinCurrentDirButton({ cwd, isPinned, onPinnedChange }: Props) {
     >
       {isPinned ? (
         // Solid pin (currently pinned — click to unpin)
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z" />
         </svg>
       ) : (
         // Outline pin (not yet pinned — click to pin)
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z" />
         </svg>
       )}

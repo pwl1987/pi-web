@@ -7,9 +7,6 @@ export async function GET() {
     const sessions = await listAllSessions();
     return NextResponse.json({ sessions, runningSessionIds: getRunningRpcSessionIds() });
   } catch (error) {
-    return NextResponse.json(
-      { error: String(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

@@ -1,13 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
-import {
-  getAllowedFileRoots,
-  isFilePathAllowed,
-  isWindowsAbsolutePath,
-} from "@/lib/file-access";
+import { getAllowedFileRoots, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
 import { buildEntriesFromFiles, filterFileEntries, type FileIndexEntry } from "@/lib/file-fuzzy";
 
 const execFileAsync = promisify(execFile);
@@ -15,9 +11,20 @@ const execFileAsync = promisify(execFile);
 // Same skip lists as /api/files — only used for the non-git readdir fallback.
 // Git-tracked repos rely on .gitignore instead (matches the TUI's fd behavior).
 const IGNORED_NAMES = new Set([
-  "node_modules", ".git", ".next", "dist", "build", "__pycache__",
-  ".turbo", ".cache", "coverage", ".pytest_cache", ".mypy_cache",
-  "target", "vendor", ".DS_Store",
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  "__pycache__",
+  ".turbo",
+  ".cache",
+  "coverage",
+  ".pytest_cache",
+  ".mypy_cache",
+  "target",
+  "vendor",
+  ".DS_Store",
 ]);
 
 const IGNORED_SUFFIXES = [".pyc"];
@@ -79,7 +86,9 @@ async function listWithGit(cwd: string): Promise<FileListing | null> {
 function listWithWalk(cwd: string): FileListing {
   const files: string[] = [];
   // BFS so shallow files win when the cap truncates the listing.
-  const queue: Array<{ abs: string; rel: string; depth: number }> = [{ abs: cwd, rel: "", depth: 0 }];
+  const queue: Array<{ abs: string; rel: string; depth: number }> = [
+    { abs: cwd, rel: "", depth: 0 },
+  ];
   while (queue.length > 0) {
     const { abs, rel, depth } = queue.shift()!;
     let dirents: fs.Dirent[];

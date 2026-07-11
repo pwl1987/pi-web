@@ -44,11 +44,7 @@ function Toggle({
     <button
       onClick={onToggle}
       disabled={loading}
-      title={
-        enabled
-          ? t("skills.visibleHint")
-          : t("skills.hiddenHint")
-      }
+      title={enabled ? t("skills.visibleHint") : t("skills.hiddenHint")}
       style={{
         flexShrink: 0,
         width: 40,
@@ -121,12 +117,8 @@ function SkillDetail({
             padding: "1px 5px",
             borderRadius: 3,
             flexShrink: 0,
-            background:
-              label === "project"
-                ? "rgba(99,102,241,0.12)"
-                : "rgba(120,120,120,0.12)",
-            color:
-              label === "project" ? "rgba(99,102,241,0.8)" : "var(--text-dim)",
+            background: label === "project" ? "rgba(99,102,241,0.12)" : "rgba(120,120,120,0.12)",
+            color: label === "project" ? "rgba(99,102,241,0.8)" : "var(--text-dim)",
           }}
         >
           {labelDisplay}
@@ -144,22 +136,14 @@ function SkillDetail({
         >
           {displayPath(skill.filePath)}
         </span>
-        <Toggle
-          enabled={enabled}
-          loading={toggling}
-          onToggle={() => onToggle(skill)}
-        />
+        <Toggle enabled={enabled} loading={toggling} onToggle={() => onToggle(skill)} />
         {saveError && (
-          <span style={{ fontSize: 12, color: "#f87171", flexShrink: 0 }}>
-            {saveError}
-          </span>
+          <span style={{ fontSize: 12, color: "#f87171", flexShrink: 0 }}>{saveError}</span>
         )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span
-          style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}
-        >
+        <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
           {t("skills.name")}
         </span>
         <span
@@ -174,14 +158,10 @@ function SkillDetail({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span
-          style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}
-        >
+        <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
           {t("skills.description")}
         </span>
-        <span
-          style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.6 }}
-        >
+        <span style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.6 }}>
           {skill.description}
         </span>
       </div>
@@ -189,13 +169,7 @@ function SkillDetail({
   );
 }
 
-function AddSkillPanel({
-  cwd,
-  onInstalled,
-}: {
-  cwd: string;
-  onInstalled: () => void;
-}) {
+function AddSkillPanel({ cwd, onInstalled }: { cwd: string; onInstalled: () => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SkillSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -211,33 +185,36 @@ function AddSkillPanel({
     inputRef.current?.focus();
   }, []);
 
-  const search = useCallback(async (q: string) => {
-    if (!q.trim()) return;
-    setSearching(true);
-    setSearchError(null);
-    setResults([]);
-    try {
-      const res = await fetch("/api/skills/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q.trim() }),
-      });
-      const d = (await res.json()) as {
-        results?: SkillSearchResult[];
-        error?: string;
-      };
-      if (d.error) {
-        setSearchError(d.error);
-        return;
+  const search = useCallback(
+    async (q: string) => {
+      if (!q.trim()) return;
+      setSearching(true);
+      setSearchError(null);
+      setResults([]);
+      try {
+        const res = await fetch("/api/skills/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q.trim() }),
+        });
+        const d = (await res.json()) as {
+          results?: SkillSearchResult[];
+          error?: string;
+        };
+        if (d.error) {
+          setSearchError(d.error);
+          return;
+        }
+        setResults(d.results ?? []);
+        if ((d.results ?? []).length === 0) setSearchError(t("skills.noSkillsFound"));
+      } catch (e) {
+        setSearchError(String(e));
+      } finally {
+        setSearching(false);
       }
-      setResults(d.results ?? []);
-      if ((d.results ?? []).length === 0) setSearchError(t("skills.noSkillsFound"));
-    } catch (e) {
-      setSearchError(String(e));
-    } finally {
-      setSearching(false);
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   const install = useCallback(
     async (pkg: string) => {
@@ -266,9 +243,7 @@ function AddSkillPanel({
   );
 
   const installPath =
-    scope === "global"
-      ? "~/.pi/agent/skills/"
-      : `${shortenPath(cwd)}/.pi/agent/skills/`;
+    scope === "global" ? "~/.pi/agent/skills/" : `${shortenPath(cwd)}/.pi/agent/skills/`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -348,8 +323,7 @@ function AddSkillPanel({
                   background: scope === s ? "var(--bg-selected)" : "none",
                   color: scope === s ? "var(--text)" : "var(--text-dim)",
                   fontWeight: scope === s ? 600 : 400,
-                  borderRight:
-                    s === "global" ? "1px solid var(--border)" : "none",
+                  borderRight: s === "global" ? "1px solid var(--border)" : "none",
                 }}
               >
                 {s === "project" ? t("skills.scopeProject") : t("skills.scopeGlobal")}
@@ -371,13 +345,9 @@ function AddSkillPanel({
         </div>
 
         {/* Errors */}
-        {searchError && (
-          <div style={{ fontSize: 12, color: "#f87171" }}>{searchError}</div>
-        )}
+        {searchError && <div style={{ fontSize: 12, color: "#f87171" }}>{searchError}</div>}
         {installError && (
-          <div
-            style={{ fontSize: 12, color: "#f87171", wordBreak: "break-word" }}
-          >
+          <div style={{ fontSize: 12, color: "#f87171", wordBreak: "break-word" }}>
             {installError}
           </div>
         )}
@@ -460,9 +430,7 @@ function AddSkillPanel({
                   </div>
                 </div>
                 <button
-                  onClick={() =>
-                    !isInstalled && !isInstalling && install(r.package)
-                  }
+                  onClick={() => !isInstalled && !isInstalling && install(r.package)}
                   disabled={isInstalled || isInstalling || installing !== null}
                   style={{
                     flexShrink: 0,
@@ -497,9 +465,7 @@ function AddSkillPanel({
       ) : (
         !searchError &&
         !searching && (
-          <div
-            style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.8 }}
-          >
+          <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.8 }}>
             {t("skills.discoverBefore")}{" "}
             <a
               href="https://skills.sh"
@@ -517,13 +483,7 @@ function AddSkillPanel({
   );
 }
 
-export function SkillsConfig({
-  cwd,
-  onClose,
-}: {
-  cwd: string;
-  onClose: () => void;
-}) {
+export function SkillsConfig({ cwd, onClose }: { cwd: string; onClose: () => void }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -576,9 +536,7 @@ export function SkillsConfig({
       }
       setSkills((prev) =>
         prev.map((s) =>
-          s.filePath === skill.filePath
-            ? { ...s, disableModelInvocation: next }
-            : s,
+          s.filePath === skill.filePath ? { ...s, disableModelInvocation: next } : s,
         ),
       );
     } catch (e) {
@@ -636,9 +594,7 @@ export function SkillsConfig({
           }}
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span
-              style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}
-            >
+            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
               {t("skills.skills")}
             </span>
             <code
@@ -672,7 +628,14 @@ export function SkillsConfig({
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            overflow: "hidden",
+          }}
+        >
           {/* Left: skill list */}
           <div
             style={{
@@ -719,103 +682,85 @@ export function SkillsConfig({
                 </div>
               ) : (
                 (() => {
-                  const groups: { label: string; skills: typeof skills }[] = [];
+                  const groups: Array<{ label: string; skills: typeof skills }> = [];
                   for (const grpLabel of ["project", "global", "path"]) {
-                    const grpSkills = skills.filter(
-                      (s) => sourceLabel(s) === grpLabel,
-                    );
-                    if (grpSkills.length > 0)
-                      groups.push({ label: grpLabel, skills: grpSkills });
+                    const grpSkills = skills.filter((s) => sourceLabel(s) === grpLabel);
+                    if (grpSkills.length > 0) groups.push({ label: grpLabel, skills: grpSkills });
                   }
-                  return groups.map(
-                    ({ label: grpLabel, skills: grpSkills }) => (
-                      <div key={grpLabel} style={{ marginBottom: 6 }}>
-                        <div
-                          style={{
-                            padding: "4px 8px 3px",
-                            fontSize: 10,
-                            fontWeight: 600,
-                            color: "var(--text-dim)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                          }}
-                        >
-                          {grpLabel === "project"
-                            ? t("skills.scopeProject")
-                            : grpLabel === "global"
-                              ? t("skills.scopeGlobal")
-                              : t("skills.scopePath")}
-                        </div>
-                        {grpSkills.map((skill) => {
-                          const isSelected =
-                            !addMode && selected === skill.filePath;
-                          const disabled = skill.disableModelInvocation;
-                          return (
-                            <div
-                              key={skill.filePath}
-                              onClick={() => {
-                                setSelected(skill.filePath);
-                                setAddMode(false);
-                              }}
+                  return groups.map(({ label: grpLabel, skills: grpSkills }) => (
+                    <div key={grpLabel} style={{ marginBottom: 6 }}>
+                      <div
+                        style={{
+                          padding: "4px 8px 3px",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "var(--text-dim)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        {grpLabel === "project"
+                          ? t("skills.scopeProject")
+                          : grpLabel === "global"
+                            ? t("skills.scopeGlobal")
+                            : t("skills.scopePath")}
+                      </div>
+                      {grpSkills.map((skill) => {
+                        const isSelected = !addMode && selected === skill.filePath;
+                        const disabled = skill.disableModelInvocation;
+                        return (
+                          <div
+                            key={skill.filePath}
+                            onClick={() => {
+                              setSelected(skill.filePath);
+                              setAddMode(false);
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 7,
+                              padding: "8px 8px",
+                              borderRadius: 5,
+                              cursor: "pointer",
+                              background: isSelected ? "var(--bg-selected)" : "none",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = "none";
+                            }}
+                          >
+                            <span
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 7,
-                                padding: "8px 8px",
-                                borderRadius: 5,
-                                cursor: "pointer",
-                                background: isSelected
-                                  ? "var(--bg-selected)"
-                                  : "none",
+                                flexShrink: 0,
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                background: disabled ? "var(--border)" : "var(--accent)",
+                                boxShadow: disabled ? "none" : "0 0 4px var(--accent)",
+                                transition: "background 0.15s, box-shadow 0.15s",
                               }}
-                              onMouseEnter={(e) => {
-                                if (!isSelected)
-                                  e.currentTarget.style.background =
-                                    "var(--bg-hover)";
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isSelected)
-                                  e.currentTarget.style.background = "none";
+                            />
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: isSelected ? 600 : 400,
+                                color: disabled ? "var(--text-dim)" : "var(--text)",
+                                fontFamily: "var(--font-mono)",
+                                flex: 1,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                               }}
                             >
-                              <span
-                                style={{
-                                  flexShrink: 0,
-                                  width: 7,
-                                  height: 7,
-                                  borderRadius: "50%",
-                                  background: disabled
-                                    ? "var(--border)"
-                                    : "var(--accent)",
-                                  boxShadow: disabled
-                                    ? "none"
-                                    : "0 0 4px var(--accent)",
-                                  transition:
-                                    "background 0.15s, box-shadow 0.15s",
-                                }}
-                              />
-                              <span
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? 600 : 400,
-                                  color: disabled
-                                    ? "var(--text-dim)"
-                                    : "var(--text)",
-                                  fontFamily: "var(--font-mono)",
-                                  flex: 1,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {skill.name}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ),
-                  );
+                              {skill.name}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ));
                 })()
               )}
             </div>
@@ -841,8 +786,7 @@ export function SkillsConfig({
                   fontSize: 12,
                 }}
                 onMouseEnter={(e) => {
-                  if (!addMode)
-                    e.currentTarget.style.background = "var(--bg-hover)";
+                  if (!addMode) e.currentTarget.style.background = "var(--bg-hover)";
                 }}
                 onMouseLeave={(e) => {
                   if (!addMode) e.currentTarget.style.background = "none";
