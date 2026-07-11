@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { RECOMMENDED_PLUGINS } from "./recommended-plugins";
+import { ALL_PLUGINS } from "./recommended-plugins";
 import { getAgentDir } from "./config-file";
 
 export interface PluginInstallResult {
@@ -47,12 +47,12 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
   globalThis.__piAutoInstallLock = (async (): Promise<PluginInstallResult[]> => {
     const configured = getConfiguredPackages();
     const results: PluginInstallResult[] = [];
-    const missing = RECOMMENDED_PLUGINS.filter((p) => !configured.has(p.source));
+    const missing = ALL_PLUGINS.filter((p) => !configured.has(p.source));
 
     // All already installed — cache and return.
     if (missing.length === 0) {
       results.push(
-        ...RECOMMENDED_PLUGINS.map((p) => ({
+        ...ALL_PLUGINS.map((p) => ({
           source: p.source,
           name: p.name,
           status: "already" as const,
@@ -72,7 +72,7 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
     const settingsManager = SettingsManager.create(cwd, agentDir);
     const packageManager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
 
-    for (const plugin of RECOMMENDED_PLUGINS) {
+    for (const plugin of ALL_PLUGINS) {
       if (configured.has(plugin.source)) {
         results.push({ source: plugin.source, name: plugin.name, status: "already" });
         continue;

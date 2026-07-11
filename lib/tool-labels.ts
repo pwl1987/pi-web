@@ -44,23 +44,6 @@ export const TOOL_LABELS_ZH: Record<string, ToolLabel> = {
     description: "列出目录内容，按字母排序返回条目。",
   },
 
-  // --- @hypabolic/pi-hypa ---
-  hypa_shell: {
-    description: "通过 Hypa 压缩执行 shell 命令，输出截断为确定性摘要以节省上下文。",
-  },
-  hypa_read: {
-    description: "通过 Hypa 压缩读取文件，支持 offset/limit 分段读取。",
-  },
-  hypa_grep: {
-    description: "通过 Hypa 压缩用 ripgrep 搜索文件内容。",
-  },
-  hypa_find: {
-    description: "通过 Hypa 压缩查找文件。",
-  },
-  hypa_ls: {
-    description: "通过 Hypa 压缩列出目录内容。",
-  },
-
   // --- pi-web-access ---
   web_search: {
     description: "使用 OpenAI、Brave、Parallel、Tavily、Exa、Perplexity 等搜索网页。",
