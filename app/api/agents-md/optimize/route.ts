@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
   AuthStorage,
   ModelRegistry,
@@ -7,17 +7,11 @@ import {
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 import { validateCsrf } from "@/lib/csrf";
+import { getAssistantText } from "@/lib/api-shared";
 
 export const dynamic = "force-dynamic";
 
 const TIMEOUT_MS = 60_000;
-
-function getAssistantText(message: AssistantMessage): string {
-  return message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
-}
 
 // POST /api/agents-md/optimize
 // body: { content: string, file?: "agents"|"system"|"append", cwd?: string, instruction?: string }

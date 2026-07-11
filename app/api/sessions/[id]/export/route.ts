@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { errorResponse } from "@/lib/api-utils";
+import { getAttachmentDisposition } from "@/lib/api-shared";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,18 +30,6 @@ async function getPiPackageDir(): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-function encodeHeaderValue(value: string): string {
-  return encodeURIComponent(value).replace(
-    /[!'()*]/g,
-    (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-}
-
-function getAttachmentDisposition(fileName: string): string {
-  const fallback = fileName.replace(/[^\x20-\x7E]|["\\;\r\n]/g, "_") || "session.html";
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(fileName)}`;
 }
 
 async function getPiCliPath(): Promise<string | null> {

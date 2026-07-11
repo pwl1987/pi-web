@@ -19,26 +19,7 @@ import {
 } from "@/lib/file-types";
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
 import { errorResponse } from "@/lib/api-utils";
-
-const IGNORED_NAMES = new Set([
-  "node_modules",
-  ".git",
-  ".next",
-  "dist",
-  "build",
-  "__pycache__",
-  ".turbo",
-  ".cache",
-  "coverage",
-  ".pytest_cache",
-  ".mypy_cache",
-  "target",
-  "vendor",
-  ".DS_Store",
-  ".git",
-]);
-
-const IGNORED_SUFFIXES = [".pyc"];
+import { IGNORED_NAMES, IGNORED_SUFFIXES, encodeHeaderValue } from "@/lib/api-shared";
 
 const FILE_REQUEST_TYPES = ["list", "read", "download", "meta", "preview", "watch"] as const;
 type FileRequestType = (typeof FILE_REQUEST_TYPES)[number];
@@ -156,13 +137,6 @@ function createFileBodyStream(
       fileStream.destroy();
     },
   });
-}
-
-function encodeHeaderValue(value: string): string {
-  return encodeURIComponent(value).replace(
-    /[!'()*]/g,
-    (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
 }
 
 function getContentDisposition(filePath: string, asDownload = false): string {
