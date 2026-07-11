@@ -1,6 +1,6 @@
 import { getPiAdapter } from "@/lib/pi";
 
-const { AuthStorage, ModelRegistry } = getPiAdapter().codingAgent;
+const { AuthStorage, ModelRegistry } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

@@ -4,7 +4,7 @@ import { join, resolve } from "path";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { getPiAdapter } from "@/lib/pi";
 
-const { getAgentDir } = getPiAdapter().codingAgent;
+const { getAgentDir } = getPiAdapter();
 import { ensureParentDir } from "@/lib/config-file";
 import { errorResponse } from "@/lib/api-utils";
 import { validateCsrf } from "@/lib/csrf";

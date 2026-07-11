@@ -9,8 +9,7 @@ export function getAgentDir(): string {
 }
 
 export async function listAllSessions(): Promise<SessionInfo[]> {
-  const piSessions: PiSessionInfo[] =
-    (await getPiAdapter().sessionManager.listAll()) as PiSessionInfo[];
+  const piSessions: PiSessionInfo[] = await getPiAdapter().SessionManager.listAll();
   const pathToId = new Map<string, string>();
   for (const s of piSessions) pathToId.set(s.path, s.id);
 
@@ -85,10 +84,7 @@ export function invalidateSessionPathCache(sessionId: string): void {
 }
 
 export function getSessionEntries(filePath: string): SessionEntry[] {
-  const entries = getPiAdapter()
-    .sessionManager.open(filePath)
-    .getEntries() as unknown as SessionEntry[];
-  return entries as unknown as SessionEntry[];
+  return getPiAdapter().SessionManager.open(filePath).getEntries() as unknown as SessionEntry[];
 }
 
 export function buildSessionContext(

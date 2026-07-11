@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import { basename, dirname, extname, join, relative } from "path";
-import type {
-  PackageSource,
-  ResolvedPaths,
-  ResolvedResource,
-} from "@earendil-works/pi-coding-agent";
-import type { SdkSettingsManager } from "@/lib/pi";
+import type { PackageSource, ResolvedPaths, ResolvedResource, SdkSettingsManager } from "@/lib/pi";
 import { getPiAdapter } from "@/lib/pi";
 
-const { DefaultPackageManager, getAgentDir, SettingsManager } = getPiAdapter().codingAgent;
+const { DefaultPackageManager, getAgentDir, SettingsManager } = getPiAdapter();
 import type {
   PluginDiagnostic,
   PluginPackageInfo,

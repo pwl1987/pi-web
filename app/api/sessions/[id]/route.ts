@@ -9,7 +9,7 @@ import {
   listAllSessions,
 } from "@/lib/session-reader";
 
-const { SessionManager } = getPiAdapter().codingAgent;
+const { SessionManager } = getPiAdapter();
 import { getRpcSession } from "@/lib/rpc-manager";
 import { reparentSessionHeader } from "@/lib/session-reparent";
 import { validateCsrf } from "@/lib/csrf";
@@ -119,10 +119,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const sm = SessionManager.open(filePath);
-    const entries = sm.getEntries() as never;
     const leafId = sm.getLeafId();
     const tree = projectTreeForResponse(sm.getTree());
-    const context = buildSessionContext(entries, leafId);
+    const context = buildSessionContext(
+      sm.getEntries() as Parameters<typeof buildSessionContext>[0],
+      leafId,
+    );
 
     const header = sm.getHeader();
     let modified = header?.timestamp ?? new Date().toISOString();

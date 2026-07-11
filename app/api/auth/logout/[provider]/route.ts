@@ -1,7 +1,7 @@
 import { validateCsrf } from "@/lib/csrf";
 import { getPiAdapter } from "@/lib/pi";
 
-const { AuthStorage } = getPiAdapter().codingAgent;
+const { AuthStorage } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

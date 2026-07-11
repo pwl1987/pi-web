@@ -6,8 +6,7 @@ import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText, errorMessage } from "@/lib/api-shared";
 import { getPiAdapter } from "@/lib/pi";
 
-const { AuthStorage, ModelRegistry } = getPiAdapter().codingAgent;
-const { completeSimple } = getPiAdapter().aiCompat;
+const { AuthStorage, ModelRegistry, completeSimple } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

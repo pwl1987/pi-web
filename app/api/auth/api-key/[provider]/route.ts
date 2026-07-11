@@ -3,7 +3,7 @@ import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { validateCsrf } from "@/lib/csrf";
 import { getPiAdapter } from "@/lib/pi";
 
-const { AuthStorage, ModelRegistry } = getPiAdapter().codingAgent;
+const { AuthStorage, ModelRegistry } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

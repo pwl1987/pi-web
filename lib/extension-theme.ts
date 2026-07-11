@@ -30,7 +30,7 @@ export function createDefaultExtensionTheme() {
   const pi = getPiAdapter();
   const fg = buildFgColors();
   const bg = buildBgColors();
-  return new pi.codingAgent.Theme(fg, bg, "truecolor", { name: "pi-web-default" });
+  return new pi.Theme(fg, bg, "truecolor", { name: "pi-web-default" });
 }
 
 // --- color tables (kept in sync with pi's dark.json; only what's needed

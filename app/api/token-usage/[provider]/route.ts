@@ -16,7 +16,7 @@ import type { TokenUsageInfo } from "@/lib/token-usage";
 import { NextResponse } from "next/server";
 import { getPiAdapter } from "@/lib/pi";
 
-const { AuthStorage } = getPiAdapter().codingAgent;
+const { AuthStorage } = getPiAdapter();
 
 import { SUPPORTED_TOKEN_USAGE_PROVIDERS, fetchTokenPlanRemains } from "@/lib/token-usage";
 

@@ -1,9 +1,8 @@
 import { stat } from "fs/promises";
-import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { SdkSettingsManager } from "@/lib/pi";
 import { getPiAdapter } from "@/lib/pi";
 
-const { createAgentSessionServices, getAgentDir } = getPiAdapter().codingAgent;
-const { getSupportedThinkingLevels } = getPiAdapter().ai;
+const pi = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 
@@ -60,15 +59,15 @@ export async function GET(req: Request) {
   }
 
   try {
-    const agentDir = getAgentDir();
-    const services = await createAgentSessionServices({ cwd, agentDir });
+    const agentDir = pi.agentDir;
+    const services = await pi.createAgentSessionServices({ cwd, agentDir });
     const registry = services.modelRegistry;
     const available = registry.getAvailable();
-    const settings: SettingsManager = services.settingsManager;
+    const settings: SdkSettingsManager = services.settingsManager;
     const enabledModels = settings.getEnabledModels();
     const visible = filterByExactEnabledModels(available, enabledModels);
     modelList = visible
-      .map((m: { id: string; name: string; provider: string }) => ({
+      .map((m) => ({
         id: m.id,
         name: m.name,
         provider: m.provider,
@@ -77,7 +76,7 @@ export async function GET(req: Request) {
     for (const m of visible) {
       const key = `${m.provider}:${m.id}`;
       nameMap.set(key, m.name);
-      thinkingLevels[key] = getSupportedThinkingLevels(m);
+      thinkingLevels[key] = pi.getSupportedThinkingLevels(m);
       if (m.thinkingLevelMap) thinkingLevelMaps[key] = m.thinkingLevelMap;
     }
 

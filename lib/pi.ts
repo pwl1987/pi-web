@@ -30,21 +30,31 @@ export function getPiAdapter(): PiSdkPort {
   return globalThis.__piSdkAdapter;
 }
 
+// Re-export the port and SDK type vocabulary so business modules never need a
+// direct (even type-only) import from the SDK packages — the entire SDK surface
+// is reachable through this single module.
 export type { PiSdkPort } from "./pi-ports";
 export type {
   AgentSessionLike,
-  SessionManagerInstancePort,
-  SessionManagerStaticPort,
-} from "./pi-ports";
-// Re-export the SDK type vocabulary so business modules never need a direct
-// (even type-only) import from the SDK packages — the entire SDK surface is
-// reachable through this single module.
-export type {
-  AgentSessionEvent,
-  SdkSessionManager,
-  SdkSettingsManager,
-  SlashCommandInfo,
+  AgentSessionServices,
+  CreateAgentSessionFromServicesOptions,
+  CreateAgentSessionResult,
+  CreateAgentSessionServicesOptions,
+  PackageSource,
+  ResolvedPaths,
+  ResolvedResource,
+  SessionContext,
   PiSessionEntry,
   PiSessionInfo,
+  SlashCommandInfo,
+  SdkAuthStorage,
+  SdkDefaultPackageManager,
+  SdkDefaultResourceLoader,
+  SdkModelRegistry,
+  SdkSessionManager,
+  SdkSettingsManager,
+  SdkTheme,
+  AssistantMessage,
+  SimpleStreamOptions,
   ThemeColor,
 } from "./pi-ports";

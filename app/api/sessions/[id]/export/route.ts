@@ -25,7 +25,7 @@ type ExportHtmlModule = {
 
 async function getPiPackageDir(): Promise<string | null> {
   try {
-    const { getPackageDir } = getPiAdapter().codingAgent;
+    const { getPackageDir } = getPiAdapter();
     return getPackageDir();
   } catch {
     return null;

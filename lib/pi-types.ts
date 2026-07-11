@@ -5,6 +5,19 @@ import type {
   SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 
+// Re-export the SDK classes the ACL surfaces as named accessors, so business
+// modules reference them via this module instead of importing the SDK directly.
+export type {
+  AgentSessionEvent,
+  AuthStorage as SdkAuthStorage,
+  DefaultPackageManager as SdkDefaultPackageManager,
+  DefaultResourceLoader as SdkDefaultResourceLoader,
+  ModelRegistry as SdkModelRegistry,
+  SessionManager as SdkSessionManager,
+  SettingsManager as SdkSettingsManager,
+  Theme as SdkTheme,
+} from "@earendil-works/pi-coding-agent";
+
 export interface ContextUsage {
   percent: number | null;
   contextWindow: number;

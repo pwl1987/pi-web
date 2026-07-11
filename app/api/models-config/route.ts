@@ -6,7 +6,7 @@ import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { validateModelsConfig } from "@/lib/config-validators";
 import { getPiAdapter } from "@/lib/pi";
 
-const { getAgentDir } = getPiAdapter().codingAgent;
+const { getAgentDir } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

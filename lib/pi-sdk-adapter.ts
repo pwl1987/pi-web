@@ -6,45 +6,41 @@
 // module obtains Pi capabilities via `getPiAdapter()` (see ./pi.ts), which
 // returns an instance of this class. Swapping the SDK version, or replacing Pi
 // entirely, requires editing ONLY this file.
+//
+// Each property is a direct assignment of the SDK symbol — no casts. The port
+// (`./pi-ports.ts`) borrows the SDK's own types via `typeof`, so the adapter
+// satisfies the contract structurally and types flow to consumers unchanged.
 
 import * as codingAgent from "@earendil-works/pi-coding-agent";
 import * as ai from "@earendil-works/pi-ai";
 import * as aiCompat from "@earendil-works/pi-ai/compat";
 
-import type { PiSdkPort, SessionManagerInstancePort, SessionManagerStaticPort } from "./pi-ports";
+import type { PiSdkPort } from "./pi-ports";
 
 class SdkAdapter implements PiSdkPort {
-  /** Raw SDK namespaces — the controlled gateway for one-off SDK calls. */
-  readonly codingAgent = codingAgent;
-  readonly ai = ai;
-  readonly aiCompat = aiCompat;
+  // --- SDK class references -------------------------------------------------
+  readonly SessionManager = codingAgent.SessionManager;
+  readonly AuthStorage = codingAgent.AuthStorage;
+  readonly ModelRegistry = codingAgent.ModelRegistry;
+  readonly SettingsManager = codingAgent.SettingsManager;
+  readonly DefaultPackageManager = codingAgent.DefaultPackageManager;
+  readonly DefaultResourceLoader = codingAgent.DefaultResourceLoader;
+  readonly Theme = codingAgent.Theme;
 
-  /** Agent data directory. */
+  // --- Standalone functions -------------------------------------------------
+  readonly getAgentDir = codingAgent.getAgentDir;
+  readonly getPackageDir = codingAgent.getPackageDir;
+  readonly parseFrontmatter = codingAgent.parseFrontmatter;
+  readonly buildSessionContext = codingAgent.buildSessionContext;
+  readonly createAgentSessionServices = codingAgent.createAgentSessionServices;
+  readonly createAgentSessionFromServices = codingAgent.createAgentSessionFromServices;
+  readonly completeSimple = aiCompat.completeSimple;
+  readonly getSupportedThinkingLevels = ai.getSupportedThinkingLevels;
+
+  // --- Convenience ----------------------------------------------------------
   get agentDir(): string {
     return codingAgent.getAgentDir();
   }
-
-  // --- Type-safe behavioral seams ------------------------------------------
-
-  readonly sessionManager: SessionManagerStaticPort = {
-    open: (filePath: string, sessionDir?: string): SessionManagerInstancePort =>
-      codingAgent.SessionManager.open(
-        filePath,
-        sessionDir,
-      ) as unknown as SessionManagerInstancePort,
-    create: (cwd: string, sessionDir?: string): SessionManagerInstancePort =>
-      codingAgent.SessionManager.create(cwd, sessionDir) as unknown as SessionManagerInstancePort,
-    listAll: (): Promise<unknown[]> => codingAgent.SessionManager.listAll(),
-  };
-
-  createAgentSessionServices =
-    codingAgent.createAgentSessionServices as unknown as PiSdkPort["createAgentSessionServices"];
-
-  createAgentSessionFromServices =
-    codingAgent.createAgentSessionFromServices as unknown as PiSdkPort["createAgentSessionFromServices"];
-
-  buildSessionContext =
-    codingAgent.buildSessionContext as unknown as PiSdkPort["buildSessionContext"];
 }
 
 export { SdkAdapter };

@@ -8,7 +8,6 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { ALL_PLUGINS } from "./recommended-plugins";
-import { getAgentDir } from "./config-file";
 import { getPiAdapter } from "./pi";
 
 export interface PluginInstallResult {
@@ -27,7 +26,7 @@ declare global {
 /** Read the configured packages list from settings.json. */
 export function getConfiguredPackages(): Set<string> {
   try {
-    const settingsPath = join(getAgentDir(), "settings.json");
+    const settingsPath = join(getPiAdapter().getAgentDir(), "settings.json");
     if (!existsSync(settingsPath)) return new Set();
     const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as { packages?: string[] };
     return new Set(settings.packages ?? []);
@@ -65,7 +64,8 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
 
     // Obtain the SDK through the ACL (single import site). The adapter is
     // constructed lazily on first use and already loads the SDK once.
-    const { DefaultPackageManager, SettingsManager } = getPiAdapter().codingAgent;
+    const adapter = getPiAdapter();
+    const { DefaultPackageManager, SettingsManager, getAgentDir } = adapter;
     const { patchPackageManagerForUninstall } = await import("@/lib/plugin-package-manager");
     patchPackageManagerForUninstall();
 

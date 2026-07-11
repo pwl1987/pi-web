@@ -2,7 +2,7 @@ import { resolveSessionPath } from "@/lib/session-reader";
 import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
 import { getPiAdapter } from "@/lib/pi";
 
-const { SessionManager } = getPiAdapter().codingAgent;
+const { SessionManager } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

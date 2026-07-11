@@ -25,7 +25,7 @@ export function patchPackageManagerForUninstall(): void {
   if (patched) return;
   patched = true;
 
-  const proto = getPiAdapter().codingAgent.DefaultPackageManager.prototype as unknown as Record<
+  const proto = getPiAdapter().DefaultPackageManager.prototype as unknown as Record<
     string,
     unknown
   >;

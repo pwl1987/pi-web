@@ -3,8 +3,7 @@ import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText } from "@/lib/api-shared";
 import { getPiAdapter } from "@/lib/pi";
 
-const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir } = getPiAdapter().codingAgent;
-const { completeSimple } = getPiAdapter().aiCompat;
+const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

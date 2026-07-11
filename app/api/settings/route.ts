@@ -4,7 +4,7 @@ import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
 import type { SdkSettingsManager } from "@/lib/pi";
 
-const { SettingsManager, getAgentDir } = getPiAdapter().codingAgent;
+const { SettingsManager, getAgentDir } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

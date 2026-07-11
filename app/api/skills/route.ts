@@ -5,7 +5,7 @@ import { getPiAdapter } from "@/lib/pi";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
 
-const { DefaultResourceLoader, getAgentDir, parseFrontmatter } = getPiAdapter().codingAgent;
+const { DefaultResourceLoader, getAgentDir, parseFrontmatter } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 

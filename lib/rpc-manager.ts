@@ -398,7 +398,7 @@ export class AgentSessionWrapper {
 
         if (!entry.parentId) {
           // Fork before the first message: create an empty session linked to this one
-          const newManager = getPiAdapter().sessionManager.create(
+          const newManager = getPiAdapter().SessionManager.create(
             sessionManager.getCwd(),
             sessionDir,
           );
@@ -406,14 +406,14 @@ export class AgentSessionWrapper {
           newSessionFile = newManager.getSessionFile() as string;
         } else {
           // Fork after some history: copy path up to (but not including) the fork point
-          const sourceManager = getPiAdapter().sessionManager.open(currentSessionFile, sessionDir);
+          const sourceManager = getPiAdapter().SessionManager.open(currentSessionFile, sessionDir);
           const forkedPath = sourceManager.createBranchedSession(entry.parentId);
           if (!forkedPath) throw new Error("Failed to create forked session");
           newSessionFile = forkedPath;
         }
 
         const newSessionId = getPiAdapter()
-          .sessionManager.open(newSessionFile, sessionDir)
+          .SessionManager.open(newSessionFile, sessionDir)
           .getSessionId();
         cacheSessionPath(newSessionId, newSessionFile);
         this.destroy();
@@ -1002,8 +1002,8 @@ export async function startRpcSession(
     const agentDir = getPiAdapter().agentDir;
 
     const sessionManager = sessionFile
-      ? getPiAdapter().sessionManager.open(sessionFile, undefined)
-      : getPiAdapter().sessionManager.create(cwd, undefined);
+      ? getPiAdapter().SessionManager.open(sessionFile, undefined)
+      : getPiAdapter().SessionManager.create(cwd, undefined);
 
     // Determine which tools to pass based on requested toolNames.
     // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
@@ -1094,7 +1094,7 @@ export async function restoreActiveSessions(): Promise<void> {
     try {
       const filePath = await resolveSessionPath(entry.sessionId);
       if (!filePath) continue; // session deleted from disk — skip
-      const cwd = getPiAdapter().sessionManager.open(filePath).getHeader()?.cwd;
+      const cwd = getPiAdapter().SessionManager.open(filePath).getHeader()?.cwd;
       if (!cwd) continue;
       // toolNames=undefined lets the SDK restore the saved tool set from .jsonl;
       // we re-apply toolsDisabled separately via setForceEmptySystemPrompt.

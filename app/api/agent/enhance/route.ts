@@ -4,8 +4,7 @@ import path from "node:path";
 import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
 
-const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir } = getPiAdapter().codingAgent;
-const { completeSimple } = getPiAdapter().aiCompat;
+const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple } = getPiAdapter();
 import { getAssistantText } from "@/lib/api-shared";
 import {
   buildEnhanceSystemPrompt,
