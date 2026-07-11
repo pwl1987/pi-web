@@ -99,6 +99,42 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     description: "Second-opinion reviewer model before the agent acts",
     tier: "recommended",
   },
+  {
+    source: "npm:gentle-pi",
+    name: "gentle-pi",
+    description: "Spec-driven harness with SDD/OpenSpec, strict TDD evidence and review guardrails",
+    tier: "recommended",
+  },
+  {
+    source: "npm:@plannotator/pi-extension",
+    name: "@plannotator/pi-extension",
+    description: "Interactive plan review with annotations, review code/PRs",
+    tier: "recommended",
+  },
+  {
+    source: "npm:pi-landstrip",
+    name: "pi-landstrip",
+    description: "Landlock-based OS sandboxing with interactive permission prompts",
+    tier: "recommended",
+  },
+  {
+    source: "npm:pi-agent-browser-native",
+    name: "pi-agent-browser-native",
+    description: "Browser automation as a native tool for UI end-to-end checks",
+    tier: "recommended",
+  },
+  {
+    source: "npm:superpowers-zh",
+    name: "superpowers-zh",
+    description: "Chinese engineering-methodology skill set (superpowers full translation)",
+    tier: "recommended",
+  },
+  {
+    source: "npm:@raindrop-ai/pi-agent",
+    name: "@raindrop-ai/pi-agent",
+    description: "Observability tracing for sessions, turns, LLM calls and tool executions",
+    tier: "recommended",
+  },
 ];
 
 // Merged set used by the installer and the status route.
