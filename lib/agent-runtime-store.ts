@@ -12,14 +12,8 @@
 
 import { useSyncExternalStore } from "react";
 import type { ToolEntry } from "@/lib/tool-presets";
-import type { SessionStatsInfo } from "@/lib/pi-types";
+import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import type { AgentPhase } from "@/hooks/useAgentSession";
-
-export interface ContextUsageInfo {
-  percent: number | null;
-  contextWindow: number;
-  tokens: number | null;
-}
 
 export interface AgentRuntimeSnapshot {
   /** The session id whose state this snapshot reflects, or null. */
@@ -28,7 +22,7 @@ export interface AgentRuntimeSnapshot {
   agentPhase: AgentPhase;
   tools: ToolEntry[];
   sessionStats: SessionStatsInfo | null;
-  contextUsage: ContextUsageInfo | null;
+  contextUsage: ContextUsage | null;
 }
 
 const EMPTY_SNAPSHOT: AgentRuntimeSnapshot = {

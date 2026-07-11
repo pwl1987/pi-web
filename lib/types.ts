@@ -292,3 +292,20 @@ export interface SessionContext {
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
 }
+
+// ---- Shared UI types (single source for ChatInput <-> useAgentSession) ----
+
+/** Image attached to a chat message (base64, no data: prefix). */
+export interface AttachedImage {
+  data: string;
+  mimeType: string;
+  previewUrl: string; // object URL for display
+}
+
+/** Imperative handle exposed by ChatInput via forwardRef. */
+export interface ChatInputHandle {
+  insertText: (text: string) => void;
+  insertIfEmpty: (text: string) => void;
+  prependText: (text: string) => void;
+  addImages: (files: File[]) => void;
+}

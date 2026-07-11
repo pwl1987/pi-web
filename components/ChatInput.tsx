@@ -33,11 +33,10 @@ import type { ToolEntry } from "@/lib/tool-presets";
 import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
 import { getToolLabel } from "@/lib/tool-labels";
 
-export interface AttachedImage {
-  data: string; // base64, no prefix
-  mimeType: string;
-  previewUrl: string; // object URL for display
-}
+// AttachedImage and ChatInputHandle live in @/lib/types (shared with
+// useAgentSession). Re-exported here for backward-compatible imports.
+import type { AttachedImage } from "@/lib/types";
+export type { AttachedImage };
 
 interface ModelOption {
   provider: string;
@@ -92,12 +91,9 @@ interface Props {
   cwd?: string | null;
 }
 
-export interface ChatInputHandle {
-  insertText: (text: string) => void;
-  insertIfEmpty: (text: string) => void;
-  prependText: (text: string) => void;
-  addImages: (files: File[]) => void;
-}
+// ChatInputHandle is sourced from @/lib/types; re-export for backward compat.
+import type { ChatInputHandle } from "@/lib/types";
+export type { ChatInputHandle };
 
 const TOOL_PRESETS = ["off", "default", "full"] as const;
 const TOOL_PRESET_MAP: Record<"off" | "default" | "full", "none" | "default" | "full"> = {

@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect, useReducer } from "react";
 import type {
   AgentMessage,
   AssistantMessage,
+  AttachedImage,
+  ChatInputHandle,
   ExtensionStatusItem,
   ExtensionUiRequest,
   ExtensionWidgetItem,
@@ -11,6 +13,7 @@ import type {
   SessionTreeNode,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
+import type { ContextUsage } from "@/lib/pi-types";
 import { sendAgentCommand } from "@/lib/agent-client";
 import {
   getToolNamesForPreset,
@@ -329,19 +332,6 @@ function readCompactResult(result: unknown, reason: string): CompactResultInfo |
   return { reason, tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter };
 }
 
-export interface ChatInputHandle {
-  insertText: (text: string) => void;
-  insertIfEmpty: (content: string) => void;
-  prependText: (text: string) => void;
-  addImages: (files: File[]) => void;
-}
-
-export interface AttachedImage {
-  data: string;
-  mimeType: string;
-  previewUrl: string;
-}
-
 type SelectedModel = { provider: string; modelId: string };
 type ModelEntry = { id: string; name: string; provider: string };
 type ModelsResponse = {
@@ -402,11 +392,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     maxAttempts: number;
     errorMessage?: string;
   } | null>(null);
-  const [contextUsage, setContextUsage] = useState<{
-    percent: number | null;
-    contextWindow: number;
-    tokens: number | null;
-  } | null>(null);
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [forkingEntryId, setForkingEntryId] = useState<string | null>(null);
   const [currentModelOverride, setCurrentModelOverride] = useState<{
