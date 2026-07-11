@@ -135,6 +135,30 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     description: "Observability tracing for sessions, turns, LLM calls and tool executions",
     tier: "recommended",
   },
+  {
+    source: "npm:@gotgenes/pi-permission-system",
+    name: "@gotgenes/pi-permission-system",
+    description: "Declarative tool-level permission enforcement (allow/deny/ask)",
+    tier: "recommended",
+  },
+  {
+    source: "npm:latchkey",
+    name: "latchkey",
+    description: "Inject API credentials into requests without hardcoding secrets",
+    tier: "recommended",
+  },
+  {
+    source: "npm:@ayulab/pi-rewind",
+    name: "@ayulab/pi-rewind",
+    description: "/rewind checkpoint navigation for fast agent-side rollbacks",
+    tier: "recommended",
+  },
+  {
+    source: "npm:@dietrichgebert/ponytail",
+    name: "@dietrichgebert/ponytail",
+    description: "Lazy senior-dev discipline — prefer reuse and deletion over new code",
+    tier: "recommended",
+  },
 ];
 
 // Merged set used by the installer and the status route.
