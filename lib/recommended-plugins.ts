@@ -19,6 +19,12 @@ export interface RecommendedPlugin {
   name: string;
   description: string;
   tier: PluginTier;
+  // When true, the plugin is part of the system-default enhancement set and
+  // cannot be removed by the user (the /api/plugins remove action rejects it
+  // with 409, and the Plugins panel hides the Remove button). It can still be
+  // disabled. Pinned plugins are installed by ensureRecommendedPlugins() on
+  // first start and are the bedrock of the pi-web experience.
+  pinned?: boolean;
   // Names of plugins this one is designed to work *with* (e.g. pi-rtk
   // complements context-mode). Surfaced in the Plugins panel.
   complements?: string[];
@@ -34,22 +40,26 @@ export const DEFAULT_PLUGINS: RecommendedPlugin[] = [
     name: "pi-subagents",
     description: "Delegate tasks to subagents with chains, parallel execution",
     tier: "default",
+    pinned: true,
   },
   {
     source: "npm:@juicesharp/rpiv-todo",
     name: "@juicesharp/rpiv-todo",
     description: "Todo list with live overlay, survives reload and compaction",
     tier: "default",
+    pinned: true,
   },
 ];
 
 // Optional plugins — auto-installed but user-removable.
 export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
   {
-    source: "npm:pi-web-access",
-    name: "pi-web-access",
-    description: "Web search, URL fetching, GitHub cloning, PDF extraction",
+    source: "npm:pi-search-hub",
+    name: "pi-search-hub",
+    description:
+      "Unified web search + content extraction with 19 backends incl. keyless Firecrawl, SearXNG and DuckDuckGo — no API key needed for search",
     tier: "recommended",
+    complements: ["pi-agent-browser-native"],
   },
   {
     source: "npm:pi-mcp-adapter",
@@ -62,7 +72,16 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     name: "context-mode",
     description: "Context window optimization — saves up to 98% of context",
     tier: "recommended",
-    complements: ["pi-rtk"],
+    pinned: true,
+    complements: ["pi-rtk", "pi-hypa"],
+  },
+  {
+    source: "npm:@hypabolic/pi-hypa",
+    name: "@hypabolic/pi-hypa",
+    description:
+      "Deterministic context compression — rewrites shell commands through Hypa, context-aware file tools, recoverable evidence (top-downloaded package)",
+    tier: "recommended",
+    complements: ["context-mode", "pi-rtk"],
   },
   {
     source: "npm:@juicesharp/rpiv-ask-user-question",
@@ -99,6 +118,7 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     name: "cc-safety-net",
     description: "Block destructive git and filesystem commands before execution",
     tier: "recommended",
+    pinned: true,
   },
   {
     source: "npm:@juicesharp/rpiv-advisor",
@@ -172,6 +192,7 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     description:
       "Token reduction by intelligently filtering tool output (60-90%) — complements context-mode",
     tier: "recommended",
+    pinned: true,
     complements: ["context-mode"],
   },
   {
@@ -189,10 +210,77 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     // competes on system-prompt rules. Keep exactly one.
     conflicts: ["@viartemev/pi-caveman", "@kulapard/pi-caveman", "@nielpattin/pi-caveman"],
   },
+
+  // --- Gap-filling / performance / DX recommendations (task 1) -------------
+  // These were recommended to fill context-compression, retrieval-edit,
+  // observability and DX gaps. Auto-installed but user-removable (not pinned).
+  {
+    source: "npm:pi-lean-ctx",
+    name: "pi-lean-ctx",
+    description:
+      "Lean context: routes bash/read/grep/find/ls through a lean channel — unchanged re-reads cost ~13 tokens",
+    tier: "recommended",
+    complements: ["context-mode", "pi-rtk"],
+  },
+  {
+    source: "npm:@ff-labs/pi-fff",
+    name: "@ff-labs/pi-fff",
+    description: "Fuzzy full-text retrieval for the codebase — reduces grep noise and token waste",
+    tier: "recommended",
+    complements: ["pi-shazam"],
+  },
+  {
+    source: "npm:pi-readseek",
+    name: "pi-readseek",
+    description:
+      "Hash-anchored precise reads of files — pinpoint the exact region without dumping the whole file",
+    tier: "recommended",
+    complements: ["pi-hashline-edit-pro"],
+  },
+  {
+    source: "npm:pi-hashline-edit-pro",
+    name: "pi-hashline-edit-pro",
+    description:
+      "Hash-anchored precise edits — edit by content hash, fewer round-trips and safer diffs",
+    tier: "recommended",
+    complements: ["pi-readseek"],
+  },
+  {
+    source: "npm:@braintrust/pi-extension",
+    name: "@braintrust/pi-extension",
+    description: "Observability tracing for LLM calls and tool executions (exportable)",
+    tier: "recommended",
+    complements: ["@raindrop-ai/pi-agent"],
+  },
+  {
+    source: "npm:pi-powerline-footer",
+    name: "pi-powerline-footer",
+    description: "Status footer showing live token usage and cost during a run",
+    tier: "recommended",
+  },
 ];
 
 // Merged set used by the installer and the status route.
 export const ALL_PLUGINS: RecommendedPlugin[] = [...DEFAULT_PLUGINS, ...RECOMMENDED_PLUGINS];
+
+// System-default enhancement set — installed on first start and protected from
+// removal. This is the curated, non-uninstallable manifest (task 3). It is a
+// strict subset of ALL_PLUGINS: only the plugins that are genuinely load-
+// bearing for the pi-web experience (core UI deps + performance + safety).
+export const PINNED_PLUGINS: RecommendedPlugin[] = ALL_PLUGINS.filter((p) => p.pinned);
+
+/**
+ * Whether a plugin source is part of the non-uninstallable system-default set.
+ * Accepts the bare npm name or the `npm:`-prefixed form used in settings.json.
+ */
+export function isPinned(source: string): boolean {
+  const trimmed = source.trim();
+  const withoutNpmPrefix = trimmed.startsWith("npm:") ? trimmed.slice(4) : trimmed;
+  return PINNED_PLUGINS.some(
+    (p) =>
+      p.source === trimmed || p.source === `npm:${withoutNpmPrefix}` || p.source.endsWith(trimmed),
+  );
+}
 
 /**
  * Declarative compatibility check for the plugin set.

@@ -44,9 +44,9 @@ export const TOOL_LABELS_ZH: Record<string, ToolLabel> = {
     description: "列出目录内容，按字母排序返回条目。",
   },
 
-  // --- pi-web-access ---
+  // --- pi-search-hub (replaces pi-web-access; keyless by default) ---
   web_search: {
-    description: "使用 OpenAI、Brave、Parallel、Tavily、Exa、Perplexity 等搜索网页。",
+    description: "搜索网页；默认走 keyless 后端（Firecrawl/DuckDuckGo/SearXNG），无需 API key。",
   },
   fetch_content: {
     description: "抓取 URL 并提取可读内容为 Markdown，支持 YouTube 视频理解。",

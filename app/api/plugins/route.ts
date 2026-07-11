@@ -21,6 +21,7 @@ import type {
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
 import { patchPackageManagerForUninstall } from "@/lib/plugin-package-manager";
+import { isPinned } from "@/lib/recommended-plugins";
 
 // Mirror install flags onto uninstall so removing pi extensions (which declare
 // @earendil-works/pi-* peers) doesn't fail with ERESOLVE. See module for details.
@@ -266,6 +267,7 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
       scope,
       filtered: pkg.filtered,
       disabled,
+      pinned: isPinned(pkg.source),
       installedPath: pkg.installedPath,
       packageName: packageMetadata.packageName,
       version: packageMetadata.version,
@@ -330,6 +332,14 @@ export async function POST(req: Request) {
       await packageManager.installAndPersist(source, { local });
     } else if (body.action === "remove") {
       if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      // System-default (pinned) plugins cannot be removed — they are the
+      // bedrock of the pi-web experience and several UI surfaces depend on them.
+      if (isPinned(source)) {
+        return NextResponse.json(
+          { error: `Cannot remove pinned system-default plugin: ${source}` },
+          { status: 409 },
+        );
+      }
       await packageManager.removeAndPersist(source, { local });
     } else if (body.action === "update") {
       await packageManager.update(source);

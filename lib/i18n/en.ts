@@ -600,6 +600,16 @@ export const en = {
   "plugins.relationInstalled": "installed",
   "plugins.relationNotInstalled": "not installed",
 
+  // Per-plugin config page (manifest / pinned plugins)
+  "plugins.configure": "Configure",
+  "plugins.back": "Back",
+  "plugins.pinned": "Pinned",
+  "plugins.pinnedNote": "System-default enhancement — cannot be removed.",
+  "plugins.configNoOptions": "This plugin has no configurable options through pi-web.",
+  "plugins.configSaving": "Saving...",
+  "plugins.configSaved": "Configuration saved.",
+  "plugins.configSave": "Save",
+
   // ----- SkillsConfig.tsx -----
   // Header / common
   "skills.skills": "Skills",

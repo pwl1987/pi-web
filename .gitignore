@@ -43,3 +43,5 @@ next-env.d.ts
 
 # editor / agent tooling
 .zcode/
+# Local Pi runtime state
+.atl/

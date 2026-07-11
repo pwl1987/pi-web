@@ -597,6 +597,16 @@ export const zh = {
   "plugins.relationInstalled": "已安装",
   "plugins.relationNotInstalled": "未安装",
 
+  // 单插件配置页面（系统默认 / 固定插件）
+  "plugins.configure": "配置",
+  "plugins.back": "返回",
+  "plugins.pinned": "已固定",
+  "plugins.pinnedNote": "系统默认增强插件 —— 不可移除。",
+  "plugins.configNoOptions": "该插件在 pi-web 中没有可配置项。",
+  "plugins.configSaving": "保存中...",
+  "plugins.configSaved": "配置已保存。",
+  "plugins.configSave": "保存",
+
   // ----- SkillsConfig.tsx -----
   // 标题 / 通用
   "skills.skills": "技能",

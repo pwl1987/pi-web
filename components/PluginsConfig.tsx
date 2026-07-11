@@ -5,7 +5,9 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
+import { PluginConfigPage } from "@/components/PluginConfigPage";
 import { ALL_PLUGINS } from "@/lib/recommended-plugins";
+import { PLUGIN_CONFIG_DESCRIPTORS } from "@/lib/plugin-config-descriptors";
 import { csrfHeaders } from "@/lib/csrf-client";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
@@ -467,6 +469,7 @@ function PackageDetail({
   sessionId,
   onAction,
   onReloadSession,
+  onConfigure,
   complement,
 }: {
   pkg: PluginPackageInfo;
@@ -477,6 +480,7 @@ function PackageDetail({
   sessionId: string | null;
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onReloadSession: () => void;
+  onConfigure: (pkg: PluginPackageInfo) => void;
   complement?: ComplementInfo;
 }) {
   const { t } = useI18n();
@@ -484,6 +488,8 @@ function PackageDetail({
   const busy = busyKey?.endsWith(key) ?? false;
   const reloadBusy = busyKey === "reload";
   const enabled = !pkg.disabled;
+  const pinned = Boolean(pkg.pinned);
+  const hasConfig = Boolean(PLUGIN_CONFIG_DESCRIPTORS[pkg.source]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680 }}>
@@ -532,6 +538,21 @@ function PackageDetail({
               </span>
             )
           )}
+          {pinned && (
+            <span
+              title={t("plugins.pinnedNote")}
+              style={{
+                fontSize: 10,
+                padding: "1px 5px",
+                borderRadius: 3,
+                background: "rgba(16,163,74,0.14)",
+                color: "#16a34a",
+                fontWeight: 600,
+              }}
+            >
+              {t("plugins.pinned")}
+            </span>
+          )}
           <span
             style={{
               fontFamily: "var(--font-mono)",
@@ -547,6 +568,11 @@ function PackageDetail({
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {hasConfig && (
+            <button onClick={() => onConfigure(pkg)} style={buttonStyle(busy || reloadBusy)}>
+              {t("plugins.configure")}
+            </button>
+          )}
           <button
             onClick={() => onAction("update", pkg)}
             disabled={busy || reloadBusy}
@@ -564,8 +590,9 @@ function PackageDetail({
           </button>
           <button
             onClick={() => onAction("remove", pkg)}
-            disabled={busy || reloadBusy}
-            style={buttonStyle(busy || reloadBusy, true)}
+            disabled={busy || reloadBusy || pinned}
+            style={buttonStyle(busy || reloadBusy || pinned, true)}
+            title={pinned ? t("plugins.pinnedNote") : undefined}
           >
             {busyKey === `remove:${key}` ? t("plugins.removing") : t("plugins.remove")}
           </button>
@@ -676,6 +703,7 @@ export function PluginsConfig({
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
+  const [configuring, setConfiguring] = useState<PluginPackageInfo | null>(null);
   const [installSource, setInstallSource] = useState("");
   const [installScope, setInstallScope] = useState<PluginScope>("global");
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -1074,7 +1102,13 @@ export function PluginsConfig({
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-            {addMode ? (
+            {configuring ? (
+              <PluginConfigPage
+                source={configuring.source}
+                name={configuring.packageName ?? configuring.source}
+                onClose={() => setConfiguring(null)}
+              />
+            ) : addMode ? (
               <AddPluginPanel
                 cwd={cwd}
                 source={installSource}
@@ -1096,6 +1130,7 @@ export function PluginsConfig({
                 sessionId={sessionId}
                 onAction={runAction}
                 onReloadSession={reloadSession}
+                onConfigure={setConfiguring}
                 complement={complementInfo.get(selectedPackage.source)}
               />
             ) : (
