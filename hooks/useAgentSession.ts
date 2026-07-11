@@ -434,6 +434,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   });
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  // Tracked so a pending SSE reconnect scheduled by onerror can be cancelled on
+  // unmount — otherwise a 1s timer could open a new EventSource after teardown.
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   const agentRunningRef = useRef(false);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
@@ -716,7 +719,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           settle("closed");
           if (eventSourceRef.current === es && agentRunningRef.current) {
             eventSourceRef.current = null;
-            setTimeout(() => {
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = setTimeout(() => {
+              reconnectTimerRef.current = null;
               if (agentRunningRef.current) void connectEvents(sid);
             }, 1000);
           }
@@ -946,11 +951,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // visibility still trigger a one-off check.
   useEffect(() => {
     if (!agentRunning) return;
+    // Debounce so that near-simultaneous triggers (tab foregrounded AND network
+    // restored AND interval tick) coalesce into a single GET instead of 2-3.
+    const RECONCILE_DEBOUNCE_MS = 300;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
     const reconcile = () => {
-      // Read the ref on every tick: for brand-new sessions the id is
-      // assigned only after ensure_session returns.
-      const sid = sessionIdRef.current;
-      if (sid) void reconcileAgentState(sid);
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        debounce = null;
+        // Read the ref on every tick: for brand-new sessions the id is
+        // assigned only after ensure_session returns.
+        const sid = sessionIdRef.current;
+        if (sid) void reconcileAgentState(sid);
+      }, RECONCILE_DEBOUNCE_MS);
     };
     const onVisible = () => {
       if (document.visibilityState === "visible") reconcile();
@@ -967,6 +980,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", reconcile);
     return () => {
+      if (debounce) clearTimeout(debounce);
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", reconcile);
@@ -1791,6 +1805,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     return () => {
       mountedRef.current = false;
+      // Cancel any pending SSE reconnect so it can't open a new EventSource on
+      // an unmounted hook, and signal running=false so a timer that already
+      // fired its callback guards out via agentRunningRef.
+      agentRunningRef.current = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
     };

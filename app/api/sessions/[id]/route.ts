@@ -158,12 +158,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       : null;
 
     const url = new URL(req.url);
-    let agentState: { running: boolean; state?: unknown } | undefined;
+    let agentState: { running: boolean; state?: unknown; timedOut?: boolean } | undefined;
     if (url.searchParams.has("includeState")) {
       const rpc = getRpcSession(id);
       if (rpc?.isAlive()) {
-        const state = await rpc.send({ type: "get_state" });
-        agentState = { running: true, state };
+        // Race the state fetch against a timeout: get_state can hang if the
+        // underlying agent is mid-construction or an extension binding blocks.
+        // Rather than stall the whole session GET, degrade gracefully.
+        const GET_STATE_TIMEOUT_MS = 5_000;
+        const statePromise = rpc.send({ type: "get_state" });
+        const timeoutPromise = new Promise<{ timedOut: true }>((resolve) =>
+          setTimeout(() => resolve({ timedOut: true }), GET_STATE_TIMEOUT_MS),
+        );
+        const result = await Promise.race([statePromise, timeoutPromise]);
+        if (result && typeof result === "object" && "timedOut" in result) {
+          agentState = { running: true, state: null, timedOut: true };
+        } else {
+          agentState = { running: true, state: result };
+        }
       } else {
         agentState = { running: false };
       }

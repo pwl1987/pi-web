@@ -65,6 +65,19 @@ type ExtensionBindingOptions = {
   forceEmptySystemPrompt?: boolean;
 };
 
+/**
+ * Idle-timeout options for AgentSessionWrapper.
+ *
+ * `idleTimeoutMs` is exposed (and shortened in tests) so the lifecycle can be
+ * exercised without waiting 10 real minutes. The prompt-running pause logic
+ * (see resetIdleTimer) is independent of the duration.
+ */
+export interface AgentSessionWrapperOptions {
+  idleTimeoutMs?: number;
+}
+
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
 const CODING_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
 function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
@@ -100,12 +113,14 @@ export class AgentSessionWrapper {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private onDestroyCallback: (() => void) | null = null;
   private _alive = true;
+  private readonly idleTimeoutMs: number;
   private readonly defaultExtensionTheme: ReturnType<typeof createDefaultExtensionTheme>;
 
   readonly inner: AgentSessionLike;
 
-  constructor(inner: AgentSessionLike) {
+  constructor(inner: AgentSessionLike, options?: AgentSessionWrapperOptions) {
     this.inner = inner;
+    this.idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     // Extensions written for pi's TUI assume the `theme` argument to
     // `ctx.ui.custom((tui, theme, …) => …)` is a real Theme instance.
     // Without one, `theme.bold(text)` etc. crash inside the extension's
@@ -250,7 +265,22 @@ export class AgentSessionWrapper {
 
   private resetIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => this.destroy(), 10 * 60 * 1000);
+    this.idleTimer = setTimeout(() => this.handleIdleTimeout(), this.idleTimeoutMs);
+  }
+
+  /**
+   * Idle-timeout handler. A prompt can stream silently (long thinking block,
+   * hung provider, slow tool) for longer than the idle timeout without emitting
+   * any event to reset the timer. Destroying mid-prompt leaves an orphaned
+   * inner.prompt promise that then fires callbacks on a dead wrapper. Instead,
+   * while a prompt is running, reschedule rather than destroy.
+   */
+  private handleIdleTimeout(): void {
+    if (this.promptRunning) {
+      this.idleTimer = setTimeout(() => this.handleIdleTimeout(), this.idleTimeoutMs);
+      return;
+    }
+    this.destroy();
   }
 
   onEvent(listener: EventListener): () => void {
@@ -286,12 +316,22 @@ export class AgentSessionWrapper {
             source: "rpc",
           })
           .then(() => {
+            // The wrapper may have been destroyed (idle timeout, explicit
+            // close, fork) while this prompt was in flight. Drop the callback
+            // — emitting prompt_done / notifyRunningChange on a dead wrapper
+            // surfaces as ghost state in the UI and re-enters a torn-down
+            // session registry.
+            if (!this._alive) return;
             this.promptRunning = false;
+            // Resume the idle timer now that no prompt is running.
+            this.resetIdleTimer();
             if (!streamingBehavior) this.emit({ type: "prompt_done" });
             notifyRunningChange();
           })
           .catch((error) => {
+            if (!this._alive) return;
             this.promptRunning = false;
+            this.resetIdleTimer();
             this.emit({
               type: "prompt_error",
               errorMessage: error instanceof Error ? error.message : String(error),
@@ -550,6 +590,12 @@ export class AgentSessionWrapper {
     this._alive = false;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.unsubscribe?.();
+    // Abort an in-flight prompt so the inner SDK stops work on a session the
+    // web client has torn down. Fire-and-forget: the prompt's .then/.catch
+    // guards below drop callbacks once _alive is false.
+    if (this.promptRunning) {
+      void Promise.resolve(this.inner.abort?.()).catch(() => {});
+    }
     for (const pending of this.pendingUiResponses.values()) pending.cancel();
     for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
     this.pendingUiResponses.clear();
@@ -1001,6 +1047,18 @@ export async function startRpcSession(
     const realSessionId = inner.sessionId as string;
     const realSessionFile = inner.sessionFile as string | undefined;
     if (realSessionFile) cacheSessionPath(realSessionId, realSessionFile);
+
+    // Guard against a duplicate-session race: the input `sessionId` for a new
+    // session is a one-time temp key, while the lock is keyed on it. A
+    // concurrent caller that already knows the realSessionId (e.g. events + POST
+    // racing on a freshly-created session) could pass both the registry and the
+    // lock checks under that temp key and build a second wrapper for the same
+    // real session. If one already won, discard ours and return the winner.
+    const raced = registry.get(realSessionId);
+    if (raced && raced !== wrapper && raced.isAlive()) {
+      wrapper.destroy();
+      return { session: raced as AgentSessionWrapper, realSessionId };
+    }
 
     wrapper.onDestroy(() => registry.delete(realSessionId));
     registry.set(realSessionId, wrapper);
