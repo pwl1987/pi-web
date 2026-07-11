@@ -174,6 +174,21 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     tier: "recommended",
     complements: ["context-mode"],
   },
+  {
+    source: "npm:pi-caveman",
+    name: "pi-caveman",
+    description:
+      "Caveman mode — cuts ~75% of OUTPUT tokens via terse prose, keeps technical accuracy (lite/full/ultra/wenyan/micro)",
+    tier: "recommended",
+    // Three different stages of token saving: context-mode compresses the
+    // assembled context window, pi-rtk filters raw tool output, pi-caveman
+    // compresses the agent's natural-language output. They are complementary.
+    complements: ["context-mode", "pi-rtk"],
+    // Other Caveman ports all hook before_agent_start and share the same
+    // ~/.pi/agent/caveman.json config path — installing two clobbers config and
+    // competes on system-prompt rules. Keep exactly one.
+    conflicts: ["@viartemev/pi-caveman", "@kulapard/pi-caveman", "@nielpattin/pi-caveman"],
+  },
 ];
 
 // Merged set used by the installer and the status route.
