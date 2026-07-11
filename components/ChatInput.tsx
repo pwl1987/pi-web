@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { useRef, useState, useMemo, useCallback, useEffect, useImperativeHandle, forwardRef, memo, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import { clearDraft, getDraft, setDraft, type ChatDraftImage } from "@/lib/draft-store";
 import {
@@ -310,7 +310,7 @@ function ToolChecklist({ tools, onChange, onPresetApply, onClose }: {
   );
 }
 
-export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
+export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, onModelChange,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange, tools, onToolsChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -359,8 +359,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const draftKeyRef = useRef(draftKey);
   const valueRef = useRef(value);
   const attachedImagesRef = useRef(attachedImages);
+  const [stopConfirming, setStopConfirming] = useState(false);
+  const stopConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   valueRef.current = value;
   attachedImagesRef.current = attachedImages;
+
+  // Cleanup stop-confirmation timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (stopConfirmTimeoutRef.current) clearTimeout(stopConfirmTimeoutRef.current);
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     insertIfEmpty(text: string) {
@@ -533,7 +542,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? value.slice(1).toLowerCase()
     : null;
 
-  const filteredSlashCommands = (() => {
+  const filteredSlashCommands = useMemo(() => {
     if (slashQuery === null) return [];
     const commands = [...(isStreaming ? [] : buildBuiltinSlashCommands(t)), ...(slashCommands ?? [])];
     return [...commands]
@@ -548,9 +557,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source]
           || MODEL_OPTION_COLLATOR.compare(a.name, b.name);
       });
-  })();
+  }, [slashQuery, isStreaming, slashCommands, t]);
 
-  const groupedSlashCommands = (() => {
+  const groupedSlashCommands = useMemo(() => {
     const groups = new Map<SlashCommandSource, { source: SlashCommandSource; items: { command: SlashCommandPaletteItem; index: number }[] }>();
     for (const source of SLASH_SOURCES) {
       groups.set(source, { source, items: [] });
@@ -561,7 +570,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return SLASH_SOURCES
       .map((source) => groups.get(source)!)
       .filter((group) => group.items.length > 0);
-  })();
+  }, [filteredSlashCommands]);
 
   const slashCommandCountLabel = filteredSlashCommands.length === 1
     ? (slashQuery ? t("input.oneMatch") : t("input.oneCommand"))
@@ -917,7 +926,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [slashActiveIndex, slashMenuOpen]);
 
   // Build model options: prefer modelList (has provider info), fallback to modelNames
-  const modelOptions: ModelOption[] = (() => {
+  const modelOptions: ModelOption[] = useMemo(() => {
     if (modelList && modelList.length > 0) {
       return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name })).sort(compareModelOptions);
     }
@@ -926,15 +935,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       modelId,
       name,
     })).sort(compareModelOptions);
-  })();
+  }, [modelList, modelNames, model?.provider]);
 
   // Group options by provider, preserving insertion order
-  const modelsByProvider: { provider: string; options: ModelOption[] }[] = [];
-  for (const opt of modelOptions) {
-    const group = modelsByProvider.find((g) => g.provider === opt.provider);
-    if (group) group.options.push(opt);
-    else modelsByProvider.push({ provider: opt.provider, options: [opt] });
-  }
+  const modelsByProvider = useMemo(() => {
+    const result: { provider: string; options: ModelOption[] }[] = [];
+    for (const opt of modelOptions) {
+      const group = result.find((g) => g.provider === opt.provider);
+      if (group) group.options.push(opt);
+      else result.push({ provider: opt.provider, options: [opt] });
+    }
+    return result;
+  }, [modelOptions]);
 
   const displayModelName = model
     ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name ?? model.modelId)
@@ -1391,6 +1403,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           >
           <textarea
             ref={textareaRef}
+            data-chat-input-textarea
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
@@ -1926,7 +1939,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 {compactError && (
                   <div style={{
                     position: "absolute", bottom: "calc(100% + 6px)", right: 0,
-                    background: "#1f2937", color: "#f87171",
+                    background: "var(--tool-bg)", color: "var(--color-error-soft)",
                     fontSize: 11, padding: "4px 8px", borderRadius: 5,
                     whiteSpace: "nowrap", pointerEvents: "none",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.2)", zIndex: 50,
@@ -1976,28 +1989,53 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
             {isStreaming && (
               <button
-                onClick={onAbort}
-                title={t("input.stopAgent")}
+                onClick={() => {
+                  if (stopConfirming) {
+                    // Second click — actually abort
+                    if (stopConfirmTimeoutRef.current) clearTimeout(stopConfirmTimeoutRef.current);
+                    setStopConfirming(false);
+                    onAbort();
+                  } else {
+                    // First click — arm confirmation state
+                    setStopConfirming(true);
+                    stopConfirmTimeoutRef.current = setTimeout(() => setStopConfirming(false), 2_500);
+                  }
+                }}
+                onMouseLeave={() => {
+                  // Reset if the user hovers away (likely changed mind)
+                  if (stopConfirming && stopConfirmTimeoutRef.current) {
+                    clearTimeout(stopConfirmTimeoutRef.current);
+                    setStopConfirming(false);
+                  }
+                }}
+                title={stopConfirming ? t("input.stopConfirm") : t("input.stopAgent")}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 14px",
                   height: 32,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.3)",
+                  background: stopConfirming ? "var(--color-error-soft)" : "rgba(239,68,68,0.08)",
+                  border: stopConfirming ? "1px solid var(--color-error-soft)" : "1px solid rgba(239,68,68,0.3)",
                   borderRadius: 9,
-                  color: "#ef4444",
+                  color: stopConfirming ? "#fff" : "#ef4444",
                   cursor: "pointer",
                   fontSize: 12, fontWeight: 600,
                   whiteSpace: "nowrap", letterSpacing: "-0.01em",
-                  transition: "background 0.12s",
+                  transition: "background 0.12s, border-color 0.12s, color 0.12s",
+                  animation: stopConfirming ? "pulse 0.6s ease-in-out infinite alternate" : "none",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.16)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+                onMouseEnter={(e) => {
+                  if (stopConfirming) return;
+                  e.currentTarget.style.background = "rgba(239,68,68,0.16)";
+                }}
+                onMouseLeave={(e) => {
+                  if (stopConfirming) return;
+                  e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                }}
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                   <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
                 </svg>
-                Stop
+                {stopConfirming ? t("input.stopConfirm") : "Stop"}
               </button>
             )}
 
@@ -2092,4 +2130,4 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       </div>
     </div>
   );
-});
+}));

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 import { encodeFilePathForApi, getRelativeFilePath, joinFilePath } from "@/lib/file-paths";
+import { copyText } from "@/lib/clipboard";
 
 interface FileEntry {
   name: string;
@@ -63,6 +64,7 @@ function TreeNode({
   expandedPaths,
   onToggleExpanded,
   refreshKey,
+  onContextMenu,
 }: {
   node: FileNode;
   depth: number;
@@ -72,6 +74,7 @@ function TreeNode({
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
   refreshKey?: number;
+  onContextMenu?: (e: ReactMouseEvent, node: FileNode) => void;
 }) {
   const { t } = useI18n();
   const open = expandedPaths.has(node.fullPath);
@@ -122,6 +125,7 @@ function TreeNode({
     <div>
       <div
         onClick={handleClick}
+        onContextMenu={(e) => onContextMenu?.(e, node)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -243,7 +247,7 @@ function TreeNode({
       {node.isDir && open && (
         <div>
           {children.map((child) => (
-            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} />
+            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} onContextMenu={onContextMenu} />
           ))}
           {children.length === 0 && loaded && (
             <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
@@ -263,6 +267,34 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
   const [error, setError] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const prevCwdRef = useRef<string | null>(null);
+
+  // ── Context menu state ──────────────────────────────────────────────
+  interface CtxMenu {
+    x: number;
+    y: number;
+    node: FileNode;
+  }
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+
+  // Close context menu on any outside click or Escape
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("click", close, true);
+    document.addEventListener("contextmenu", close, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("click", close, true);
+      document.removeEventListener("contextmenu", close, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [ctxMenu]);
+
+  const handleContextMenu = useCallback((e: ReactMouseEvent, node: FileNode) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, node });
+  }, []);
 
   const handleToggleExpanded = useCallback((fullPath: string, open: boolean) => {
     setExpandedPaths((prev) => {
@@ -316,6 +348,7 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
           expandedPaths={expandedPaths}
           onToggleExpanded={handleToggleExpanded}
           refreshKey={refreshKey}
+          onContextMenu={handleContextMenu}
         />
       ))}
       {roots.length === 0 && (
@@ -323,6 +356,100 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
           {t("file.noFilesFound")}
         </div>
       )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: "fixed",
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            zIndex: 10_000,
+            minWidth: 160,
+            padding: "4px 0",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06)",
+            fontSize: 12,
+          }}
+          role="menu"
+        >
+          {!ctxMenu.node.isDir && (
+            <ContextMenuItem
+              label={t("file.open")}
+              onClick={() => {
+                onOpenFile(ctxMenu.node.fullPath, ctxMenu.node.name);
+                setCtxMenu(null);
+              }}
+            />
+          )}
+          <ContextMenuItem
+            label={t("file.copyFullPath")}
+            onClick={() => {
+              void copyText(ctxMenu.node.fullPath);
+              setCtxMenu(null);
+            }}
+          />
+          <ContextMenuItem
+            label={t("file.copyRelativePath")}
+            onClick={() => {
+              void copyText(getRelativeFilePath(ctxMenu.node.fullPath, cwd));
+              setCtxMenu(null);
+            }}
+          />
+          {!ctxMenu.node.isDir && (
+            <ContextMenuItem
+              label={t("file.downloadFile")}
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = `/api/files/${encodeFilePathForApi(ctxMenu.node.fullPath)}?type=download`;
+                a.download = ctxMenu.node.name;
+                a.click();
+                setCtxMenu(null);
+              }}
+            />
+          )}
+          {onAtMention && (
+            <ContextMenuItem
+              label={t("file.insertPathIntoChat")}
+              onClick={() => {
+                onAtMention(getRelativeFilePath(ctxMenu.node.fullPath, cwd), ctxMenu.node.isDir);
+                setCtxMenu(null);
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Single row inside the file explorer context menu. */
+function ContextMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "block",
+        width: "100%",
+        padding: "5px 14px",
+        textAlign: "left",
+        background: hover ? "var(--bg-hover)" : "transparent",
+        border: "none",
+        color: "var(--text)",
+        fontSize: 12,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        lineHeight: 1.4,
+      }}
+    >
+      {label}
+    </button>
   );
 }

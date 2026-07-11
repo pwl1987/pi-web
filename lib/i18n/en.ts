@@ -1,6 +1,8 @@
 // English strings. Flat dotted keys ("namespace.subkey") for simple lookup.
 // Add new keys here AND in zh.ts when translating a component.
-export const en: Record<string, string> = {
+// Uses `satisfies` instead of explicit annotation so typeof en captures
+// literal keys for compile-time alignment checks in zh.ts (via types.ts).
+export const en = {
   "app.title": "Pi Agent Web",
 
   // Language toggle button (top bar)
@@ -59,6 +61,14 @@ export const en: Record<string, string> = {
   "sessionInfo.cacheWrite": "Cache Write",
   "sessionInfo.cost": "Cost",
   "sessionInfo.context": "Context",
+  // Top-bar token-plan / quota indicator
+  "tokenUsage.usage": "Usage",
+  "tokenUsage.usageTooltip": "{provider} quota — {used} of {total} used ({pct}%). Resets in {reset}.",
+  "tokenUsage.usageTooltipNoTotal": "{provider} quota — {used} used.",
+  "tokenUsage.usageTooltipNoReset": "{provider} quota — {used} of {total} used ({pct}%).",
+  "tokenUsage.configure": "Add API key",
+  "tokenUsage.configureHintTitle": "Add {provider} API key to show quota",
+  "tokenUsage.error": "Quota fetch failed — hover for details",
   // System prompt popover — empty states
   "systemPrompt.empty": "System prompt is empty (tools are disabled)",
   "systemPrompt.loadHint": "Send a message to load the system prompt",
@@ -100,7 +110,7 @@ export const en: Record<string, string> = {
   // Input bar — placeholders
   "input.placeholderSteer": "Steer now / queue follow-up...",
   "input.placeholderRunning": "Agent is running…",
-  "input.placeholderIdle": "Message… Type / for commands, @ for files",
+  "input.placeholderIdle": "Message… Type / for commands, @ for files (Ctrl+J to focus)",
   // Input bar — buttons
   "input.send": "Send",
   "input.ster": "Steer",
@@ -118,6 +128,7 @@ export const en: Record<string, string> = {
   "input.stopCompaction": "Stop compaction",
   "input.compactContext": "Compact context",
   "input.stopAgent": "Stop agent",
+  "input.stopConfirm": "Click again to stop",
   "input.disableSound": "Disable completion sound",
   "input.enableSound": "Enable completion sound",
   "input.recallHint": "Remove all queued messages and put them back into the input box for editing",
@@ -432,6 +443,8 @@ export const en: Record<string, string> = {
   "chat.collapseProcessDetails": "Collapse process details",
   "chat.expandProcessDetails": "Expand process details",
   "chat.loadingSession": "Loading session...",
+  "chat.searchMessages": "Search messages...",
+  "chat.noMatches": "No matches",
   "chat.confirm": "Confirm",
   "chat.submit": "Submit",
 
@@ -495,6 +508,10 @@ export const en: Record<string, string> = {
   "file.loadingFiles": "Loading files...",
   "file.noFilesFound": "No files found",
   "file.failedToLoadFiles": "Failed to load files (HTTP {status})",
+  // File explorer — context menu
+  "file.open": "Open",
+  "file.copyFullPath": "Copy full path",
+  "file.copyRelativePath": "Copy relative path",
 
   // ----- PluginsConfig.tsx -----
   // Header / common
@@ -693,4 +710,18 @@ export const en: Record<string, string> = {
   "extensions.installHint": "Directory must contain package.json with piWeb.extensions declaration.",
   "extensions.installed": "Installed: {id}. Reload page to activate.",
   "extensions.contributions": "contributions",
-};
+
+  // ----- ErrorState / Skeleton (reusable UX primitives) -----
+  "error.title": "Something went wrong",
+  "error.retry": "Retry",
+  "error.showDetails": "Show details",
+  "error.hideDetails": "Hide details",
+  // SSE reconnect indicator (SessionSidebar)
+  "sidebar.reconnecting": "Reconnecting…",
+  "sidebar.reconnectHint": "Connection lost — click to reconnect",
+  "sidebar.offline": "Offline",
+  "sidebar.failedToLoadSessions": "Couldn't load your sessions.",
+
+  "chat.loadingSession": "Loading session…",
+  "chat.failedToLoadSession": "Couldn't load this session.",
+} satisfies Record<string, string>;

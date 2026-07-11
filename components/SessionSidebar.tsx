@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, memo, useMemo } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { FileExplorer } from "./FileExplorer";
 import { PinnedDirsList } from "./PinnedDirsList";
@@ -8,6 +8,12 @@ import { PinCurrentDirButton } from "./PinCurrentDirButton";
 import { useIsCwdPinned } from "@/hooks/useIsCwdPinned";
 import { useI18n } from "@/hooks/useI18n";
 import { useExtensions } from "@/hooks/useExtensions";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { ErrorState } from "./ErrorState";
+import { PathLabel } from "./PathLabel";
+import { AnimatedDropdown, DROPDOWN_ANIMATION_MS } from "./AnimatedDropdown";
+import { PiAgentTitle } from "./PiAgentTitle";
+import { RunningSessionIndicator, UnreadSessionIndicator } from "./StatusIndicators";
 import type { WorkspaceLabelItem } from "@/lib/extensions/types";
 
 interface Props {
@@ -105,79 +111,6 @@ function displayCwd(cwd: string, homeDir?: string): string {
   return (homeDir && cwd.startsWith(homeDir)) ? "~" + cwd.slice(homeDir.length) : cwd;
 }
 
-/**
- * Path label that ellipsizes on the LEFT, keeping the (most relevant) trailing
- * segments visible: "…orkspace/pi-web". Shows as much of the path as fits
- * instead of a fixed number of segments. The rtl container moves the ellipsis
- * to the left edge; the inner plaintext bidi isolation keeps the path itself
- * rendered strictly left-to-right (no punctuation reordering).
- */
-function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
-  return (
-    <span
-      style={{
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        display: "block",
-        minWidth: 0,
-        lineHeight: 1.35,
-        direction: "rtl",
-        textAlign: "left",
-        ...style,
-      }}
-    >
-      <span style={{ unicodeBidi: "plaintext" }}>{text}</span>
-    </span>
-  );
-}
-
-const DROPDOWN_ANIMATION_MS = 140;
-
-function AnimatedDropdown({ open, children, style }: { open: boolean; children: ReactNode; style: CSSProperties }) {
-  const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(open);
-
-  useEffect(() => {
-    let frame: number | undefined;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-
-    if (open) {
-      setMounted(true);
-      setVisible(false);
-      frame = window.requestAnimationFrame(() => {
-        frame = window.requestAnimationFrame(() => setVisible(true));
-      });
-    } else {
-      setVisible(false);
-      timeout = setTimeout(() => setMounted(false), DROPDOWN_ANIMATION_MS);
-    }
-
-    return () => {
-      if (frame !== undefined) window.cancelAnimationFrame(frame);
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [open]);
-
-  if (!mounted) return null;
-
-  return (
-    <div
-      style={{
-        ...style,
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0) scale(1)" : "translateY(-8px) scale(0.96)",
-        transformOrigin: "top center",
-        transition: `opacity ${DROPDOWN_ANIMATION_MS}ms ease, transform ${DROPDOWN_ANIMATION_MS}ms ease`,
-        pointerEvents: open ? "auto" : "none",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-
 
 interface SessionTreeNode {
   session: SessionInfo;
@@ -228,94 +161,6 @@ function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
   return roots;
 }
 
-const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-
-function useScramble(target: string, running: boolean): string {
-  const [display, setDisplay] = useState(target);
-  const frameRef = useRef<number | null>(null);
-  const iterRef = useRef(0);
-
-  useEffect(() => {
-    if (!running) {
-      setDisplay(target);
-      return;
-    }
-    iterRef.current = 0;
-    const totalFrames = target.length * 4;
-
-    const step = () => {
-      iterRef.current += 1;
-      const progress = iterRef.current / totalFrames;
-      const resolved = Math.floor(progress * target.length);
-
-      setDisplay(
-        target
-          .split("")
-          .map((char, i) => {
-            if (char === " ") return " ";
-            if (i < resolved) return char;
-            return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
-          })
-          .join("")
-      );
-
-      if (iterRef.current < totalFrames) {
-        frameRef.current = requestAnimationFrame(step);
-      } else {
-        setDisplay(target);
-      }
-    };
-
-    frameRef.current = requestAnimationFrame(step);
-    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
-  }, [target, running]);
-
-  return display;
-}
-
-function PiAgentTitle() {
-  const [showVersion, setShowVersion] = useState(false);
-  const [scrambling, setScrambling] = useState(false);
-  const revertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const target = showVersion ? `${process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}p${process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}` : "Pi Agent Web";
-  const display = useScramble(target, scrambling);
-
-  const triggerScramble = useCallback((toVersion: boolean) => {
-    setShowVersion(toVersion);
-    setScrambling(true);
-    setTimeout(() => setScrambling(false), (toVersion ? 6 : 8) * 4 * (1000 / 60) + 100);
-  }, []);
-
-  const handleClick = useCallback(() => {
-    if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
-
-    const next = !showVersion;
-    triggerScramble(next);
-
-    if (next) {
-      revertTimerRef.current = setTimeout(() => triggerScramble(false), 3000);
-    }
-  }, [showVersion, triggerScramble]);
-
-  useEffect(() => () => { if (revertTimerRef.current) clearTimeout(revertTimerRef.current); }, []);
-
-  return (
-    <button
-      onClick={handleClick}
-      style={{
-        background: "none", border: "none", padding: 0, cursor: "default",
-        fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em",
-        color: showVersion ? "var(--accent)" : "var(--text)",
-        fontFamily: "var(--font-mono)",
-        minWidth: "6ch",
-      }}
-    >
-      {display}
-    </button>
-  );
-}
-
 export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onAtMention }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
@@ -347,6 +192,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [sessionRefreshDone, setSessionRefreshDone] = useState(false);
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
+  const [sseConnected, setSseConnected] = useState(true);
+  // Gate the SSE / offline status bar behind a mount flag so it renders
+  // identically on the server and the client's first paint (both skip it).
+  // Showing it during SSR would diverge from the client's real online state
+  // and trigger a hydration mismatch.
+  const [statusMounted, setStatusMounted] = useState(false);
+  useEffect(() => {
+    setStatusMounted(true);
+  }, []);
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   // Once the SSE stream has delivered a frame it is the source of truth for
@@ -405,6 +259,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     // set of running session ids whenever any session starts/stops working.
     const source = new EventSource("/api/agent/running/events");
 
+    source.onopen = () => setSseConnected(true);
     source.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
@@ -412,14 +267,24 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           sseAuthoritativeRef.current = true;
           setRunningSessionIds(new Set(data.runningSessionIds ?? []));
         }
+        setSseConnected(true);
       } catch {
         // ignore malformed frames
       }
     };
+    source.onerror = () => {
+      // EventSource auto-reconnects; surface the gap so the UI isn't silent.
+      setSseConnected(false);
+    };
 
     // On error EventSource auto-reconnects; keep the last known state meanwhile.
-    return () => source.close();
+    return () => {
+      source.close();
+      setSseConnected(false);
+    };
   }, []);
+
+  const online = useOnlineStatus();
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
@@ -701,7 +566,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
-  const recentProjects = getRecentProjects(allSessions);
+  const recentProjects = useMemo(() => getRecentProjects(allSessions), [allSessions]);
   const isCwdPinnedRaw = useIsCwdPinned(selectedCwd);
   // Optimistic override: the Pin button flips this immediately on click;
   // cleared when the bus-driven re-fetch settles (isCwdPinnedRaw changes).
@@ -715,9 +580,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Sessions of every worktree in the selected project are shown together
   const selectedProject = projectRootFor(selectedCwd);
-  const filteredSessions = selectedProject
-    ? allSessions.filter((s) => (s.projectRoot ?? s.cwd) === selectedProject)
-    : allSessions;
+  const filteredSessions = useMemo(
+    () => selectedProject
+      ? allSessions.filter((s) => (s.projectRoot ?? s.cwd) === selectedProject)
+      : allSessions,
+    [allSessions, selectedProject],
+  );
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -748,7 +616,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       : null);
 
   // Build parent-child tree within the filtered set
-  const sessionTree = buildSessionTree(filteredSessions);
+  const sessionTree = useMemo(() => buildSessionTree(filteredSessions), [filteredSessions]);
+
+  // Stable deletion handler so memoized <SessionTreeItem> rows don't re-render
+  // on every parent render (the inline arrow previously broke memoization).
+  const handleSessionDeleted = useCallback((id: string) => {
+    onSessionDeleted?.(id);
+    loadSessions();
+  }, [onSessionDeleted, loadSessions]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -1452,6 +1327,26 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       </div>
 
       {/* Session list */}
+      {statusMounted && (!online || !sseConnected) && (
+        <div
+          role="status"
+          onClick={() => { if (online) window.location.reload(); }}
+          title={online ? t("sidebar.reconnectHint") : t("sidebar.offline")}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "8px 14px",
+            fontSize: 12,
+            color: "var(--text-muted)",
+            background: "color-mix(in srgb, var(--color-error) 8%, var(--bg-panel))",
+            borderBottom: "1px solid var(--border)",
+            cursor: online ? "pointer" : "default",
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-error)", animation: online ? "pulse 1.4s ease infinite" : "none", flexShrink: 0 }} />
+          <span>{online ? t("sidebar.reconnecting") : t("sidebar.offline")}</span>
+        </div>
+      )}
+
       <div style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
         {loading && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
@@ -1459,8 +1354,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
         )}
         {error && (
-          <div style={{ padding: "12px 14px", color: "#f87171", fontSize: 12 }}>
-            {error}
+          <div style={{ padding: "12px 14px" }}>
+            <ErrorState message={t("sidebar.failedToLoadSessions")} details={error} onRetry={loadSessions} />
           </div>
         )}
         {!loading && !error && filteredSessions.length === 0 && (
@@ -1477,10 +1372,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             unreadSessionIds={unreadSessionIds}
             onSelectSession={handleSelectSessionFromList}
             onRenamed={loadSessions}
-            onSessionDeleted={(id) => {
-              onSessionDeleted?.(id);
-              loadSessions();
-            }}
+            onSessionDeleted={handleSessionDeleted}
             depth={0}
           />
         ))}
@@ -1577,7 +1469,36 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   );
 }
 
-function SessionTreeItem({
+// SSE ticks produce a brand-new runningSessionIds / unreadSessionIds Set on
+// every push, but a given row only cares whether ITS session id is a member.
+// Compare by per-row membership (plus the stable props) so the other rows skip
+// re-rendering when only a different session flips state.
+function sessionTreeItemEqual(
+  a: {
+    node: SessionTreeNode;
+    selectedSessionId: string | null;
+    runningSessionIds: Set<string>;
+    unreadSessionIds: Set<string>;
+    onSelectSession: (s: SessionInfo) => void;
+    onRenamed?: () => void;
+    onSessionDeleted?: (id: string) => void;
+    depth: number;
+  },
+  b: typeof a,
+): boolean {
+  return (
+    a.node === b.node
+    && a.selectedSessionId === b.selectedSessionId
+    && a.depth === b.depth
+    && a.onSelectSession === b.onSelectSession
+    && a.onRenamed === b.onRenamed
+    && a.onSessionDeleted === b.onSessionDeleted
+    && a.runningSessionIds.has(a.node.session.id) === b.runningSessionIds.has(b.node.session.id)
+    && a.unreadSessionIds.has(a.node.session.id) === b.unreadSessionIds.has(b.node.session.id)
+  );
+}
+
+const SessionTreeItem = memo(function SessionTreeItem({
   node,
   selectedSessionId,
   runningSessionIds,
@@ -1599,7 +1520,12 @@ function SessionTreeItem({
   const { getWorkspaceLabelItems } = useExtensions();
   const [collapsed, setCollapsed] = useState(false);
   const hasChildren = node.children.length > 0;
-
+  // Labels only change when the session itself changes — cache so SSE ticks
+  // (which swap the runningSessionIds Set) don't recompute them per row.
+  const labels = useMemo(
+    () => getWorkspaceLabelItems({ session: node.session, cwd: node.session.cwd, state: {} }),
+    [getWorkspaceLabelItems, node.session],
+  );
   return (
     <div>
       <div style={{ position: "relative" }}>
@@ -1626,7 +1552,7 @@ function SessionTreeItem({
           hasChildren={hasChildren}
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((v) => !v)}
-          labels={getWorkspaceLabelItems({ session: node.session, cwd: node.session.cwd, state: {} })}
+          labels={labels}
         />
       </div>
       {hasChildren && !collapsed && (
@@ -1648,72 +1574,7 @@ function SessionTreeItem({
       )}
     </div>
   );
-}
-
-function RunningSessionIndicator() {
-  const { t } = useI18n();
-  return (
-    <span
-      title={t("sidebar.agentRunning")}
-      aria-label={t("sidebar.agentRunning")}
-      style={{
-        width: 14,
-        height: 14,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        color: "var(--accent)",
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-        <g>
-          <path
-            d="M21 12a9 9 0 1 1-3.8-7.4"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-          />
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            from="0 12 12"
-            to="360 12 12"
-            dur="0.9s"
-            repeatCount="indefinite"
-          />
-        </g>
-      </svg>
-    </span>
-  );
-}
-
-function UnreadSessionIndicator() {
-  const { t } = useI18n();
-  return (
-    <span
-      title={t("sidebar.newActivity")}
-      aria-label={t("sidebar.newActivity")}
-      style={{
-        width: 14,
-        height: 14,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        color: "#0891b2",
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ display: "block" }}>
-        <circle cx="7" cy="7" r="2.5" fill="currentColor" />
-        <circle cx="7" cy="7" r="3" stroke="currentColor" strokeWidth="1.4" opacity="0.32">
-          <animate attributeName="r" values="3;6;3" dur="1.6s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.32;0;0.32" dur="1.6s" repeatCount="indefinite" />
-        </circle>
-      </svg>
-    </span>
-  );
-}
+}, sessionTreeItemEqual);
 
 function SessionItem({
   session,

@@ -16,6 +16,7 @@ import { McpConfigPanel } from "./McpConfigPanel";
 import { WebSearchConfigPanel } from "./WebSearchConfigPanel";
 import { SubagentsPanel } from "./SubagentsPanel";
 import { SubagentBadge } from "./SubagentBadge";
+import { TokenUsageIndicator } from "./TokenUsageIndicator";
 import { InspectorPanel } from "./InspectorPanel";
 import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
@@ -34,6 +35,8 @@ import { buildAtMentionText } from "@/lib/file-fuzzy";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import { SUPPORTED_TOKEN_USAGE_PROVIDERS } from "@/lib/token-usage";
+import { useConfiguredProviders } from "@/hooks/useConfiguredProviders";
 
 type SessionCopyField = "file" | "id";
 
@@ -43,6 +46,7 @@ export function AppShell() {
   const isMobile = useIsMobile();
   const { locale, t } = useI18n();
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
+  const { configured: configuredProviders, loading: providersLoading } = useConfiguredProviders();
   const runtime = useAgentRuntime();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
@@ -100,6 +104,23 @@ export function AppShell() {
   // down (ref={...}, standard React forwardRef pattern).
   const chatWindowRef = useRef<ChatWindowHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ctrl+J / Cmd+J → focus chat input
+      if ((e.ctrlKey || e.metaKey) && e.key === "j") {
+        e.preventDefault();
+        // The ChatInput exposes a ref; focus its textarea via the DOM
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+          '[data-chat-input-textarea]',
+        );
+        textarea?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
   const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
@@ -887,6 +908,20 @@ export function AppShell() {
           {showChat && (
             <SubagentBadge onClick={openSubagentsPanel} />
           )}
+          {/* Provider token-plan usage pills — one per supported provider that
+              actually has an API key configured. Skipping unconfigured ones
+              avoids mounting a polling hook (and its fetches) for providers
+              with nothing to show. While the auth list loads, render nothing
+              rather than risk a flash of soon-unmounted hooks. */}
+          {showChat && !providersLoading && Object.values(SUPPORTED_TOKEN_USAGE_PROVIDERS)
+            .filter((cfg) => configuredProviders.has(cfg.id))
+            .map((cfg) => (
+            <TokenUsageIndicator
+              key={cfg.id}
+              config={{ provider: cfg.id, displayName: cfg.displayName }}
+              onConfigure={() => setModelsConfigOpen(true)}
+            />
+          ))}
           {/* Session stats — right-aligned in top bar */}
           {showChat && (sessionStats || contextUsage) && (() => {
             const t = sessionStats?.tokens;

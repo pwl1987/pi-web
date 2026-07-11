@@ -1,5 +1,6 @@
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
+import { createDefaultExtensionTheme } from "./extension-theme";
 import { cacheSessionPath, resolveSessionPath } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
 import {
@@ -95,11 +96,19 @@ export class AgentSessionWrapper {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private onDestroyCallback: (() => void) | null = null;
   private _alive = true;
+  private readonly defaultExtensionTheme: ReturnType<typeof createDefaultExtensionTheme>;
 
   readonly inner: AgentSessionLike;
 
   constructor(inner: AgentSessionLike) {
     this.inner = inner;
+    // Extensions written for pi's TUI assume the `theme` argument to
+    // `ctx.ui.custom((tui, theme, …) => …)` is a real Theme instance.
+    // Without one, `theme.bold(text)` etc. crash inside the extension's
+    // `render(width)` and surface here as
+    //   "Extension custom UI render failed: Cannot read properties of
+    //    undefined (reading 'bold')".
+    this.defaultExtensionTheme = createDefaultExtensionTheme();
   }
 
   get sessionId(): string {
@@ -171,7 +180,7 @@ export class AgentSessionWrapper {
             method: "notify",
             notifyType: "warning",
             message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
-          } as ExtensionUiRequest as AgentEvent),
+          }),
           onError: (error) => this.emit({
             type: "extension_error",
             extensionPath: error.extensionPath,
@@ -554,7 +563,7 @@ export class AgentSessionWrapper {
       id,
       method: "custom",
       lines,
-    } as ExtensionUiRequest as AgentEvent;
+    };
     this.pendingUiRequests.set(id, event);
     this.emit(event);
   }
@@ -576,7 +585,7 @@ export class AgentSessionWrapper {
       method: "custom",
       lines: [],
       closed: true,
-    } as ExtensionUiRequest as AgentEvent);
+    });
     custom.resolve(value);
   }
 
@@ -616,7 +625,7 @@ export class AgentSessionWrapper {
       const done = (value: T) => this.closeCustomUi(id, value);
 
       Promise.resolve()
-        .then(() => factory(tui, undefined, undefined, done))
+        .then(() => factory(tui, this.defaultExtensionTheme, undefined, done))
         .then((component) => {
           if (!component || typeof component !== "object" || typeof (component as CustomUiComponent).render !== "function") {
             resolve(undefined as T);
@@ -687,6 +696,7 @@ export class AgentSessionWrapper {
   }
 
   private createExtensionUiContext(): ExtensionUiContextLike {
+    const theme = this.defaultExtensionTheme;
     return {
       select: (title, options, opts) => this.requestExtensionUi(
         { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
@@ -723,7 +733,7 @@ export class AgentSessionWrapper {
           method: "notify",
           message,
           notifyType: type,
-        } as ExtensionUiRequest as AgentEvent);
+        });
       },
       onTerminalInput: () => () => {},
       setStatus: (key, text) => {
@@ -735,7 +745,7 @@ export class AgentSessionWrapper {
           method: "setStatus",
           statusKey: key,
           statusText: text,
-        } as ExtensionUiRequest as AgentEvent);
+        });
       },
       setWorkingMessage: () => {},
       setWorkingVisible: () => {},
@@ -759,7 +769,7 @@ export class AgentSessionWrapper {
           widgetKey: key,
           widgetLines: content,
           widgetPlacement: options?.placement,
-        } as ExtensionUiRequest as AgentEvent);
+        });
       },
       setFooter: () => {},
       setHeader: () => {},
@@ -769,7 +779,7 @@ export class AgentSessionWrapper {
           id: randomUUID(),
           method: "setTitle",
           title,
-        } as ExtensionUiRequest as AgentEvent);
+        });
       },
       custom: <T = unknown>(factory: unknown, options?: unknown) => this.requestExtensionCustomUi<T>(factory, options),
       pasteToEditor: (text) => {
@@ -778,7 +788,7 @@ export class AgentSessionWrapper {
           id: randomUUID(),
           method: "set_editor_text",
           text,
-        } as ExtensionUiRequest as AgentEvent);
+        });
       },
       setEditorText: (text) => {
         this.emit({
@@ -786,13 +796,13 @@ export class AgentSessionWrapper {
           id: randomUUID(),
           method: "set_editor_text",
           text,
-        } as ExtensionUiRequest as AgentEvent);
+        });
       },
       getEditorText: () => "",
       addAutocompleteProvider: () => {},
       setEditorComponent: () => {},
       getEditorComponent: () => undefined,
-      get theme() { return undefined; },
+      get theme() { return theme; },
       getAllThemes: () => [],
       getTheme: () => undefined,
       setTheme: () => ({ success: false, error: "Theme switching is not supported in pi-web extension UI yet" }),
@@ -939,10 +949,12 @@ export async function startRpcSession(
     recordActiveSession(realSessionId, toolNames?.length === 0);
 
     return { session: wrapper, realSessionId };
-  })().finally(() => locks.delete(sessionId));
+  })();
 
+  // Set the lock BEFORE the IIFE can yield — prevents concurrent callers from
+  // passing the inflight check above and creating duplicate sessions.
   locks.set(sessionId, starting);
-  return starting;
+  return starting.finally(() => locks.delete(sessionId));
 }
 
 // ----------------------------------------------------------------------------

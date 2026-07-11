@@ -4,6 +4,15 @@ import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 // POST /api/agent/[id] - Send a command to an existing session
+const ALLOWED_AGENT_COMMANDS = new Set([
+  "prompt", "abort", "get_state", "fork", "navigate_tree",
+  "compact", "set_model", "set_thinking_level", "set_session_name",
+  "get_session_stats", "get_last_assistant_text", "set_auto_compaction",
+  "clear_queue", "steer", "follow_up", "get_tools", "get_commands",
+  "set_tools", "reload", "abort_compaction",
+  "extension_ui_response", "extension_ui_input", "set_auto_retry",
+]);
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -12,6 +21,10 @@ export async function POST(
 
   try {
     const body = await req.json() as { type: string; [key: string]: unknown };
+
+    if (!ALLOWED_AGENT_COMMANDS.has(body.type)) {
+      return NextResponse.json({ error: `unknown command: ${body.type}` }, { status: 400 });
+    }
 
     // Fast path: already-running session
     const existing = getRpcSession(id);

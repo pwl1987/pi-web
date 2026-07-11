@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
 import { DefaultResourceLoader, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +30,20 @@ export async function PATCH(req: Request) {
     const body = await req.json() as { filePath: string; disableModelInvocation: boolean };
     const { filePath, disableModelInvocation } = body;
     if (!filePath) return NextResponse.json({ error: "filePath required" }, { status: 400 });
-    if (!existsSync(filePath)) return NextResponse.json({ error: "file not found" }, { status: 404 });
 
-    const content = readFileSync(filePath, "utf8");
+    // Prevent path traversal: only allow files within allowed roots
+    const resolved = resolve(filePath);
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isFilePathAllowed(resolved, allowedRoots)) {
+      // Also allow files under the agent dir itself (for user-scoped skills)
+      const agentDir = resolve(getAgentDir());
+      if (!resolved.startsWith(agentDir)) {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+    }
+    if (!existsSync(resolved)) return NextResponse.json({ error: "file not found" }, { status: 404 });
+
+    const content = readFileSync(resolved, "utf8");
     const key = "disable-model-invocation";
 
     // Use parseFrontmatter to check current value, then do a surgical line edit
@@ -49,7 +62,7 @@ export async function PATCH(req: Request) {
       updated = content.replace(new RegExp(`^${key}\\s*:.*\\r?\\n`, "m"), "");
     }
 
-    writeFileSync(filePath, updated, "utf8");
+    writeFileSync(resolved, updated, "utf8");
     return NextResponse.json({ success: true });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

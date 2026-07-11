@@ -1,6 +1,9 @@
 // 简体中文文案。扁平点号 key("namespace.subkey")便于查找。
 // 翻译组件时,新增 key 需同步加入 en.ts。
-export const zh: Record<string, string> = {
+// satisfies Record<keyof TranslationKeys, string> ensures every key in en
+// has a corresponding entry here — missing keys become compile-time errors.
+import type { TranslationKeys } from "./types";
+export const zh = {
   "app.title": "Pi Agent Web",
 
   // 顶栏语言切换按钮
@@ -59,6 +62,14 @@ export const zh: Record<string, string> = {
   "sessionInfo.cacheWrite": "缓存写入",
   "sessionInfo.cost": "费用",
   "sessionInfo.context": "上下文",
+  // 顶部 token 用量 / 配额指示器
+  "tokenUsage.usage": "用量",
+  "tokenUsage.usageTooltip": "{provider} 配额 — 已用 {used} / {total} ({pct}%)。{reset}后重置。",
+  "tokenUsage.usageTooltipNoTotal": "{provider} 配额 — 已用 {used}。",
+  "tokenUsage.usageTooltipNoReset": "{provider} 配额 — 已用 {used} / {total} ({pct}%)。",
+  "tokenUsage.configure": "填入 API key",
+  "tokenUsage.configureHintTitle": "填入 {provider} 的 API key 以显示配额",
+  "tokenUsage.error": "配额获取失败 — 悬停查看详情",
   // 系统提示词浮层 — 空状态
   "systemPrompt.empty": "系统提示词为空(工具已禁用)",
   "systemPrompt.loadHint": "发送消息以加载系统提示词",
@@ -100,7 +111,7 @@ export const zh: Record<string, string> = {
   // 输入栏 — 占位符
   "input.placeholderSteer": "立即介入 / 排队后续消息...",
   "input.placeholderRunning": "Agent 运行中…",
-  "input.placeholderIdle": "输入消息… 输入 / 查看命令,@ 查找文件",
+  "input.placeholderIdle": "输入消息… 输入 / 查看命令,@ 查找文件 (Ctrl+J 聚焦)",
   // 输入栏 — 按钮
   "input.send": "发送",
   "input.ster": "介入",
@@ -118,6 +129,7 @@ export const zh: Record<string, string> = {
   "input.stopCompaction": "停止压缩",
   "input.compactContext": "压缩上下文",
   "input.stopAgent": "停止 Agent",
+  "input.stopConfirm": "再次点击以停止",
   "input.disableSound": "关闭完成提示音",
   "input.enableSound": "开启完成提示音",
   "input.recallHint": "移除所有排队消息并放回输入框编辑",
@@ -432,6 +444,8 @@ export const zh: Record<string, string> = {
   "chat.collapseProcessDetails": "折叠过程详情",
   "chat.expandProcessDetails": "展开过程详情",
   "chat.loadingSession": "加载会话中...",
+  "chat.searchMessages": "搜索消息...",
+  "chat.noMatches": "无匹配",
   "chat.confirm": "确认",
   "chat.submit": "提交",
 
@@ -495,6 +509,10 @@ export const zh: Record<string, string> = {
   "file.loadingFiles": "加载文件中...",
   "file.noFilesFound": "未找到文件",
   "file.failedToLoadFiles": "加载文件失败 (HTTP {status})",
+  // 文件浏览器 — 右键菜单
+  "file.open": "打开",
+  "file.copyFullPath": "复制完整路径",
+  "file.copyRelativePath": "复制相对路径",
 
   // ----- PluginsConfig.tsx -----
   // 标题 / 通用
@@ -693,4 +711,18 @@ export const zh: Record<string, string> = {
   "extensions.installHint": "目录需包含 package.json 且声明了 piWeb.extensions。",
   "extensions.installed": "已安装: {id}。重载页面以激活。",
   "extensions.contributions": "个贡献项",
-};
+
+  // ----- ErrorState / Skeleton (可复用 UX 原语) -----
+  "error.title": "出错了",
+  "error.retry": "重试",
+  "error.showDetails": "显示详情",
+  "error.hideDetails": "隐藏详情",
+  // SSE 重连指示器 (SessionSidebar)
+  "sidebar.reconnecting": "重连中…",
+  "sidebar.reconnectHint": "连接已断开 — 点击重连",
+  "sidebar.offline": "离线",
+  "sidebar.failedToLoadSessions": "无法加载你的会话。",
+
+  "chat.loadingSession": "正在加载会话…",
+  "chat.failedToLoadSession": "无法加载该会话。",
+} satisfies Record<keyof TranslationKeys, string>;

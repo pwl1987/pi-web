@@ -1,10 +1,12 @@
 "use client";
 
-import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { countToolCallBlocks, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { MessageView } from "./MessageView";
+import { ErrorState } from "./ErrorState";
+import { SkeletonLines } from "./Skeleton";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { useMessageScroll } from "@/hooks/useMessageScroll";
@@ -186,12 +188,113 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
+    reloadSession,
     handleToolPresetChange, handleToolsChange, handleThinkingLevelChange, loadSlashCommands,
     isAtBottom, scrollToBottomAction,
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd: wrappedOnAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, pluginsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
   });
+
+  // ── Search state ──────────────────────────────────────────────────────
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Ctrl+F / Cmd+F toggles search bar
+  const searchActiveRef = useRef(searchActive);
+  searchActiveRef.current = searchActive;
+
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        // Don't steal browser find when already in an input
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+        e.preventDefault();
+        setSearchActive((prev) => !prev);
+        setSearchQuery("");
+        setSearchIndex(0);
+      }
+      if (e.key === "Escape" && searchActiveRef.current) {
+        setSearchActive(false);
+        setSearchQuery("");
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Focus search input when activated
+  useEffect(() => {
+    if (searchActive) searchInputRef.current?.focus();
+  }, [searchActive]);
+
+  // Compute flat list of searchable message items
+  const searcheableItems = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    const items: { msgIdx: number; text: string; snippet: string }[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      let text = "";
+      if (msg.role === "user") {
+        text = msg.content ?? "";
+      } else if (msg.role === "assistant") {
+        text = (msg as import("@/lib/types").AssistantMessage).content
+          .filter((b) => b.type === "text")
+          .map((b) => (b as import("@/lib/types").TextBlock).text)
+          .join(" ");
+      } else if (msg.role === "toolCall") {
+        const tc = msg;
+        text = `${tc.name} ${JSON.stringify(tc.input ?? {})}`;
+      } else if (msg.role === "toolResult") {
+        text = (msg as ToolResultMessage).content ?? "";
+      }
+      if (text.toLowerCase().includes(q)) {
+        const idx = text.toLowerCase().indexOf(q);
+        const start = Math.max(0, idx - 30);
+        const end = Math.min(text.length, idx + q.length + 30);
+        items.push({
+          msgIdx: i,
+          text,
+          snippet: (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : ""),
+        });
+      }
+    }
+    return items;
+  }, [messages, searchQuery]);
+
+  // Clamp search index when matches change
+  const safeIndex = useMemo(() => {
+    if (searcheableItems.length === 0) return 0;
+    return Math.min(searchIndex, searcheableItems.length - 1);
+  }, [searchIndex, searcheableItems.length]);
+
+  // Scroll to current match
+  useEffect(() => {
+    if (!searchActive || searcheableItems.length === 0) return;
+    const item = searcheableItems[safeIndex];
+    if (!item) return;
+    const el = messageRefs.current[item.msgIdx];
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [safeIndex, searchActive, searcheableItems]);
+
+  const handleSearchKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        setSearchIndex((prev) => (prev <= 0 ? searcheableItems.length - 1 : prev - 1));
+      } else {
+        setSearchIndex((prev) => (prev >= searcheableItems.length - 1 ? 0 : prev + 1));
+      }
+    }
+    if (e.key === "Escape") {
+      setSearchActive(false);
+      setSearchQuery("");
+    }
+  }, [searcheableItems.length]);
 
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
@@ -306,18 +409,46 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   const aboveEditorWidgets = extensionWidgets.filter((widget) => widget.placement !== "belowEditor");
   const belowEditorWidgets = extensionWidgets.filter((widget) => widget.placement === "belowEditor");
 
+  // Build the toolResult lookup once per `messages` change (not per render).
+  // A stable Map reference is what lets the memoized <MessageView> children
+  // skip re-rendering during streaming.
+  const toolResultsMap = useMemo(() => {
+    const m = new Map<string, ToolResultMessage>();
+    for (const msg of messages) {
+      if (msg.role === "toolResult") {
+        m.set((msg as ToolResultMessage).toolCallId, msg as ToolResultMessage);
+      }
+    }
+    return m;
+  }, [messages]);
+
+  // Stable callback so memoized <MessageView> children don't re-render on every
+  // parent render.
+  const handleEditContent = useCallback((content: string) => {
+    chatInputRef?.current?.insertIfEmpty(content);
+  }, [chatInputRef]);
+
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-text-muted">
-        {t("chat.loadingSession")}
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-text-muted">
+        <div style={{ maxWidth: 420, width: "100%" }}>
+          <SkeletonLines lines={4} lastLineWidth="40%" />
+        </div>
+        <span style={{ fontSize: 12 }}>{t("chat.loadingSession")}</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-red-400">
-        {error}
+      <div className="flex h-full items-center justify-center p-6">
+        <div style={{ maxWidth: 520, width: "100%" }}>
+          <ErrorState
+            message={t("chat.failedToLoadSession")}
+            details={error}
+            onRetry={reloadSession}
+          />
+        </div>
       </div>
     );
   }
@@ -432,14 +563,77 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
               <ExtensionStatusBar statuses={extensionStatuses} />
               <ExtensionWidgets widgets={aboveEditorWidgets} />
 
-            {(() => {
-              const toolResultsMap = new Map<string, ToolResultMessage>();
-              for (const msg of messages) {
-                if (msg.role === "toolResult") {
-                  toolResultsMap.set((msg as ToolResultMessage).toolCallId, msg as ToolResultMessage);
-                }
-              }
+              {searchActive && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    marginBottom: 10,
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-panel)",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setSearchIndex(0); }}
+                    onKeyDown={handleSearchKeyDown}
+                    placeholder={t("chat.searchMessages")}
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      background: "transparent",
+                      outline: "none",
+                      fontSize: 13,
+                      color: "var(--text)",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                  {searcheableItems.length > 0 && (
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      {safeIndex + 1} / {searcheableItems.length}
+                    </span>
+                  )}
+                  {searchQuery && searcheableItems.length === 0 && (
+                    <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      {t("chat.noMatches")}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => { setSearchActive(false); setSearchQuery(""); }}
+                    title={t("common.close")}
+                    aria-label={t("common.close")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 22,
+                      height: 22,
+                      borderRadius: 4,
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--text-dim)",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              )}
 
+            {(() => {
               let lastUserIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
                 if (messages[i].role === "user") { lastUserIdx = i; break; }
@@ -499,7 +693,7 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
                     forking={forkingEntryId === entryIds[idx]}
                     onNavigate={agentRunning ? undefined : handleNavigate}
                     prevAssistantEntryId={agentRunning ? undefined : prevAssistantEntryId}
-                    onEditContent={(content) => chatInputRef?.current?.insertIfEmpty(content)}
+                    onEditContent={handleEditContent}
                     showTimestamp={showTimestamp}
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                   />
@@ -741,11 +935,11 @@ function NoticeShelf({ notices, floating = false, align = "left" }: { notices: N
     >
       {notices.map((notice, index) => {
         const color = notice.type === "error"
-          ? "#ef4444"
+          ? "var(--color-error)"
           : notice.type === "warning"
-            ? "#d97706"
+            ? "var(--color-warning)"
             : notice.type === "success"
-              ? "#10b981"
+              ? "var(--color-success-soft)"
               : "var(--accent)";
         return (
           <div

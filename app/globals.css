@@ -33,6 +33,20 @@
   --assistant-bg: #ffffff;
   --tool-bg: #f9fafb;
   --bg-subtle: rgba(0,0,0,0.03);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+  --color-error: #ef4444;
+  --color-error-soft: #f87171;
+  --color-success: #22c55e;
+  --color-success-soft: #10b981;
+  --color-warning: #d97706;
+  --color-info: #2563eb;
+  --tps-fast: #53b3cb;
+  --tps-ok: #9bc53d;
+  --tps-slow: #f9c22e;
+  --tps-crawl: #e01a4f;
   --git-added: #4ec990;
   --git-deleted: #f47067;
   --git-modified: #d4a72c;
@@ -574,6 +588,17 @@ span.linenumber {
   to   { stroke-dashoffset: 0;  opacity: 1; }
 }
 
+@keyframes skeleton-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none !important;
+  }
+}
+
 /* Desktop sidebar: animate width */
 @media (min-width: 641px) {
   .sidebar-overlay-backdrop {
@@ -662,4 +687,17 @@ span.linenumber {
     border-left: none !important;
     display: none !important;
   }
+}
+
+/* ── Accessibility ────────────────────────────────────────────────────────────
+   Global focus-visible ring for keyboard navigation. Only shows when the user
+   is navigating via keyboard (Tab/Shift+Tab), not on mouse clicks. Interactive
+   elements that already have custom focus styles should override this. */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Suppress outline for mouse users */
+*:focus:not(:focus-visible) {
+  outline: none;
 }

@@ -391,6 +391,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionPromotedRef = useRef(false);
   const promptRunIdRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
 
   const setToolPresetState = opts.setToolPreset ?? setToolPreset;
 
@@ -831,7 +832,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   // Recovery net for missed SSE events: while the agent is running, verify
   // against the server periodically and whenever the tab returns to the
-  // foreground or the network comes back.
+  // foreground or the network comes back. Skip periodic polling when the SSE
+  // connection is healthy (EventSource.OPEN) — network transitions and tab
+  // visibility still trigger a one-off check.
   useEffect(() => {
     if (!agentRunning) return;
     const reconcile = () => {
@@ -843,7 +846,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const onVisible = () => {
       if (document.visibilityState === "visible") reconcile();
     };
-    const interval = setInterval(reconcile, AGENT_STATE_RECONCILE_MS);
+    const interval = setInterval(() => {
+      // When SSE is healthy we already receive every event in real-time.
+      // Periodic polling is a fallback for when the EventSource silently
+      // disconnects (mobile backgrounding, network hiccups). Skip the
+      // regular poll while the connection is open to save 1 HTTP round-
+      // trip every 15 s.
+      if (eventSourceRef.current?.readyState === EventSource.OPEN) return;
+      reconcile();
+    }, AGENT_STATE_RECONCILE_MS);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", reconcile);
     return () => {
@@ -893,6 +904,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           fetch(`/api/agent/${encodeURIComponent(sessionIdRef.current)}`)
             .then((r) => r.json())
             .then((d: { state?: AgentStateResponse }) => {
+              if (!mountedRef.current) return;
               if (d.state?.contextUsage !== undefined) setContextUsage(d.state.contextUsage ?? null);
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt ?? null);
               if (d.state?.extensionStatuses !== undefined) setExtensionStatuses(d.state.extensionStatuses ?? []);
@@ -931,7 +943,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (msg) {
           dispatch({ type: "update", message: normalizeToolCalls(msg as AgentMessage) });
         }
-        setAgentPhase(null);
+        // Avoid a state update (and therefore a full ChatWindow re-render) on
+        // every streaming tick: only clear the phase when it isn't already
+        // cleared. Object.is bails out of the re-render when the value is
+        // unchanged.
+        setAgentPhase((prev) => (prev === null ? prev : null));
         break;
       }
       case "message_end": {
@@ -1523,6 +1539,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
     }
     return () => {
+      mountedRef.current = false;
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
     };
@@ -1629,6 +1646,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setSessionStatsOverride(null);
   }, [messages.length, contextUsage?.tokens, contextUsage?.percent, contextUsage?.contextWindow]);
 
+  const reloadSession = useCallback(async () => {
+    if (sessionIdRef.current) {
+      await loadSession(sessionIdRef.current, true);
+    }
+  }, [loadSession]);
+
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
@@ -1648,6 +1671,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
+    reloadSession,
     handleToolPresetChange, handleToolsChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     dispatch, setAgentRunning, setForkingEntryId,
     // Scroll-to-bottom

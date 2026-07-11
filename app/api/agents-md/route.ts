@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PUT /api/agents-md — write content
+const MAX_AGENTS_MD_SIZE = 1_000_000; // 1MB limit
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json() as { file?: string; level?: string; cwd?: string; content?: string };
@@ -60,9 +62,22 @@ export async function PUT(req: NextRequest) {
     if (body.level !== "user" && body.level !== "project") {
       return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
     }
+    // Limit content size
+    const content = body.content ?? "";
+    if (content.length > MAX_AGENTS_MD_SIZE) {
+      return NextResponse.json({ error: "content too large" }, { status: 413 });
+    }
+    // For project-level writes, validate cwd is within allowed roots
+    if (body.level === "project" && body.cwd) {
+      const resolvedCwd = resolve(body.cwd);
+      const allowedRoots = await getAllowedFileRoots();
+      if (!isFilePathAllowed(resolvedCwd, allowedRoots)) {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+    }
     const filePath = resolvePath(file, body.level, body.cwd);
     mkdirSync(join(filePath, ".."), { recursive: true });
-    writeFileSync(filePath, body.content ?? "", "utf8");
+    writeFileSync(filePath, content, "utf8");
     return NextResponse.json({ success: true, path: filePath });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

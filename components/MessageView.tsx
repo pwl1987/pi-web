@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
@@ -50,7 +50,7 @@ function formatTime(ts?: number): string | null {
   return `${date} ${time}`;
 }
 
-export function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
@@ -68,7 +68,7 @@ export function MessageView({ message, isStreaming, toolResults, modelNames, cwd
     return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   return null;
-}
+});
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
@@ -270,7 +270,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   );
 }
 
-function AssistantMessageView({
+const AssistantMessageView = memo(function AssistantMessageView({
   message,
   isStreaming,
   toolResults,
@@ -357,6 +357,9 @@ function AssistantMessageView({
       return;
     }
     const tick = () => {
+      // Skip CPU work when the tab is hidden — durations and tps are
+      // cosmetics only visible when the user is looking at the page.
+      if (document.visibilityState === "hidden") return;
       const items = blockItemsRef.current;
       const bs = items.map(({ block }) => block);
       const now = Date.now();
@@ -440,7 +443,7 @@ function AssistantMessageView({
                     {est}
                   </span>
                   {tps !== null && (() => {
-                    const bg = tps >= 50 ? "#53b3cb" : tps >= 30 ? "#9bc53d" : tps >= 15 ? "#f9c22e" : "#e01a4f";
+                    const bg = tps >= 50 ? "var(--tps-fast)" : tps >= 30 ? "var(--tps-ok)" : tps >= 15 ? "var(--tps-slow)" : "var(--tps-crawl)";
                     return (
                       <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "#fff", fontSize: 11, fontWeight: 400 }}>
                         {tps.toFixed(1)} t/s
@@ -507,9 +510,9 @@ function AssistantMessageView({
       </div>
     </div>
   );
-}
+});
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+const BlockView = memo(function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -523,7 +526,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     return <ToolCallBlock block={tc} result={result} duration={duration} />;
   }
   return null;
-}
+});
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   return <MarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</MarkdownBody>;
@@ -582,7 +585,7 @@ function ThinkingBlock({ block, duration }: { block: ThinkingContent; duration?:
 }
 
 
-function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
+const ToolCallBlock = memo(function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
   const [expanded, setExpanded] = useState(false);
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
@@ -601,8 +604,8 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
         borderRadius: 7,
         overflow: "hidden",
         fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
+        border: isError ? "1px solid color-mix(in srgb, var(--color-error-soft) 45%, transparent)" : "1px solid color-mix(in srgb, var(--color-success) 25%, transparent)",
+        background: isError ? "color-mix(in srgb, var(--color-error-soft) 5%, transparent)" : "color-mix(in srgb, var(--color-success) 4%, transparent)",
       }}
     >
       {/* ── Tool call header ── */}
@@ -623,7 +626,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
           minWidth: 0,
         }}
       >
-        <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+        <span style={{ color: isError ? "var(--color-error-soft)" : "var(--color-success)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
           {block.toolName}
         </span>
         <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
@@ -648,7 +651,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
             lineHeight: 1.5,
             overflow: "auto",
             background: "var(--bg-subtle)",
-            borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid rgba(34,197,94,0.2)",
+            borderTop: isError ? "1px solid color-mix(in srgb, var(--color-error-soft) 25%, transparent)" : "1px solid color-mix(in srgb, var(--color-success) 20%, transparent)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -673,7 +676,7 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
       )}
     </div>
   );
-}
+});
 
 interface ResultDiff {
   text: string;
@@ -685,7 +688,7 @@ function PairedDiffResult({ diff }: {
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(34,197,94,0.15)",
+        borderTop: "1px solid color-mix(in srgb, var(--color-success) 15%, transparent)",
         background: "var(--bg)",
       }}
     >
@@ -694,7 +697,7 @@ function PairedDiffResult({ diff }: {
   );
 }
 
-function SplitPatchView({ text }: { text: string }) {
+const SplitPatchView = memo(function SplitPatchView({ text }: { text: string }) {
   const { t } = useI18n();
   const files = useMemo(() => parseUnifiedPatch(text), [text]);
   if (!files) return <PatchTextView text={text} />;
@@ -748,7 +751,7 @@ function SplitPatchView({ text }: { text: string }) {
       ))}
     </div>
   );
-}
+});
 
 function SplitDiffHeader({ title, side }: { title: string; side: "left" | "right" }) {
   return (
@@ -771,16 +774,16 @@ function SplitDiffHeader({ title, side }: { title: string; side: "left" | "right
 function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" | "right" }) {
   const bg =
     cell.type === "added"
-      ? "rgba(34,197,94,0.12)"
+      ? "color-mix(in srgb, var(--color-success) 12%, transparent)"
       : cell.type === "removed"
-      ? "rgba(248,113,113,0.13)"
+      ? "color-mix(in srgb, var(--color-error-soft) 13%, transparent)"
       : cell.type === "empty"
       ? "var(--bg-subtle)"
       : "transparent";
   const marker =
     cell.type === "added" ? "+" : cell.type === "removed" ? "-" : " ";
   const markerColor =
-    cell.type === "added" ? "#22c55e" : cell.type === "removed" ? "#f87171" : "var(--text-dim)";
+    cell.type === "added" ? "var(--color-success)" : cell.type === "removed" ? "var(--color-error-soft)" : "var(--text-dim)";
 
   return (
     <div
@@ -833,7 +836,7 @@ function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" |
   );
 }
 
-function PatchTextView({ text }: { text: string }) {
+const PatchTextView = memo(function PatchTextView({ text }: { text: string }) {
   const lines = text.split(/\r?\n/);
 
   return (
@@ -845,13 +848,13 @@ function PatchTextView({ text }: { text: string }) {
           line.startsWith("-") && !line.startsWith("---") ? "removed" :
           "context";
         const bg =
-          kind === "added" ? "rgba(34,197,94,0.12)" :
-          kind === "removed" ? "rgba(248,113,113,0.13)" :
-          kind === "hunk" ? "rgba(96,165,250,0.12)" :
+          kind === "added" ? "color-mix(in srgb, var(--color-success) 12%, transparent)" :
+          kind === "removed" ? "color-mix(in srgb, var(--color-error-soft) 13%, transparent)" :
+          kind === "hunk" ? "color-mix(in srgb, var(--accent) 12%, transparent)" :
           "transparent";
         const color =
-          kind === "added" ? "#22c55e" :
-          kind === "removed" ? "#f87171" :
+          kind === "added" ? "var(--color-success)" :
+          kind === "removed" ? "var(--color-error-soft)" :
           kind === "hunk" ? "var(--accent)" :
           "var(--text)";
 
@@ -862,9 +865,9 @@ function PatchTextView({ text }: { text: string }) {
               display: "flex",
               background: bg,
               borderLeft: kind === "added"
-                ? "3px solid #22c55e"
+                ? "3px solid var(--color-success)"
                 : kind === "removed"
-                ? "3px solid #f87171"
+                ? "3px solid var(--color-error-soft)"
                 : kind === "hunk"
                 ? "3px solid var(--accent)"
                 : "3px solid transparent",
@@ -892,7 +895,7 @@ function PatchTextView({ text }: { text: string }) {
       })}
     </div>
   );
-}
+});
 
 function getResultDiff(result: ToolResultMessage): ResultDiff | null {
   const details = (result as ToolResultMessage & { details?: unknown }).details;
@@ -930,15 +933,15 @@ function PairedResult({ text, isEmpty, isError }: {
   return (
     <div
       style={{
-        borderTop: `1px solid ${isError ? "rgba(248,113,113,0.3)" : "rgba(34,197,94,0.15)"}`,
-        background: isError ? "rgba(248,113,113,0.04)" : "var(--bg-subtle)",
+        borderTop: `1px solid ${isError ? "color-mix(in srgb, var(--color-error-soft) 30%, transparent)" : "color-mix(in srgb, var(--color-success) 15%, transparent)"}`,
+        background: isError ? "color-mix(in srgb, var(--color-error-soft) 4%, transparent)" : "var(--bg-subtle)",
       }}
     >
       <pre
         style={{
           margin: 0,
           padding: "8px 10px",
-          color: isError ? "#f87171" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
+          color: isError ? "var(--color-error-soft)" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
           fontSize: 12,
           lineHeight: 1.5,
           overflow: "auto",
