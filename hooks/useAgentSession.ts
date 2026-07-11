@@ -377,7 +377,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = (await res.json()) as SessionData & {
-          agentState?: { running: boolean; state?: AgentStateResponse };
+          agentState?: { running: boolean; state?: AgentStateResponse; timedOut?: boolean };
         };
         setData(d);
         setActiveLeafId(d.leafId);
@@ -753,11 +753,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       try {
         const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { running?: boolean; state?: AgentStateResponse };
+        const data = (await res.json()) as {
+          running?: boolean;
+          state?: AgentStateResponse;
+          timedOut?: boolean;
+        };
         // A slow response can straddle a run boundary (previous run finished
         // and the user already started the next one while this request was in
         // flight) — everything in it is stale, drop it.
         if (promptRunIdRef.current !== runId) return;
+        // The server couldn't fetch state within its 5s budget (agent mid-
+        // construction, blocking extension) and reported running with no state.
+        // We can't tell whether the run actually ended, so keep the current UI
+        // and let the next poll retry instead of finishing a run prematurely.
+        if (data.timedOut) return;
         const state = data.state;
         // Mirror compaction state unconditionally: a missed compaction_end
         // would otherwise leave the "Stop compaction" UI stuck. No state
@@ -1611,17 +1620,27 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // session's persisted state — not just when the agent is running.
         loadTools(session.id);
         if (agentState?.running) {
-          if (agentState.state?.isStreaming || agentState.state?.isPromptRunning) {
+          const state = agentState.state;
+          // `streaming` means we got a real state with an active run. `timedOut`
+          // means the server reported the agent as running but get_state exceeded
+          // the 5s budget and returned no state — the session is alive but its
+          // exact phase is unknown. In that case we still connect SSE so we don't
+          // leave a running session stuck/disconnected; the next reconcile will
+          // settle the phase once state becomes available.
+          const streaming = state?.isStreaming || state?.isPromptRunning;
+          if (streaming || agentState.timedOut) {
             agentRunningRef.current = true;
             setAgentRunning(true);
             setAgentPhase(
-              agentState.state.isStreaming
-                ? { kind: "waiting_model" }
-                : { kind: "running_command" },
+              streaming
+                ? state?.isStreaming
+                  ? { kind: "waiting_model" }
+                  : { kind: "running_command" }
+                : { kind: "waiting_model" },
             );
             dispatch({ type: "start" });
             void connectEvents(session.id);
-            if (!agentState.state.isStreaming && agentState.state.isPromptRunning) {
+            if (streaming && !state?.isStreaming && state?.isPromptRunning) {
               void waitForPromptSettlement(session.id);
             }
           }

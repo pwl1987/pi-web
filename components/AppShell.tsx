@@ -970,39 +970,17 @@ export function AppShell() {
                 const tooltip = tooltipParts.join("  |  ");
 
                 return (
-                  <button
-                    type="button"
+                  <TopBarButton
+                    active={activeTopPanel === "session"}
                     onClick={() => toggleTopPanel("session")}
                     title={tooltip || translate(locale, "topbar.sessionInfo")}
                     aria-label={translate(locale, "topbar.sessionInfo")}
-                    aria-pressed={activeTopPanel === "session"}
+                    className="topbar-panel-btn-session"
                     style={{
                       marginLeft: "auto",
-                      display: "flex",
-                      alignItems: "center",
                       gap: 10,
-                      paddingLeft: 12,
                       paddingRight: rightPanelOpen ? 12 : 48,
-                      height: "100%",
-                      background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-                      border: "none",
-                      borderTop:
-                        activeTopPanel === "session"
-                          ? "2px solid var(--accent)"
-                          : "2px solid transparent",
-                      fontSize: 11,
-                      color: "var(--text-muted)",
-                      whiteSpace: "nowrap",
-                      cursor: "pointer",
                       fontVariantNumeric: "tabular-nums",
-                      transition: "color 0.1s, background 0.1s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "var(--text)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color =
-                        activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
                     }}
                   >
                     {isMobile && (
@@ -1060,7 +1038,7 @@ export function AppShell() {
                         {ctxStr}
                       </span>
                     )}
-                  </button>
+                  </TopBarButton>
                 );
               })()}
             {/* Top panel dropdown — shared, only one active at a time */}

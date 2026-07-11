@@ -42,13 +42,18 @@ export function encodeHeaderValue(value: string): string {
   });
 }
 
-// Build a Content-Disposition attachment header with an ASCII fallback filename
-// and a UTF-8 RFC 5987 filename parameter.
-export function getAttachmentDisposition(fileName: string): string {
+// Build a Content-Disposition header with an ASCII fallback filename (correctly
+// quoted per RFC 6266) and a UTF-8 RFC 5987 filename* parameter.
+// `disposition` defaults to "attachment"; pass "inline" for browserside preview
+// (e.g. the /api/files route that streams content into the viewer).
+export function getAttachmentDisposition(
+  fileName: string,
+  disposition: "attachment" | "inline" = "attachment",
+): string {
   const printable = fileName.replace(NON_PRINTABLE_OR_DELIM, "_");
   const fallback = printable.length > 0 ? printable : "file";
   const encoded = encodeHeaderValue(fileName);
-  return "attachment; filename=" + JSON.stringify(fallback) + "; filename*=UTF-8''" + encoded;
+  return `${disposition}; filename=${JSON.stringify(fallback)}; filename*=UTF-8''${encoded}`;
 }
 
 // Concatenate the text blocks of an assistant message.

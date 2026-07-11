@@ -54,7 +54,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ running: false });
     }
 
-    const state = await session.send({ type: "get_state" });
+    // Race get_state against a timeout. get_state can hang (agent mid-
+    // construction, a blocking extension binding) and this endpoint is polled
+    // by the client's reconcile loop, so a stalled fetch must not wedge the
+    // loop or keep the Node event loop alive. On timeout or rejection we report
+    // running with no state and a timedOut flag, so the client keeps its
+    // current UI and retries on the next poll instead of prematurely finishing
+    // a run it can't confirm has ended.
+    const GET_STATE_TIMEOUT_MS = 5_000;
+    const state = await new Promise<unknown>((resolve) => {
+      const timer = setTimeout(() => resolve({ timedOut: true }), GET_STATE_TIMEOUT_MS);
+      // Don't keep the event loop alive (and block graceful exit) if get_state
+      // resolves first and the timer is still pending.
+      timer.unref?.();
+      session.send({ type: "get_state" }).then(
+        (s) => {
+          clearTimeout(timer);
+          resolve(s);
+        },
+        (err) => {
+          clearTimeout(timer);
+          // Unknown phase on error — assume still running and let the client retry.
+          resolve({ timedOut: true, error: String(err) });
+        },
+      );
+    });
+
+    if (state && typeof state === "object" && "timedOut" in state) {
+      return NextResponse.json({ running: true, state: null, timedOut: true });
+    }
     return NextResponse.json({ running: true, state });
   } catch (error) {
     return errorResponse(error);

@@ -1039,3 +1039,8 @@ span.linenumber {
   border-top: 2px solid var(--accent);
   color: var(--text);
 }
+/* The session stats button is the rightmost control, so it has no trailing
+   divider and extra right padding when the panel is closed. */
+.topbar-panel-btn-session {
+  border-right: none;
+}

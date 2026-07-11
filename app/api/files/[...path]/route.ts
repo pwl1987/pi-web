@@ -19,7 +19,7 @@ import {
 } from "@/lib/file-types";
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
 import { errorResponse } from "@/lib/api-utils";
-import { IGNORED_NAMES, IGNORED_SUFFIXES, encodeHeaderValue } from "@/lib/api-shared";
+import { IGNORED_NAMES, IGNORED_SUFFIXES, getAttachmentDisposition } from "@/lib/api-shared";
 
 const FILE_REQUEST_TYPES = ["list", "read", "download", "meta", "preview", "watch"] as const;
 type FileRequestType = (typeof FILE_REQUEST_TYPES)[number];
@@ -140,10 +140,8 @@ function createFileBodyStream(
 }
 
 function getContentDisposition(filePath: string, asDownload = false): string {
-  const disposition = asDownload ? "attachment" : "inline";
   const fileName = path.basename(filePath);
-  const fallback = fileName.replace(/[^\x20-\x7E]|["\\;\r\n]/g, "_") || "download";
-  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(fileName)}`;
+  return getAttachmentDisposition(fileName, asDownload ? "attachment" : "inline");
 }
 
 function streamFile(

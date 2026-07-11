@@ -168,9 +168,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         // Rather than stall the whole session GET, degrade gracefully.
         const GET_STATE_TIMEOUT_MS = 5_000;
         const statePromise = rpc.send({ type: "get_state" });
-        const timeoutPromise = new Promise<{ timedOut: true }>((resolve) =>
-          setTimeout(() => resolve({ timedOut: true }), GET_STATE_TIMEOUT_MS),
-        );
+        const timeoutPromise = new Promise<{ timedOut: true }>((resolve) => {
+          const timer = setTimeout(() => resolve({ timedOut: true }), GET_STATE_TIMEOUT_MS);
+          // Don't let the pending timeout keep the Node event loop alive (and
+          // block graceful process exit) when get_state resolves first.
+          timer.unref?.();
+        });
         const result = await Promise.race([statePromise, timeoutPromise]);
         if (result && typeof result === "object" && "timedOut" in result) {
           agentState = { running: true, state: null, timedOut: true };
