@@ -65,6 +65,8 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
     // Lazy import — only load the SDK when we actually need to install.
     const { DefaultPackageManager, SettingsManager } =
       await import("@earendil-works/pi-coding-agent");
+    const { patchPackageManagerForUninstall } = await import("@/lib/plugin-package-manager");
+    patchPackageManagerForUninstall();
 
     // Use the repo root as cwd (process.cwd() is the pi-web root in both dev and prod).
     const cwd = process.cwd();

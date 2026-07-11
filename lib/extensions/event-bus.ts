@@ -43,8 +43,9 @@ export class AgentEventBus {
       this.listeners.set(type, set);
     }
     set.add(cb);
+    const captured = set;
     return () => {
-      set!.delete(cb);
+      captured.delete(cb);
     };
   }
 

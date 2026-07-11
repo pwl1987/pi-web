@@ -24,17 +24,6 @@ import { getAgentEventBus, type AgentEventBus } from "./event-bus";
 
 const ID_RE = /^[a-z][a-z0-9.-]*$/;
 
-/** Check if a module export looks like a valid extension (inlined to avoid value import). */
-function isPiWebExtension(value: unknown): value is PiWebExtension {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as PiWebExtension).apiVersion === 1 &&
-    typeof (value as PiWebExtension).name === "string" &&
-    typeof (value as PiWebExtension).activate === "function"
-  );
-}
-
 interface RegisteredExtension {
   id: ExtensionId;
   name: string;
@@ -103,11 +92,6 @@ export class ExtensionRegistry {
   /** Remove an extension (used when reloading after disable). */
   unregister(id: ExtensionId): void {
     if (this.extensions.delete(id)) this.notify();
-  }
-
-  /** Check if a module export looks like a valid extension. */
-  isValid(ext: unknown): ext is PiWebExtension {
-    return isPiWebExtension(ext);
   }
 
   // --- Query API (called on every UI render) ---

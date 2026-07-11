@@ -21,9 +21,6 @@ export type LocalContributionId = string;
 /** Qualified id: `${extensionId}:${localContributionId}` — globally unique. */
 export type QualifiedContributionId = string;
 
-/** Validation regex for both extension ids and local contribution ids. */
-export const ID_PATTERN = /^[a-z][a-z0-9.-]*$/;
-
 // ============================================================================
 // Extension module shape
 // ============================================================================
@@ -224,18 +221,4 @@ export interface LoadedExtensionInfo {
   actionCount: number;
   panelCount: number;
   labelCount: number;
-}
-
-// ============================================================================
-// Type guards
-// ============================================================================
-
-export function isPiWebExtension(value: unknown): value is PiWebExtension {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as PiWebExtension).apiVersion === 1 &&
-    typeof (value as PiWebExtension).name === "string" &&
-    typeof (value as PiWebExtension).activate === "function"
-  );
 }

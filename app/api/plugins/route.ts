@@ -20,6 +20,11 @@ import type {
 } from "@/lib/api-types";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
+import { patchPackageManagerForUninstall } from "@/lib/plugin-package-manager";
+
+// Mirror install flags onto uninstall so removing pi extensions (which declare
+// @earendil-works/pi-* peers) doesn't fail with ERESOLVE. See module for details.
+patchPackageManagerForUninstall();
 
 export const dynamic = "force-dynamic";
 
