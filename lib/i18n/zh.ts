@@ -590,6 +590,12 @@ export const zh = {
   "plugins.oneDiagnostic": "{count} 条诊断",
   "plugins.countDiagnostics": "{count} 条诊断",
   "plugins.totals": "{extensions} 扩展 · {skills} 技能 · {prompts} 提示词 · {themes} 主题",
+  // 互补关系提示（来自 recommended-plugins.ts）
+  "plugins.complements": "互补",
+  "plugins.complementedBy": "被互补",
+  "plugins.noRelations": "无关联插件",
+  "plugins.relationInstalled": "已安装",
+  "plugins.relationNotInstalled": "未安装",
 
   // ----- SkillsConfig.tsx -----
   // 标题 / 通用

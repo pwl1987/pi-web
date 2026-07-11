@@ -593,6 +593,12 @@ export const en = {
   "plugins.oneDiagnostic": "{count} diagnostic",
   "plugins.countDiagnostics": "{count} diagnostics",
   "plugins.totals": "{extensions} ext · {skills} skills · {prompts} prompts · {themes} themes",
+  // Complement relationship hints (from recommended-plugins.ts)
+  "plugins.complements": "Complements",
+  "plugins.complementedBy": "Complemented by",
+  "plugins.noRelations": "No related plugins",
+  "plugins.relationInstalled": "installed",
+  "plugins.relationNotInstalled": "not installed",
 
   // ----- SkillsConfig.tsx -----
   // Header / common

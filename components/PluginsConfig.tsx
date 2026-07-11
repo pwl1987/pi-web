@@ -5,12 +5,21 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
+import { ALL_PLUGINS } from "@/lib/recommended-plugins";
 import { csrfHeaders } from "@/lib/csrf-client";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 
 type PluginScope = PluginPackageInfo["scope"];
 type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
+
+// Complement relationship derived from lib/recommended-plugins.ts, surfaced in
+// the package detail view so users can see which plugins are designed to work
+// together (e.g. pi-rtk complements context-mode).
+type ComplementInfo = {
+  complements: Array<{ name: string; installed: boolean }>;
+  complementedBy: Array<{ name: string; installed: boolean }>;
+};
 
 function shortenPath(path: string): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
@@ -168,6 +177,34 @@ function ScopeTag({ scope }: { scope: PluginScope }) {
       }}
     >
       {scope === "project" ? t("plugins.scopeProject") : t("plugins.scopeGlobal")}
+    </span>
+  );
+}
+
+function ComplementPill({
+  name,
+  installed,
+  t,
+}: {
+  name: string;
+  installed: boolean;
+  t: TranslateFn;
+}) {
+  return (
+    <span
+      title={`${name} — ${installed ? t("plugins.relationInstalled") : t("plugins.relationNotInstalled")}`}
+      style={{
+        fontSize: 10,
+        padding: "1px 6px",
+        borderRadius: 3,
+        background: installed ? "rgba(16,163,74,0.14)" : "rgba(120,120,120,0.12)",
+        color: installed ? "#16a34a" : "var(--text-dim)",
+        fontFamily: "var(--font-mono)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {name}
+      {installed ? " ✓" : ""}
     </span>
   );
 }
@@ -430,6 +467,7 @@ function PackageDetail({
   sessionId,
   onAction,
   onReloadSession,
+  complement,
 }: {
   pkg: PluginPackageInfo;
   cwd: string;
@@ -439,6 +477,7 @@ function PackageDetail({
   sessionId: string | null;
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onReloadSession: () => void;
+  complement?: ComplementInfo;
 }) {
   const { t } = useI18n();
   const key = packageKey(pkg);
@@ -582,6 +621,26 @@ function PackageDetail({
         >
           {shortenPath(cwd)}
         </div>
+        {complement?.complements.length ? (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("plugins.complements")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {complement.complements.map((c) => (
+                <ComplementPill key={c.name} name={c.name} installed={c.installed} t={t} />
+              ))}
+            </div>
+          </>
+        ) : null}
+        {complement?.complementedBy.length ? (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("plugins.complementedBy")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {complement.complementedBy.map((c) => (
+                <ComplementPill key={c.name} name={c.name} installed={c.installed} t={t} />
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -630,6 +689,27 @@ export function PluginsConfig({
     return (["project", "global"] as PluginScope[])
       .map((scope) => ({ scope, packages: packages.filter((pkg) => pkg.scope === scope) }))
       .filter((group) => group.packages.length > 0);
+  }, [packages]);
+
+  // Map each installed package source to its complement relationship, derived
+  // from the recommended-plugins declarations. `installed` lets the UI show
+  // whether the complement is actually present (green ✓) or merely declared.
+  const complementInfo = useMemo(() => {
+    const installedNames = new Set(packages.map((p) => p.source.replace(/^npm:/, "")));
+    const info = new Map<string, ComplementInfo>();
+    for (const p of ALL_PLUGINS) {
+      const complements = (p.complements ?? []).map((name) => ({
+        name,
+        installed: installedNames.has(name),
+      }));
+      const complementedBy = ALL_PLUGINS.filter((q) => q.complements?.includes(p.name)).map(
+        (q) => ({ name: q.name, installed: installedNames.has(q.name) }),
+      );
+      if (complements.length || complementedBy.length) {
+        info.set(p.source, { complements, complementedBy });
+      }
+    }
+    return info;
   }, [packages]);
 
   const loadPlugins = useCallback(async () => {
@@ -1016,6 +1096,7 @@ export function PluginsConfig({
                 sessionId={sessionId}
                 onAction={runAction}
                 onReloadSession={reloadSession}
+                complement={complementInfo.get(selectedPackage.source)}
               />
             ) : (
               <div
