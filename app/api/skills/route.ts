@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import {
-  DefaultResourceLoader,
-  getAgentDir,
-  parseFrontmatter,
-} from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
+
+const { DefaultResourceLoader, getAgentDir, parseFrontmatter } = getPiAdapter().codingAgent;
 
 export const dynamic = "force-dynamic";
 

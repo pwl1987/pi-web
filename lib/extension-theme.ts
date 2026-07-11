@@ -1,4 +1,5 @@
-import { Theme, type ThemeColor } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "./pi";
+import type { ThemeColor } from "./pi";
 
 // `ThemeBg` is the only Theme-color type the public entry point does
 // not re-export. It's a 6-string union; mirror it locally so we don't
@@ -25,10 +26,11 @@ type ThemeBg =
  * colors mirror pi's bundled `dark.json` so the resulting ANSI escapes
  * are reasonable and pi-web's ansi renderer can style them.
  */
-export function createDefaultExtensionTheme(): Theme {
+export function createDefaultExtensionTheme() {
+  const pi = getPiAdapter();
   const fg = buildFgColors();
   const bg = buildBgColors();
-  return new Theme(fg, bg, "truecolor", { name: "pi-web-default" });
+  return new pi.codingAgent.Theme(fg, bg, "truecolor", { name: "pi-web-default" });
 }
 
 // --- color tables (kept in sync with pi's dark.json; only what's needed

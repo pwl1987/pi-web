@@ -1,10 +1,9 @@
 import { stat } from "fs/promises";
-import {
-  createAgentSessionServices,
-  getAgentDir,
-  type SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
+
+const { createAgentSessionServices, getAgentDir } = getPiAdapter().codingAgent;
+const { getSupportedThinkingLevels } = getPiAdapter().ai;
 
 export const dynamic = "force-dynamic";
 

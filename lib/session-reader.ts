@@ -1,20 +1,16 @@
-import {
-  SessionManager,
-  buildSessionContext as piBuildSessionContext,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
 import type { AgentMessage, SessionEntry, SessionInfo, SessionContext } from "./types";
-import type {
-  SessionEntry as PiSessionEntry,
-  SessionInfo as PiSessionInfo,
-} from "@earendil-works/pi-coding-agent";
+import type { PiSessionEntry, PiSessionInfo } from "./pi";
+import { getPiAdapter } from "./pi";
 import { normalizeToolCalls } from "./normalize";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
-export { getAgentDir };
+export function getAgentDir(): string {
+  return getPiAdapter().agentDir;
+}
 
 export async function listAllSessions(): Promise<SessionInfo[]> {
-  const piSessions: PiSessionInfo[] = await SessionManager.listAll();
+  const piSessions: PiSessionInfo[] =
+    (await getPiAdapter().sessionManager.listAll()) as PiSessionInfo[];
   const pathToId = new Map<string, string>();
   for (const s of piSessions) pathToId.set(s.path, s.id);
 
@@ -89,7 +85,9 @@ export function invalidateSessionPathCache(sessionId: string): void {
 }
 
 export function getSessionEntries(filePath: string): SessionEntry[] {
-  const entries = SessionManager.open(filePath).getEntries();
+  const entries = getPiAdapter()
+    .sessionManager.open(filePath)
+    .getEntries() as unknown as SessionEntry[];
   return entries as unknown as SessionEntry[];
 }
 
@@ -101,11 +99,11 @@ export function buildSessionContext(
   for (const e of entries) byId.set(e.id, e);
 
   const piEntries = entries as unknown as PiSessionEntry[];
-  const piCtx = piBuildSessionContext(
+  const piCtx = getPiAdapter().buildSessionContext(
     piEntries,
     leafId,
     byId as unknown as Map<string, PiSessionEntry>,
-  );
+  ) as SessionContext;
 
   // Build entryIds: parallel array to messages[], mapping each message back to its entry id.
   // Needed for fork and navigate_tree calls from the UI.

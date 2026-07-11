@@ -1,16 +1,11 @@
-import {
-  createAgentSessionFromServices,
-  createAgentSessionServices,
-  getAgentDir,
-  SessionManager,
-} from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
+import { getPiAdapter } from "./pi";
 import { createDefaultExtensionTheme } from "./extension-theme";
 import { cacheSessionPath, resolveSessionPath } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
 import { getRegistry, getLocks, notifyRunningChange } from "./session-registry";
-import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
+import type { SlashCommandInfo } from "./pi";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
 
 // ============================================================================
@@ -403,18 +398,23 @@ export class AgentSessionWrapper {
 
         if (!entry.parentId) {
           // Fork before the first message: create an empty session linked to this one
-          const newManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
+          const newManager = getPiAdapter().sessionManager.create(
+            sessionManager.getCwd(),
+            sessionDir,
+          );
           newManager.newSession({ parentSession: currentSessionFile });
           newSessionFile = newManager.getSessionFile() as string;
         } else {
           // Fork after some history: copy path up to (but not including) the fork point
-          const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
+          const sourceManager = getPiAdapter().sessionManager.open(currentSessionFile, sessionDir);
           const forkedPath = sourceManager.createBranchedSession(entry.parentId);
           if (!forkedPath) throw new Error("Failed to create forked session");
           newSessionFile = forkedPath;
         }
 
-        const newSessionId = SessionManager.open(newSessionFile, sessionDir).getSessionId();
+        const newSessionId = getPiAdapter()
+          .sessionManager.open(newSessionFile, sessionDir)
+          .getSessionId();
         cacheSessionPath(newSessionId, newSessionFile);
         this.destroy();
         return { cancelled: false, newSessionId };
@@ -999,11 +999,11 @@ export async function startRpcSession(
   if (inflight) return inflight as Promise<{ session: AgentSessionWrapper; realSessionId: string }>;
 
   const starting = (async () => {
-    const agentDir = getAgentDir();
+    const agentDir = getPiAdapter().agentDir;
 
     const sessionManager = sessionFile
-      ? SessionManager.open(sessionFile, undefined)
-      : SessionManager.create(cwd, undefined);
+      ? getPiAdapter().sessionManager.open(sessionFile, undefined)
+      : getPiAdapter().sessionManager.create(cwd, undefined);
 
     // Determine which tools to pass based on requested toolNames.
     // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
@@ -1021,8 +1021,8 @@ export async function startRpcSession(
 
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
-    const services = await createAgentSessionServices({ cwd, agentDir });
-    const { session: inner } = await createAgentSessionFromServices({
+    const services = await getPiAdapter().createAgentSessionServices({ cwd, agentDir });
+    const { session: inner } = await getPiAdapter().createAgentSessionFromServices({
       services,
       sessionManager,
       ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
@@ -1094,7 +1094,7 @@ export async function restoreActiveSessions(): Promise<void> {
     try {
       const filePath = await resolveSessionPath(entry.sessionId);
       if (!filePath) continue; // session deleted from disk — skip
-      const cwd = SessionManager.open(filePath).getHeader()?.cwd;
+      const cwd = getPiAdapter().sessionManager.open(filePath).getHeader()?.cwd;
       if (!cwd) continue;
       // toolNames=undefined lets the SDK restore the saved tool set from .jsonl;
       // we re-apply toolsDisabled separately via setForceEmptySystemPrompt.

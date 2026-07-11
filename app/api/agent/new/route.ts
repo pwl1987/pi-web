@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "fs";
 import { allowFileRoot } from "@/lib/file-access";
-import { startRpcSession } from "@/lib/rpc-manager";
+import { ensureSession } from "@/lib/services/session-service";
 import { isAllowedAgentCommand } from "@/lib/allowed-commands";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     };
 
     const tempKey = `__new__${Date.now()}`;
-    const { session, realSessionId } = await startRpcSession(tempKey, "", cwd, toolNames);
+    const { session, realSessionId } = await ensureSession(tempKey, "", cwd, toolNames);
 
     // Keep the files-route allowed-roots cache (see app/api/files/[...path]/route.ts)
     // in sync so the new cwd is immediately readable via /api/files. Without this,

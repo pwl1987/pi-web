@@ -1,4 +1,6 @@
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage, ModelRegistry } = getPiAdapter().codingAgent;
 
 export const dynamic = "force-dynamic";
 

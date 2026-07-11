@@ -13,7 +13,7 @@
 // lib/rpc-manager.ts), never from the client bundle.
 
 import { existsSync } from "fs";
-import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "./pi";
 
 interface NpmSourceLike {
   name?: string;
@@ -25,7 +25,10 @@ export function patchPackageManagerForUninstall(): void {
   if (patched) return;
   patched = true;
 
-  const proto = DefaultPackageManager.prototype as unknown as Record<string, unknown>;
+  const proto = getPiAdapter().codingAgent.DefaultPackageManager.prototype as unknown as Record<
+    string,
+    unknown
+  >;
   const original = proto.uninstallNpm as
     ((source: unknown, scope: string) => Promise<void>) | undefined;
   if (typeof original !== "function") return;

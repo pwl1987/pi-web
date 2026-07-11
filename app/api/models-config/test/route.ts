@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText, errorMessage } from "@/lib/api-shared";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage, ModelRegistry } = getPiAdapter().codingAgent;
+const { completeSimple } = getPiAdapter().aiCompat;
 
 export const dynamic = "force-dynamic";
 

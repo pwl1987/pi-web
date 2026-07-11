@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
-import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { ensureSession, getSession, readSessionCwd } from "@/lib/services/session-service";
 import { ALLOWED_AGENT_COMMANDS } from "@/lib/allowed-commands";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
@@ -22,7 +21,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Fast path: already-running session
-    const existing = getRpcSession(id);
+    const existing = getSession(id);
     if (existing?.isAlive()) {
       const result = await existing.send(body);
       return NextResponse.json({ success: true, data: result });
@@ -33,9 +32,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const cwd = SessionManager.open(filePath).getHeader()?.cwd ?? process.cwd();
+    const cwd = readSessionCwd(filePath);
 
-    const { session } = await startRpcSession(id, filePath, cwd);
+    const { session } = await ensureSession(id, filePath, cwd);
     const result = await session.send(body);
 
     return NextResponse.json({ success: true, data: result });
@@ -49,7 +48,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
 
   try {
-    const session = getRpcSession(id);
+    const session = getSession(id);
     if (!session || !session.isAlive()) {
       return NextResponse.json({ running: false });
     }

@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import { basename, dirname, extname, join, relative } from "path";
-import {
-  DefaultPackageManager,
-  getAgentDir,
-  SettingsManager,
-  type PackageSource,
-  type ResolvedPaths,
-  type ResolvedResource,
+import type {
+  PackageSource,
+  ResolvedPaths,
+  ResolvedResource,
 } from "@earendil-works/pi-coding-agent";
+import type { SdkSettingsManager } from "@/lib/pi";
+import { getPiAdapter } from "@/lib/pi";
+
+const { DefaultPackageManager, getAgentDir, SettingsManager } = getPiAdapter().codingAgent;
 import type {
   PluginDiagnostic,
   PluginPackageInfo,
@@ -61,7 +62,7 @@ function isDisabledPackage(entry: PackageSource): boolean {
   );
 }
 
-function getDisabledPackages(settingsManager: SettingsManager): Map<string, boolean> {
+function getDisabledPackages(settingsManager: SdkSettingsManager): Map<string, boolean> {
   const disabled = new Map<string, boolean>();
   for (const entry of settingsManager.getGlobalSettings().packages ?? []) {
     disabled.set(keyFor(getPackageSource(entry), "global"), isDisabledPackage(entry));
@@ -73,7 +74,7 @@ function getDisabledPackages(settingsManager: SettingsManager): Map<string, bool
 }
 
 function setPackageDisabled(
-  settingsManager: SettingsManager,
+  settingsManager: SdkSettingsManager,
   source: string,
   scope: PluginScope,
   disabled: boolean,

@@ -1,7 +1,9 @@
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { NextResponse } from "next/server";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { validateCsrf } from "@/lib/csrf";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage, ModelRegistry } = getPiAdapter().codingAgent;
 
 export const dynamic = "force-dynamic";
 

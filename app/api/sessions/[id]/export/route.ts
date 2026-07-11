@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { errorResponse } from "@/lib/api-utils";
 import { getAttachmentDisposition } from "@/lib/api-shared";
+import { getPiAdapter } from "@/lib/pi";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,8 +25,7 @@ type ExportHtmlModule = {
 
 async function getPiPackageDir(): Promise<string | null> {
   try {
-    const { getPackageDir } =
-      (await import("@earendil-works/pi-coding-agent")) as PiCodingAgentModule;
+    const { getPackageDir } = getPiAdapter().codingAgent;
     return getPackageDir();
   } catch {
     return null;

@@ -13,8 +13,10 @@
 // codes. 5xx is reserved for unexpected local errors.
 
 import type { TokenUsageInfo } from "@/lib/token-usage";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { NextResponse } from "next/server";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage } = getPiAdapter().codingAgent;
 
 import { SUPPORTED_TOKEN_USAGE_PROVIDERS, fetchTokenPlanRemains } from "@/lib/token-usage";
 

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { validateModelsConfig } from "@/lib/config-validators";
+import { getPiAdapter } from "@/lib/pi";
+
+const { getAgentDir } = getPiAdapter().codingAgent;
 
 export const dynamic = "force-dynamic";
 

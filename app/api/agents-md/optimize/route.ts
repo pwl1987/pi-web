@@ -1,13 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
-import {
-  AuthStorage,
-  ModelRegistry,
-  SettingsManager,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
 import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText } from "@/lib/api-shared";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir } = getPiAdapter().codingAgent;
+const { completeSimple } = getPiAdapter().aiCompat;
 
 export const dynamic = "force-dynamic";
 

@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { getPiAdapter } from "@/lib/pi";
+
+const { getAgentDir } = getPiAdapter().codingAgent;
 import { ensureParentDir } from "@/lib/config-file";
 import { errorResponse } from "@/lib/api-utils";
 import { validateCsrf } from "@/lib/csrf";

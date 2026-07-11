@@ -1,14 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
-import {
-  AuthStorage,
-  ModelRegistry,
-  SettingsManager,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
+
+const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir } = getPiAdapter().codingAgent;
+const { completeSimple } = getPiAdapter().aiCompat;
 import { getAssistantText } from "@/lib/api-shared";
 import {
   buildEnhanceSystemPrompt,

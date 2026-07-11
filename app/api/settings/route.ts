@@ -1,11 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
+import type { SdkSettingsManager } from "@/lib/pi";
+
+const { SettingsManager, getAgentDir } = getPiAdapter().codingAgent;
 
 export const dynamic = "force-dynamic";
 
-async function createManager(): Promise<SettingsManager> {
+async function createManager(): Promise<SdkSettingsManager> {
   const agentDir = getAgentDir();
   const mgr = SettingsManager.create(process.cwd(), agentDir);
   await mgr.reload();

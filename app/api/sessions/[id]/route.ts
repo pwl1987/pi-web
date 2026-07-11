@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
 import {
   resolveSessionPath,
   invalidateSessionPathCache,
   buildSessionContext,
   listAllSessions,
 } from "@/lib/session-reader";
+
+const { SessionManager } = getPiAdapter().codingAgent;
 import { getRpcSession } from "@/lib/rpc-manager";
 import { reparentSessionHeader } from "@/lib/session-reparent";
 import { validateCsrf } from "@/lib/csrf";

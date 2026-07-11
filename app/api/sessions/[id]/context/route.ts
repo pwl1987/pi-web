@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
 import { resolveSessionPath, buildSessionContext } from "@/lib/session-reader";
 import { errorResponse } from "@/lib/api-utils";
+
+const { SessionManager } = getPiAdapter().codingAgent;
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

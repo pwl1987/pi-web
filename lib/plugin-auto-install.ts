@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { ALL_PLUGINS } from "./recommended-plugins";
 import { getAgentDir } from "./config-file";
+import { getPiAdapter } from "./pi";
 
 export interface PluginInstallResult {
   source: string;
@@ -62,9 +63,9 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
       return results;
     }
 
-    // Lazy import — only load the SDK when we actually need to install.
-    const { DefaultPackageManager, SettingsManager } =
-      await import("@earendil-works/pi-coding-agent");
+    // Obtain the SDK through the ACL (single import site). The adapter is
+    // constructed lazily on first use and already loads the SDK once.
+    const { DefaultPackageManager, SettingsManager } = getPiAdapter().codingAgent;
     const { patchPackageManagerForUninstall } = await import("@/lib/plugin-package-manager");
     patchPackageManagerForUninstall();
 
