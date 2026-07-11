@@ -29,6 +29,7 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { csrfHeaders } from "@/lib/csrf-client";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
 import { getToolLabel } from "@/lib/tool-labels";
@@ -547,6 +548,13 @@ export const ChatInput = memo(
       matches: FileIndexEntry[];
     } | null>(null);
 
+    // Smart prompt enhancement: loading guard, last error, and undo support so
+    // the user can revert to the original prompt after an enhancement.
+    const [enhancing, setEnhancing] = useState(false);
+    const [enhanceError, setEnhanceError] = useState("");
+    const [showUndo, setShowUndo] = useState(false);
+    const [originalBeforeEnhance, setOriginalBeforeEnhance] = useState("");
+
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
@@ -748,7 +756,43 @@ export const ChatInput = memo(
       }
       onSend(msg, attachedImages.length ? attachedImages : undefined);
       clearInput();
+      setShowUndo(false);
     }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+
+    const handleEnhance = useCallback(async () => {
+      // Guard: no empty prompt, no concurrent run, no streaming.
+      if (enhancing || isStreaming || !value.trim()) return;
+      setEnhanceError("");
+      setEnhancing(true);
+      setOriginalBeforeEnhance(value);
+      try {
+        const res = await fetch("/api/agent/enhance", {
+          method: "POST",
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            prompt: value,
+            provider: model?.provider,
+            modelId: model?.modelId,
+            cwd,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error ?? "Enhancement failed");
+        // Replace the input content with the enhanced prompt. setValue alone
+        // does not fire onChange, so showUndo is preserved until the user
+        // manually edits or sends.
+        setValue(d.enhanced);
+        setShowUndo(true);
+      } catch (e) {
+        setEnhanceError(e instanceof Error ? e.message : String(e));
+      }
+      setEnhancing(false);
+    }, [enhancing, isStreaming, value, model, cwd, setValue]);
+
+    const handleEnhanceUndo = useCallback(() => {
+      setValue(originalBeforeEnhance);
+      setShowUndo(false);
+    }, [originalBeforeEnhance, setValue]);
 
     const slashQuery =
       value.startsWith("/") && !/\s/.test(value.slice(1)) ? value.slice(1).toLowerCase() : null;
@@ -1863,6 +1907,9 @@ export const ChatInput = memo(
                 onChange={(e) => {
                   setValue(e.target.value);
                   updateAtQuery(e.target.value, e.target.selectionStart);
+                  // User started editing manually — the undo affordance no
+                  // longer applies.
+                  if (showUndo) setShowUndo(false);
                 }}
                 onSelect={(e) => {
                   const el = e.currentTarget;
@@ -2038,6 +2085,23 @@ export const ChatInput = memo(
             </div>
           </div>
 
+          {enhanceError && (
+            <div
+              style={{
+                marginBottom: 6,
+                fontSize: 12,
+                color: "#ef4444",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{t("input.enhanceError")}:</span>
+              <span style={{ color: "var(--text-muted)" }}>{enhanceError}</span>
+            </div>
+          )}
+
           {/* Bottom bar: left | center (context) | right */}
           <div
             style={{
@@ -2107,6 +2171,118 @@ export const ChatInput = memo(
                   <polyline points="21 15 16 10 5 21" />
                 </svg>
               </button>
+              {showUndo ? (
+                <button
+                  onClick={handleEnhanceUndo}
+                  title={t("input.enhanceUndo")}
+                  style={{
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    height: 32,
+                    padding: "0 10px",
+                    background: "none",
+                    border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
+                    borderRadius: 9,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    transition: "background 0.12s, color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.color = "var(--text)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "none";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 7v6h6" />
+                    <path d="M3 13a9 9 0 1 0 3-7.7L3 8" />
+                  </svg>
+                  {t("input.enhanceUndo")}
+                </button>
+              ) : (
+                <button
+                  onClick={handleEnhance}
+                  disabled={isStreaming || enhancing || !value.trim()}
+                  title={enhancing ? t("input.enhancing") : t("input.enhanceTooltip")}
+                  style={{
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    height: 32,
+                    padding: "0 10px",
+                    background: enhancing ? "var(--bg-hover)" : "none",
+                    border: `1px solid ${
+                      isStreaming || !value.trim()
+                        ? "color-mix(in srgb, var(--border) 70%, transparent)"
+                        : "color-mix(in srgb, var(--accent) 45%, transparent)"
+                    }`,
+                    borderRadius: 9,
+                    color: isStreaming || !value.trim() ? "var(--text-dim)" : "var(--accent)",
+                    cursor: isStreaming || enhancing || !value.trim() ? "not-allowed" : "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    opacity: isStreaming || !value.trim() ? 0.5 : 1,
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (isStreaming || !value.trim()) return;
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.color = "var(--text)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = enhancing ? "var(--bg-hover)" : "none";
+                    e.currentTarget.style.color =
+                      isStreaming || !value.trim() ? "var(--text-dim)" : "var(--accent)";
+                  }}
+                >
+                  {enhancing ? (
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      style={{ animation: "spin 0.8s linear infinite" }}
+                    >
+                      <path d="M21 12a9 9 0 1 1-6.2-8.6" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 3l1.9 4.6L18.5 9.5 14 11.4 12 16l-2-4.6L5.5 9.5 10.1 7.6 12 3z" />
+                      <path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" />
+                    </svg>
+                  )}
+                  {t(enhancing ? "input.enhancing" : "input.enhance")}
+                </button>
+              )}
               {/* Model selector — visible always, disabled during streaming */}
               {modelOptions.length > 0 && currentName && onModelChange && (
                 <div

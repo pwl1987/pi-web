@@ -249,6 +249,25 @@ pi 存储的 toolCall 块为 `{type:"toolCall", id, name, arguments}`，但 `Too
 
 创建会话时通过 `POST /api/agent/new` → `toolNames[]` 传工具名列表。已有会话在挂载时通过 `get_tools` → `getPresetFromTools()` 推断活跃预设。工具完全禁用（`toolNames=[]`）时，`rpc-manager.ts` 传入空工具白名单，并在启动/重载/资源发现后强制 `agent.state.systemPrompt = ""`。
 
+### completeSimple 的系统提示词必须放在 Context 上
+
+`completeSimple(model, context, options)` 的 `systemPrompt` 是 **`context`（第二个参数）** 的顶层字段（`Context.systemPrompt?: string`），**不是** `options`（第三个参数）的。`@earendil-works/pi-ai` 各 provider（`anthropic-messages`、`openai-completions`、`google-vertex`、`mistral-conversations` 等）都只读 `context.systemPrompt`。若误放进 `options`，系统提示词会被**静默丢弃**——模型只收到用户消息，所有指令/示例/约束全部失效，却不会报错。
+
+正确写法：
+
+```ts
+await completeSimple(
+  model,
+  {
+    systemPrompt, // ✅ 必须在 context 上
+    messages: [{ role: "user", content: buildEnhanceUserMessage(prompt) }],
+  },
+  { apiKey, headers, maxTokens: 4096, timeoutMs: 60_000, maxRetries: 0 },
+);
+```
+
+`app/api/agent/enhance/route.ts` 的提示词增强即依赖此点：系统提示词里写死"禁止执行/只重写/落地到真实项目上下文/few-shot 示例"，一旦传错参数位，增强结果就会退化成通用模板。
+
 ### SSE 重连与对账
 
 - `ChatWindow` 挂载时调用 `GET /api/agent/[id]`。若 `state.isStreaming === true`，自动重连 SSE。
