@@ -20,6 +20,7 @@ export async function GET() {
         name: p.name,
         description: p.description,
         tier: p.tier,
+        complements: p.complements ?? [],
         installed: isInstalled,
         autoStatus: auto?.status ?? (isInstalled ? "already" : "pending"),
         autoError: auto?.error,

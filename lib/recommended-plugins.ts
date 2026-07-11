@@ -19,6 +19,12 @@ export interface RecommendedPlugin {
   name: string;
   description: string;
   tier: PluginTier;
+  // Names of plugins this one is designed to work *with* (e.g. pi-rtk
+  // complements context-mode). Surfaced in the Plugins panel.
+  complements?: string[];
+  // Names of plugins this one is *incompatible* with. If two enabled plugins
+  // reference each other here, validatePluginCompatibility() reports a conflict.
+  conflicts?: string[];
 }
 
 // Core, UI-critical plugins — always installed, not user-removable.
@@ -56,6 +62,7 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     name: "context-mode",
     description: "Context window optimization — saves up to 98% of context",
     tier: "recommended",
+    complements: ["pi-rtk"],
   },
   {
     source: "npm:@juicesharp/rpiv-ask-user-question",
@@ -159,7 +166,56 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     description: "Lazy senior-dev discipline — prefer reuse and deletion over new code",
     tier: "recommended",
   },
+  {
+    source: "npm:pi-rtk",
+    name: "pi-rtk",
+    description:
+      "Token reduction by intelligently filtering tool output (60-90%) — complements context-mode",
+    tier: "recommended",
+    complements: ["context-mode"],
+  },
 ];
 
 // Merged set used by the installer and the status route.
 export const ALL_PLUGINS: RecommendedPlugin[] = [...DEFAULT_PLUGINS, ...RECOMMENDED_PLUGINS];
+
+/**
+ * Declarative compatibility check for the plugin set.
+ *
+ * This is the layer pi-web owns: we cannot unit-test the actual pi-agent
+ * runtime interaction between two extensions, but we CAN guarantee the
+ * management layer never activates a known-incompatible pair, and that plugins
+ * meant to work together are explicitly marked via `complements`.
+ *
+ * A pair is *conflicting* when one plugin lists the other's `name` in its
+ * `conflicts` array while both are present in the set. Returns a list of
+ * human-readable conflict messages; an empty array means the set is valid.
+ */
+export function validatePluginCompatibility(plugins: RecommendedPlugin[]): string[] {
+  const byName = new Map(plugins.map((p) => [p.name, p]));
+  const errors: string[] = [];
+  const seenSources = new Set<string>();
+  const seenNames = new Set<string>();
+
+  for (const p of plugins) {
+    if (seenSources.has(p.source)) {
+      errors.push(`Duplicate plugin source: ${p.source}`);
+    }
+    seenSources.add(p.source);
+    if (seenNames.has(p.name)) {
+      errors.push(`Duplicate plugin name: ${p.name}`);
+    }
+    seenNames.add(p.name);
+
+    for (const conflict of p.conflicts ?? []) {
+      if (byName.has(conflict)) {
+        errors.push(
+          `Conflict: "${p.name}" declares incompatibility with "${conflict}", ` +
+            `but both are enabled in the plugin set`,
+        );
+      }
+    }
+  }
+
+  return errors;
+}
