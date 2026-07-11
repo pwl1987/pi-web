@@ -1,13 +1,14 @@
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  createAgentSessionFromServices,
+  createAgentSessionServices,
+  getAgentDir,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
 import { createDefaultExtensionTheme } from "./extension-theme";
 import { cacheSessionPath, resolveSessionPath } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
-import {
-  getRegistry,
-  getLocks,
-  notifyRunningChange,
-} from "./session-registry";
+import { getRegistry, getLocks, notifyRunningChange } from "./session-registry";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
@@ -52,7 +53,10 @@ type ExtensionCommandContextActionsLike = {
   waitForIdle: () => Promise<void>;
   newSession: () => Promise<{ cancelled: boolean }>;
   fork: () => Promise<{ cancelled: boolean }>;
-  navigateTree: (targetId: string, options?: { summarize?: boolean }) => Promise<{ cancelled: boolean }>;
+  navigateTree: (
+    targetId: string,
+    options?: { summarize?: boolean },
+  ) => Promise<{ cancelled: boolean }>;
   switchSession: () => Promise<{ cancelled: boolean }>;
   reload: () => Promise<void>;
 };
@@ -146,7 +150,10 @@ export class AgentSessionWrapper {
 
   beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
     void this.ensureExtensionsBound(options).catch((err) => {
-      console.error("[pi-web] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
+      console.error(
+        "[pi-web] failed to dispatch session_start to extensions:",
+        err instanceof Error ? err.message : err,
+      );
     });
   }
 
@@ -174,26 +181,30 @@ export class AgentSessionWrapper {
           uiContext,
           mode: "rpc",
           commandContextActions: this.createExtensionCommandContextActions(),
-          shutdownHandler: () => this.emit({
-            type: "extension_ui_request",
-            id: randomUUID(),
-            method: "notify",
-            notifyType: "warning",
-            message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
-          }),
-          onError: (error) => this.emit({
-            type: "extension_error",
-            extensionPath: error.extensionPath,
-            event: error.event,
-            error: error.error,
-          }),
+          shutdownHandler: () =>
+            this.emit({
+              type: "extension_ui_request",
+              id: randomUUID(),
+              method: "notify",
+              notifyType: "warning",
+              message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
+            }),
+          onError: (error) =>
+            this.emit({
+              type: "extension_error",
+              extensionPath: error.extensionPath,
+              event: error.event,
+              error: error.error,
+            }),
         });
       } else {
         this.inner.extensionRunner.setUIContext?.(uiContext, "rpc");
       }
       this.extensionsBound = true;
       this.applyForcedEmptySystemPrompt();
-      console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
+      console.warn(
+        `[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`,
+      );
     })().catch((err) => {
       this.extensionBindingError = err;
       throw err;
@@ -263,27 +274,31 @@ export class AgentSessionWrapper {
     switch (type) {
       case "prompt": {
         // Fire and forget — events come via subscribe
-        const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        const promptImages = command.images as
+          Array<{ type: "image"; data: string; mimeType: string }> | undefined;
         const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
         this.promptRunning = true;
         notifyRunningChange();
-        this.inner.prompt(command.message as string, {
-          ...(promptImages?.length ? { images: promptImages } : {}),
-          ...(streamingBehavior ? { streamingBehavior } : {}),
-          source: "rpc",
-        }).then(() => {
-          this.promptRunning = false;
-          if (!streamingBehavior) this.emit({ type: "prompt_done" });
-          notifyRunningChange();
-        }).catch((error) => {
-          this.promptRunning = false;
-          this.emit({
-            type: "prompt_error",
-            errorMessage: error instanceof Error ? error.message : String(error),
+        this.inner
+          .prompt(command.message as string, {
+            ...(promptImages?.length ? { images: promptImages } : {}),
+            ...(streamingBehavior ? { streamingBehavior } : {}),
+            source: "rpc",
+          })
+          .then(() => {
+            this.promptRunning = false;
+            if (!streamingBehavior) this.emit({ type: "prompt_done" });
+            notifyRunningChange();
+          })
+          .catch((error) => {
+            this.promptRunning = false;
+            this.emit({
+              type: "prompt_error",
+              errorMessage: error instanceof Error ? error.message : String(error),
+            });
+            if (!streamingBehavior) this.emit({ type: "prompt_done" });
+            notifyRunningChange();
           });
-          if (!streamingBehavior) this.emit({ type: "prompt_done" });
-          notifyRunningChange();
-        });
         return null;
       }
 
@@ -310,7 +325,11 @@ export class AgentSessionWrapper {
             followUp: [...this.inner.getFollowUpMessages()],
           },
           contextUsage: contextUsage
-            ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
+            ? {
+                percent: contextUsage.percent,
+                contextWindow: contextUsage.contextWindow,
+                tokens: contextUsage.tokens,
+              }
             : null,
           systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
@@ -372,7 +391,12 @@ export class AgentSessionWrapper {
         // setThinkingLevel clamps xhigh→high for models where supportsXhigh()===false.
         // If the model has DeepSeek thinking compat (reasoningEffortMap maps xhigh→max),
         // force the state back so the compat layer can use it correctly.
-        if (level === "xhigh" && (this.inner.model as { compat?: { thinkingFormat?: string } } | null)?.compat?.thinkingFormat === "deepseek" && this.inner.agent?.state) {
+        if (
+          level === "xhigh" &&
+          (this.inner.model as { compat?: { thinkingFormat?: string } } | null)?.compat
+            ?.thinkingFormat === "deepseek" &&
+          this.inner.agent?.state
+        ) {
           this.inner.agent.state.thinkingLevel = "xhigh";
         }
         return null;
@@ -380,7 +404,7 @@ export class AgentSessionWrapper {
 
       case "compact": {
         const result = await this.withFinalRunningNotification(() =>
-          this.inner.compact(command.customInstructions as string | undefined)
+          this.inner.compact(command.customInstructions as string | undefined),
         );
         return result;
       }
@@ -415,14 +439,22 @@ export class AgentSessionWrapper {
       }
 
       case "steer": {
-        const steerImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        await this.inner.steer(command.message as string, steerImages?.length ? steerImages : undefined);
+        const steerImages = command.images as
+          Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        await this.inner.steer(
+          command.message as string,
+          steerImages?.length ? steerImages : undefined,
+        );
         return null;
       }
 
       case "follow_up": {
-        const followImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        await this.inner.followUp(command.message as string, followImages?.length ? followImages : undefined);
+        const followImages = command.images as
+          Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        await this.inner.followUp(
+          command.message as string,
+          followImages?.length ? followImages : undefined,
+        );
         return null;
       }
 
@@ -556,7 +588,9 @@ export class AgentSessionWrapper {
     try {
       lines = custom.component.render(custom.width);
     } catch (error) {
-      lines = [`Extension custom UI render failed: ${error instanceof Error ? error.message : String(error)}`];
+      lines = [
+        `Extension custom UI render failed: ${error instanceof Error ? error.message : String(error)}`,
+      ];
     }
     const event = {
       type: "extension_ui_request",
@@ -606,10 +640,7 @@ export class AgentSessionWrapper {
     }
   }
 
-  private requestExtensionCustomUi<T>(
-    factory: unknown,
-    options?: unknown,
-  ): Promise<T> {
+  private requestExtensionCustomUi<T>(factory: unknown, options?: unknown): Promise<T> {
     if (typeof factory !== "function") return Promise.resolve(undefined as T);
 
     const id = randomUUID();
@@ -627,7 +658,11 @@ export class AgentSessionWrapper {
       Promise.resolve()
         .then(() => factory(tui, this.defaultExtensionTheme, undefined, done))
         .then((component) => {
-          if (!component || typeof component !== "object" || typeof (component as CustomUiComponent).render !== "function") {
+          if (
+            !component ||
+            typeof component !== "object" ||
+            typeof (component as CustomUiComponent).render !== "function"
+          ) {
             resolve(undefined as T);
             return;
           }
@@ -698,34 +733,53 @@ export class AgentSessionWrapper {
   private createExtensionUiContext(): ExtensionUiContextLike {
     const theme = this.defaultExtensionTheme;
     return {
-      select: (title, options, opts) => this.requestExtensionUi(
-        { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        undefined,
-        (response) => "value" in response ? response.value : undefined,
-        opts?.timeout,
-        opts?.signal,
-      ),
-      confirm: (title, message, opts) => this.requestExtensionUi(
-        { method: "confirm", title, message, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        false,
-        (response) => "confirmed" in response ? response.confirmed : false,
-        opts?.timeout,
-        opts?.signal,
-      ),
-      input: (title, placeholder, opts) => this.requestExtensionUi(
-        { method: "input", title, ...(placeholder !== undefined ? { placeholder } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        undefined,
-        (response) => "value" in response ? response.value : undefined,
-        opts?.timeout,
-        opts?.signal,
-      ),
-      editor: (title, prefill, opts) => this.requestExtensionUi(
-        { method: "editor", title, ...(prefill !== undefined ? { prefill } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        undefined,
-        (response) => "value" in response ? response.value : undefined,
-        opts?.timeout,
-        opts?.signal,
-      ),
+      select: (title, options, opts) =>
+        this.requestExtensionUi(
+          { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+          undefined,
+          (response) => ("value" in response ? response.value : undefined),
+          opts?.timeout,
+          opts?.signal,
+        ),
+      confirm: (title, message, opts) =>
+        this.requestExtensionUi(
+          {
+            method: "confirm",
+            title,
+            message,
+            ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+          },
+          false,
+          (response) => ("confirmed" in response ? response.confirmed : false),
+          opts?.timeout,
+          opts?.signal,
+        ),
+      input: (title, placeholder, opts) =>
+        this.requestExtensionUi(
+          {
+            method: "input",
+            title,
+            ...(placeholder !== undefined ? { placeholder } : {}),
+            ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+          },
+          undefined,
+          (response) => ("value" in response ? response.value : undefined),
+          opts?.timeout,
+          opts?.signal,
+        ),
+      editor: (title, prefill, opts) =>
+        this.requestExtensionUi(
+          {
+            method: "editor",
+            title,
+            ...(prefill !== undefined ? { prefill } : {}),
+            ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+          },
+          undefined,
+          (response) => ("value" in response ? response.value : undefined),
+          opts?.timeout,
+          opts?.signal,
+        ),
       notify: (message, type) => {
         this.emit({
           type: "extension_ui_request",
@@ -781,7 +835,8 @@ export class AgentSessionWrapper {
           title,
         });
       },
-      custom: <T = unknown>(factory: unknown, options?: unknown) => this.requestExtensionCustomUi<T>(factory, options),
+      custom: <T = unknown>(factory: unknown, options?: unknown) =>
+        this.requestExtensionCustomUi<T>(factory, options),
       pasteToEditor: (text) => {
         this.emit({
           type: "extension_ui_request",
@@ -802,10 +857,15 @@ export class AgentSessionWrapper {
       addAutocompleteProvider: () => {},
       setEditorComponent: () => {},
       getEditorComponent: () => undefined,
-      get theme() { return theme; },
+      get theme() {
+        return theme;
+      },
       getAllThemes: () => [],
       getTheme: () => undefined,
-      setTheme: () => ({ success: false, error: "Theme switching is not supported in pi-web extension UI yet" }),
+      setTheme: () => ({
+        success: false,
+        error: "Theme switching is not supported in pi-web extension UI yet",
+      }),
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
     };
@@ -879,14 +939,15 @@ export async function startRpcSession(
   sessionId: string,
   sessionFile: string,
   cwd: string,
-  toolNames?: string[]
+  toolNames?: string[],
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   ensureRegistryInitialized();
   const registry = getRegistry();
   const locks = getLocks();
 
   const existing = registry.get(sessionId);
-  if (existing?.isAlive()) return { session: existing as AgentSessionWrapper, realSessionId: sessionId };
+  if (existing?.isAlive())
+    return { session: existing as AgentSessionWrapper, realSessionId: sessionId };
 
   const inflight = locks.get(sessionId);
   if (inflight) return inflight as Promise<{ session: AgentSessionWrapper; realSessionId: string }>;
@@ -969,9 +1030,7 @@ let restoreStarted = false;
 export async function restoreActiveSessions(): Promise<void> {
   const state = loadSessionState();
   // Only pre-warm the 5 most recent — avoids heavy I/O on startup.
-  const recent = [...state.activeSessions]
-    .sort((a, b) => b.lastActive - a.lastActive)
-    .slice(0, 5);
+  const recent = [...state.activeSessions].sort((a, b) => b.lastActive - a.lastActive).slice(0, 5);
 
   for (const entry of recent) {
     try {

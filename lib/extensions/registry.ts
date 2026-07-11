@@ -20,14 +20,15 @@ import type {
   WorkspaceLabelItem,
   WorkspacePanelContribution,
 } from "./types";
-import { getAgentEventBus } from "./event-bus";
+import { getAgentEventBus, type AgentEventBus } from "./event-bus";
 
 const ID_RE = /^[a-z][a-z0-9.-]*$/;
 
 /** Check if a module export looks like a valid extension (inlined to avoid value import). */
 function isPiWebExtension(value: unknown): value is PiWebExtension {
   return (
-    typeof value === "object" && value !== null &&
+    typeof value === "object" &&
+    value !== null &&
     (value as PiWebExtension).apiVersion === 1 &&
     typeof (value as PiWebExtension).name === "string" &&
     typeof (value as PiWebExtension).activate === "function"
@@ -49,13 +50,15 @@ export class ExtensionRegistry {
   /** Bumped on every register/unregister, so useSyncExternalStore consumers re-render. */
   private version = 0;
   /** Event bus passed to extensions at activation time. Set after construction. */
-  eventBus: import("./event-bus").AgentEventBus | undefined;
+  eventBus: AgentEventBus | undefined;
 
   // --- External store API (for useSyncExternalStore) ---
 
   subscribe = (cb: () => void): (() => void) => {
     this.listeners.add(cb);
-    return () => { this.listeners.delete(cb); };
+    return () => {
+      this.listeners.delete(cb);
+    };
   };
 
   getSnapshot = (): number => this.version;
@@ -130,7 +133,10 @@ export class ExtensionRegistry {
     return result.sort((a, b) => a.title.localeCompare(b.title));
   }
 
-  getActionDisabledReason(action: QualifiedAction, ctx: ExtensionRuntimeContext): string | undefined {
+  getActionDisabledReason(
+    action: QualifiedAction,
+    ctx: ExtensionRuntimeContext,
+  ): string | undefined {
     if (action.enabled?.(ctx) ?? true) return undefined;
     return action.disabledReason?.(ctx);
   }
@@ -141,8 +147,10 @@ export class ExtensionRegistry {
       .sort((a, b) => (a.order ?? 1000) - (b.order ?? 1000) || a.title.localeCompare(b.title));
   }
 
-  getWorkspaceLabelItems(ctx: WorkspaceLabelContext): { qualifiedId: string; item: WorkspaceLabelItem }[] {
-    const result: { qualifiedId: string; item: WorkspaceLabelItem }[] = [];
+  getWorkspaceLabelItems(
+    ctx: WorkspaceLabelContext,
+  ): Array<{ qualifiedId: string; item: WorkspaceLabelItem }> {
+    const result: Array<{ qualifiedId: string; item: WorkspaceLabelItem }> = [];
     for (const ext of [...this.extensions.values()].sort((a, b) => a.id.localeCompare(b.id))) {
       for (const label of ext.labels) {
         if (label.visible?.(ctx) === false) continue;
@@ -238,7 +246,9 @@ export class ExtensionRegistry {
 
   private validateLocalId(localId: LocalContributionId, extId: ExtensionId): void {
     if (!ID_RE.test(localId)) {
-      throw new Error(`Invalid contribution id "${localId}" in extension "${extId}" (must match ${ID_RE})`);
+      throw new Error(
+        `Invalid contribution id "${localId}" in extension "${extId}" (must match ${ID_RE})`,
+      );
     }
   }
 }
