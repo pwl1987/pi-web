@@ -249,10 +249,21 @@ export function AppShell() {
   }, [activeTopPanel]);
 
   // 计划模式开关 → 自动打开/关闭 Plan 面板。
+  // 关键：只在 planMode 发生「跳变」时同步面板，绝不因 activeTopPanel 变化而强制回弹，
+  // 否则用户在计划模式下点开其它顶部面板会被立刻拉回 Plan 面板，形成锁死。
+  const prevPlanModeRef = useRef(planMode);
   useEffect(() => {
-    if (planMode && activeTopPanel !== "plan") setActiveTopPanel("plan");
-    if (!planMode && activeTopPanel === "plan") setActiveTopPanel(null);
-  }, [planMode, activeTopPanel]);
+    const prev = prevPlanModeRef.current;
+    prevPlanModeRef.current = planMode;
+    if (prev === planMode) return;
+    if (planMode) {
+      // 进入计划模式：打开 Plan 面板。
+      setActiveTopPanel("plan");
+    } else {
+      // 退出计划模式：仅当当前正停留在 Plan 面板时才关闭，避免误关其它面板。
+      setActiveTopPanel((cur) => (cur === "plan" ? null : cur));
+    }
+  }, [planMode]);
 
   // 用户确认方案后，编排器请求打开编程引擎面板。
   useEffect(() => {

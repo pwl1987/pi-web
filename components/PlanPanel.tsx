@@ -4,7 +4,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfHeaders } from "@/lib/csrf-client";
 import {
@@ -171,7 +178,35 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
     }
   }, [orchestratorId, feedback, busy]);
 
+  // 退出计划模式 → 回到普通聊天模式（状态保留在 store 中，可再次进入恢复）。
   const exitPlan = useCallback(() => setPlanMode(false), []);
+  // 新建讨论：清空当前编排器，回到需求输入界面（当前讨论状态仍可通过后端保留）。
+  const newDiscussion = useCallback(() => {
+    setOrchestratorId(null);
+    setSnapshot(null);
+    setRequirement("");
+    setFeedback("");
+    setError(null);
+  }, []);
+
+  // 计划模式下始终可见的头部工具条：标题 + 退出按钮，确保任何状态都能退回普通模式。
+  const modeHeader = (extra?: ReactNode) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 14px",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>{t("plan.mode")}</span>
+      {extra}
+      <button onClick={exitPlan} style={closeBtnStyle} title={t("plan.exit")}>
+        ✕
+      </button>
+    </div>
+  );
 
   // 未进入计划模式：提示先开启。
   if (!planMode) {
@@ -185,54 +220,65 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
   // 尚未发起讨论：需求输入。
   if (!orchestratorId) {
     return (
-      <div
-        style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, overflow: "auto" }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{t("plan.mode")}</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("plan.requirement")}</div>
-        <textarea
-          value={requirement}
-          onChange={(e) => setRequirement(e.target.value)}
-          placeholder={t("plan.toolbarHint")}
-          rows={4}
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+        {modeHeader()}
+        <div
           style={{
-            width: "100%",
-            resize: "vertical",
-            background: "var(--bg)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            padding: 10,
-            fontSize: 13,
-            fontFamily: "inherit",
-          }}
-        />
-        {error && <div style={{ color: "var(--danger, #f43f5e)", fontSize: 12 }}>{error}</div>}
-        <button
-          onClick={startDiscussion}
-          disabled={!requirement.trim() || busy}
-          style={{
-            alignSelf: "flex-start",
-            padding: "8px 16px",
-            borderRadius: 9,
-            border: "none",
-            background: "var(--accent)",
-            color: "#fff",
-            fontWeight: 600,
-            cursor: requirement.trim() && !busy ? "pointer" : "not-allowed",
-            opacity: requirement.trim() && !busy ? 1 : 0.5,
+            padding: 20,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            overflow: "auto",
           }}
         >
-          {busy ? t("plan.parsing") : t("plan.enter")}
-        </button>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("plan.requirement")}</div>
+          <textarea
+            value={requirement}
+            onChange={(e) => setRequirement(e.target.value)}
+            placeholder={t("plan.toolbarHint")}
+            rows={4}
+            style={{
+              width: "100%",
+              resize: "vertical",
+              background: "var(--bg)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              padding: 10,
+              fontSize: 13,
+              fontFamily: "inherit",
+            }}
+          />
+          {error && <div style={{ color: "var(--danger, #f43f5e)", fontSize: 12 }}>{error}</div>}
+          <button
+            onClick={startDiscussion}
+            disabled={!requirement.trim() || busy}
+            style={{
+              alignSelf: "flex-start",
+              padding: "8px 16px",
+              borderRadius: 9,
+              border: "none",
+              background: "var(--accent)",
+              color: "#fff",
+              fontWeight: 600,
+              cursor: requirement.trim() && !busy ? "pointer" : "not-allowed",
+              opacity: requirement.trim() && !busy ? 1 : 0.5,
+            }}
+          >
+            {busy ? t("plan.parsing") : t("plan.enter")}
+          </button>
+        </div>
       </div>
     );
   }
 
   if (!snapshot) {
     return (
-      <div style={{ padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
-        {t("plan.parsing")}
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+        {modeHeader()}
+        <div style={{ padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
+          {t("plan.parsing")}
+        </div>
       </div>
     );
   }
@@ -270,9 +316,32 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
             · {t("plan.consensus", { reason: convergeReason })}
           </span>
         )}
-        <button onClick={exitPlan} style={closeBtnStyle} title={t("plan.exit")}>
-          ✕
-        </button>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={newDiscussion}
+            disabled={busy}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "none",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.5 : 1,
+            }}
+            title={t("plan.newDiscussion")}
+          >
+            {t("plan.newDiscussion")}
+          </button>
+          <button
+            onClick={exitPlan}
+            style={{ ...closeBtnStyle, marginLeft: 0 }}
+            title={t("plan.exit")}
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* 参与角色 */}
