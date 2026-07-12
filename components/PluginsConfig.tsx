@@ -690,7 +690,6 @@ function PackageDetail({
           }}
           cwd={cwd}
           compact
-          fullScan
         />
       </div>
 
