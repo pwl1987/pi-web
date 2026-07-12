@@ -356,3 +356,18 @@ await completeSimple(
 > 目的：提供完全中文化的本地化开发体验。技术专有名词（API 名、库名、协议字段、CLI 命令等）可保留英文原词，但面向用户的表述必须翻译。
 
 > 注意：本约定与 `.codebuddy/memory/MEMORY.md` 中的同名长期约定保持一致。
+
+---
+
+## 约束规则系统（`lib/constraints/`）
+
+上文「中文本地化约束」不是静态文档——它由一套**可被程序解析、与运行时状态深度联动**的约束引擎强制执行（`lib/constraints/`）。约束既能在运行时动态校验，也以结构化数据（`ConstraintSpec`）形式存在，可被序列化与审计。
+
+- **结构化规范**：`types.ts` 的 `ConstraintSpec` 是纯数据对象（id / severity / scope / triggers / evaluator / rule / params），可 `JSON.stringify` 解析；`rule` 是声明式 DSL（all/any + 条件），由 `engine.ts` 的 `evaluateRule` 解释求值。
+- **双向绑定**：
+  - 正向（状态/事件 → 约束）：`index.ts` 在客户端把引擎与 i18n 语言源、智能体运行时 store 双向绑定；语言切换 / 运行时变化自动 `emit` 触发器重算相关约束。业务代码也可 `reportUserStatus(text)` 主动投递 `status:reported` 事件。
+  - 反向（约束 → 业务）：`engine.guard(actionId)` 按 `spec.params.guards` 拦截硬约束（error 级）声明的业务动作。
+- **动态生效**：状态变更 → 引擎重算 → `ConstraintFinding` 集合经 `useConstraints()`（`useSyncExternalStore`）实时反映到 UI（顶栏「约束」按钮徽标 + `ConstraintPanel` 面板）。
+- **落地示例**：`localization.ts` 把本地化约定落成 4 条活约束（字典键对齐 error、关键翻译完整 warn、中文语境禁裸英文 error、语言合法 info），证明文档规则与程序逻辑无缝集成。
+
+> 新增项目级规则：在 `lib/constraints/` 下追加 `ConstraintSpec`（声明式 `rule` 或注册 `evaluator`），并接入 `index.ts` 的绑定/触发链即可，无需改动 UI 之外的业务代码。

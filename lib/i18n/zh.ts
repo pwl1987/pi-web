@@ -194,6 +194,12 @@ export const zh = {
   "panels.subagentsDesc": "监控运行中的子代理",
   "panels.todo": "待办",
   "panels.todoDesc": "rpiv-todo 任务列表",
+  // 约束面板
+  "constraints.open": "约束",
+  "constraints.title": "生效中的约束",
+  "constraints.recheck": "重新校验",
+  "constraints.noViolations": "当前无约束违反。",
+  "constraints.trigger": "触发来源",
   // 待办面板
   "todo.title": "任务",
   // 检查器面板

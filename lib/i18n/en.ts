@@ -194,6 +194,12 @@ export const en = {
   "panels.subagentsDesc": "Monitor running subagents",
   "panels.todo": "Todo",
   "panels.todoDesc": "Task list from rpiv-todo",
+  // Constraints panel
+  "constraints.open": "Constraints",
+  "constraints.title": "Active Constraints",
+  "constraints.recheck": "Re-check",
+  "constraints.noViolations": "No constraint violations.",
+  "constraints.trigger": "Triggered by",
   // Todo panel
   "todo.title": "Tasks",
   // Inspector panel

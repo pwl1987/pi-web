@@ -54,6 +54,7 @@ import {
   type ToolEntry,
 } from "@/lib/tool-presets";
 import { getAgentRuntimeStore } from "@/lib/agent-runtime-store";
+import { reportUserStatus } from "@/lib/constraints";
 import { getAgentEventBus } from "@/lib/extensions/event-bus";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { csrfHeaders } from "@/lib/csrf-client";
@@ -585,6 +586,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (result.status === "closed") {
         if (eventSourceRef.current === result.source) eventSourceRef.current = null;
         result.source.close();
+        // 把这条用户可见状态文案上报给约束系统（业务状态 → 约束 联动）。
+        reportUserStatus("Event stream connection failed");
         throw new EventStreamConnectionError(result.status);
       }
 
@@ -594,6 +597,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Don't discard the user's message over a transient connect delay —
       // proceed to send the prompt and let the 15s reconciliation poll (plus
       // visibilitychange/online) recover any events we may have missed.
+      reportUserStatus("Event stream not confirmed within timeout");
       console.warn(
         "Event stream not confirmed within timeout; proceeding with send and relying on SSE reconnect + state reconciliation.",
       );

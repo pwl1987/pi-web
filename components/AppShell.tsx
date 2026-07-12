@@ -24,6 +24,7 @@ import {
 import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
+import { ConstraintPanel } from "./ConstraintPanel";
 import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
 import { TopBarButton } from "./TopBarButton";
@@ -34,6 +35,7 @@ import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useExtensions } from "@/hooks/useExtensions";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
+import { useConstraints } from "@/lib/constraints/useConstraints";
 import { translate } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
@@ -54,6 +56,7 @@ export function AppShell() {
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
   const { configured: configuredProviders, loading: providersLoading } = useConfiguredProviders();
   const runtime = useAgentRuntime();
+  const { errors: constraintErrors, warns: constraintWarns } = useConstraints();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -169,7 +172,7 @@ export function AppShell() {
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<
-    "branches" | "system" | "session" | "panels" | "subagents" | null
+    "branches" | "system" | "session" | "panels" | "subagents" | "constraints" | null
   >(null);
   const [activePanelTab, setActivePanelTab] = useState<"mcp" | "web-search">("mcp");
   const [topPanelPos, setTopPanelPos] = useState<{
@@ -179,7 +182,7 @@ export function AppShell() {
   } | null>(null);
 
   const toggleTopPanel = useCallback(
-    (panel: "branches" | "system" | "session" | "panels" | "subagents") => {
+    (panel: "branches" | "system" | "session" | "panels" | "subagents" | "constraints") => {
       if (isMobile) setSidebarOpen(false);
       setActiveTopPanel((cur) => (cur === panel ? null : panel));
     },
@@ -881,6 +884,33 @@ export function AppShell() {
                   <Icons.Panels size={12} style={{ flexShrink: 0 }} />
                   {!isMobile && <span>{t("panels.title")}</span>}
                 </TopBarButton>
+                <TopBarButton
+                  active={activeTopPanel === "constraints"}
+                  onClick={() => toggleTopPanel("constraints")}
+                  title={t("constraints.open")}
+                  aria-label={t("constraints.open")}
+                >
+                  <Icons.Alert size={12} style={{ flexShrink: 0 }} />
+                  {!isMobile && <span>{t("constraints.open")}</span>}
+                  {(constraintErrors.length > 0 || constraintWarns.length > 0) && (
+                    <span
+                      style={{
+                        marginLeft: 4,
+                        fontSize: 10,
+                        lineHeight: 1,
+                        padding: "2px 5px",
+                        borderRadius: 999,
+                        color: "#fff",
+                        background:
+                          constraintErrors.length > 0
+                            ? "var(--danger, #e5484d)"
+                            : "var(--warning, #f5a623)",
+                      }}
+                    >
+                      {constraintErrors.length + constraintWarns.length}
+                    </span>
+                  )}
+                </TopBarButton>
               </div>
             )}
             {/* Subagent status badge — shows when subagents are running */}
@@ -1439,6 +1469,21 @@ export function AppShell() {
                     }}
                   >
                     <SubagentsPanel />
+                  </div>
+                )}
+                {activeTopPanel === "constraints" && (
+                  <div
+                    style={{
+                      background: "var(--bg-panel)",
+                      borderBottom: "1px solid var(--border)",
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <ConstraintPanel />
                   </div>
                 )}
               </div>
