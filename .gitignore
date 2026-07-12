@@ -49,3 +49,6 @@ next-env.d.ts
 # vendored upstream source（由 scripts/sync-vendor.mjs 依据 VENDOR.lock 重新生成；VENDOR.lock 与 patches/ 受版本管理）
 /vendor/autoplan/
 /vendor/comet/
+
+# OpenSpec 运行时状态（由 comet-guard 生成，类似 .next/，不入库；.comet.yaml 仍受版本管理）
+openspec/**/.comet/
