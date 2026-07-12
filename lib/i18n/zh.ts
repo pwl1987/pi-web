@@ -333,6 +333,11 @@ export const zh = {
   "env.dep.warn": "需关注",
   "env.dep.skip": "不适用",
   "env.dep.requires": "要求 {required}",
+  // 插件关联依赖检测（如 pi-shazam 所需的语言服务器）
+  "env.pluginDepOk": "{dep} 可用",
+  "env.pluginDepMissing": "{dep} 未安装",
+  "env.pluginDepsMissing": "缺少依赖：{pkgs}。请运行：{cmd}",
+  "env.pluginDepCheckError": "依赖检测异常",
   // MCP 适配器（npm:pi-mcp-adapter）状态检测与控制
   "mcp.adapterChecking": "正在检测 mcp 适配器状态…",
   "mcp.adapterMissing": "mcp 功能依赖 npm:pi-mcp-adapter 插件，当前未安装，MCP 功能已禁用。",

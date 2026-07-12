@@ -334,6 +334,11 @@ export const en = {
   "env.dep.warn": "Needs attention",
   "env.dep.skip": "N/A",
   "env.dep.requires": "requires {required}",
+  // Plugin associated dependency detection (e.g. language servers for pi-shazam)
+  "env.pluginDepOk": "{dep} available",
+  "env.pluginDepMissing": "{dep} not installed",
+  "env.pluginDepsMissing": "Missing dependencies: {pkgs}. Run: {cmd}",
+  "env.pluginDepCheckError": "Dependency check failed",
   // MCP adapter (npm:pi-mcp-adapter) status detection & control
   "mcp.adapterChecking": "Checking mcp adapter status…",
   "mcp.adapterMissing":

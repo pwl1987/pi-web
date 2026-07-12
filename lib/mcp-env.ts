@@ -28,7 +28,8 @@ import type {
   ProvisionStatus,
   RuntimeName,
   RuntimeStatus,
-} from "@/lib/env-types";
+} from "./env-types";
+import { detectPluginDependencies } from "./plugin-deps";
 
 // Generous ceiling: `codegraph init` can index a whole project tree.
 const PROVISION_TIMEOUT_MS = 300_000;
@@ -44,7 +45,7 @@ interface RunResult {
 
 /** Run a command with a hard SIGKILL watchdog. No execFile-internal timeout so
  *  that long-lived stdio servers can be cleanly killed and reported as "started". */
-function run(
+export function run(
   cmd: string,
   args: string[],
   opts: { cwd?: string; timeout?: number } = {},
@@ -440,6 +441,41 @@ export async function provisionOne(
 
   const init = await runInitSteps(env);
   steps.push(...init.steps);
+
+  // Plugin-specific associated dependencies (e.g. language servers required by
+  // pi-shazam). Sourced from the extensible PLUGIN_DEPENDENCIES registry; plugins
+  // without a manifest are unaffected. Wrapped so a probe failure cannot crash
+  // the whole scan.
+  if (env.kind === "plugin" && env.source) {
+    try {
+      const depReport = await detectPluginDependencies(env.source);
+      for (const g of depReport.globals) {
+        dependencies.push({
+          name: g.name,
+          type: "package",
+          installed: g.installed,
+          version: g.version,
+          status: g.status,
+          detail: g.installed ? g.detail : g.installCommand,
+        });
+      }
+      if (!depReport.allOk) {
+        // Precise, actionable error: list every missing package + full command.
+        steps.push({
+          key: "env.pluginDepsMissing",
+          args: { pkgs: depReport.missingPackages.join(", "), cmd: depReport.installCommand },
+          status: "error",
+          detail: depReport.installCommand,
+        });
+      }
+    } catch (error) {
+      steps.push({
+        key: "env.pluginDepCheckError",
+        status: "warn",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   // Record the package / image dependency with its post-install status.
   if (rt.name === "node" && packageName) {

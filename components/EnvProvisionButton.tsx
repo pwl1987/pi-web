@@ -366,15 +366,30 @@ function DependencyLine({
     .filter(Boolean)
     .join(" · ");
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-      <span style={{ color: DEP_COLOR[dep.status], fontWeight: 700, flexShrink: 0 }}>
-        {DEP_ICON[dep.status]}
-      </span>
-      <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{dep.name}</span>
-      {meta && <span style={{ color: "var(--text-dim)" }}>{meta}</span>}
-      <span style={{ marginLeft: "auto", color: DEP_COLOR[dep.status] }}>
-        {t(DEP_LABEL[dep.status])}
-      </span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+        <span style={{ color: DEP_COLOR[dep.status], fontWeight: 700, flexShrink: 0 }}>
+          {DEP_ICON[dep.status]}
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{dep.name}</span>
+        {meta && <span style={{ color: "var(--text-dim)" }}>{meta}</span>}
+        <span style={{ marginLeft: "auto", color: DEP_COLOR[dep.status] }}>
+          {t(DEP_LABEL[dep.status])}
+        </span>
+      </div>
+      {dep.detail && (
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            color: dep.status === "missing" ? "#f87171" : "var(--text-muted)",
+            paddingLeft: 14,
+            wordBreak: "break-all",
+          }}
+        >
+          {dep.detail}
+        </div>
+      )}
     </div>
   );
 }
