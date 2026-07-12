@@ -40,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             the browser paints the first frame. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");if(t==="dark")document.documentElement.classList.add("dark");var l=localStorage.getItem("pi-language");if(l==="zh"){var d=document.documentElement;d.setAttribute("data-lang","zh");d.lang="zh"}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem("pi-theme");if(t==="dark")document.documentElement.classList.add("dark");var l=localStorage.getItem("pi-language");if(l!=="en"){var d=document.documentElement;d.setAttribute("data-lang","zh");d.lang="zh"}}catch(e){}})();`,
           }}
         />
       </head>

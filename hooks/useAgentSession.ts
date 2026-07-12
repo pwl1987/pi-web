@@ -176,9 +176,7 @@ type EventStreamConnectionResult = {
 class EventStreamConnectionError extends Error {
   constructor(public readonly status: Exclude<EventStreamConnectionStatus, "connected">) {
     super(
-      status === "timeout"
-        ? "Timed out connecting to the agent event stream. Please try again."
-        : "Failed to connect to the agent event stream. Please try again.",
+      status === "timeout" ? "连接智能体事件流超时，请重试。" : "连接智能体事件流失败，请重试。",
     );
     this.name = "EventStreamConnectionError";
   }
@@ -587,7 +585,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (eventSourceRef.current === result.source) eventSourceRef.current = null;
         result.source.close();
         // 把这条用户可见状态文案上报给约束系统（业务状态 → 约束 联动）。
-        reportUserStatus("Event stream connection failed");
+        reportUserStatus("事件流连接失败");
         throw new EventStreamConnectionError(result.status);
       }
 
@@ -597,7 +595,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Don't discard the user's message over a transient connect delay —
       // proceed to send the prompt and let the 15s reconciliation poll (plus
       // visibilitychange/online) recover any events we may have missed.
-      reportUserStatus("Event stream not confirmed within timeout");
+      reportUserStatus("事件流在超时时间内未确认");
       console.warn(
         "Event stream not confirmed within timeout; proceeding with send and relying on SSE reconnect + state reconciliation.",
       );
@@ -839,12 +837,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (document.visibilityState === "visible") reconcile();
     };
     const interval = setInterval(() => {
-      // When SSE is healthy we already receive every event in real-time.
-      // Periodic polling is a fallback for when the EventSource silently
-      // disconnects (mobile backgrounding, network hiccups). Skip the
-      // regular poll while the connection is open to save 1 HTTP round-
-      // trip every 15 s.
-      if (eventSourceRef.current?.readyState === EventSource.OPEN) return;
+      // Always reconcile while the agent is running. Skipping the poll while the
+      // SSE is OPEN used to save one HTTP round-trip, but it caused the chat to
+      // freeze: when the EventSource silently dropped and reconnected, a run that
+      // finished during the gap never re-delivered `agent_end`, and a healthy
+      // OPEN connection suppressed the only recovery path. Polling the server
+      // state every tick catches the missed completion (reconcileAgentState is a
+      // no-op while the agent is genuinely busy), so input + streaming always
+      // recover within one interval without a manual page refresh.
       reconcile();
     }, AGENT_STATE_RECONCILE_MS);
     document.addEventListener("visibilitychange", onVisible);
@@ -937,13 +937,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         case "prompt_error":
           addNotice({
             type: "error",
-            message: (event.errorMessage as string | undefined) ?? "Command failed",
+            message: (event.errorMessage as string | undefined) ?? "命令执行失败",
           });
           break;
         case "extension_error":
           addNotice({
             type: "error",
-            message: (event.error as string | undefined) ?? "Extension command failed",
+            message: (event.error as string | undefined) ?? "扩展命令失败",
           });
           break;
         case "message_start":
@@ -1048,11 +1048,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             let errorMessage = event.errorMessage as string;
             // Improve error messages for common compact failures
             if (errorMessage.includes("model_context") || errorMessage.includes("finish_reason")) {
-              errorMessage =
-                "Compaction failed: model context exceeded. Try switching to a model with a larger context window.";
+              errorMessage = "压缩失败：模型上下文超出上限，请尝试切换到上下文窗口更大的模型。";
             } else if (errorMessage.includes("Summarization failed")) {
-              errorMessage =
-                "Compaction failed: unable to generate summary. The session may be too large for the current model.";
+              errorMessage = "压缩失败：无法生成摘要，当前模型可能无法处理过大的会话。";
             }
             setCompactError(errorMessage);
             setCompactResult(null);
@@ -1278,11 +1276,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       let errorMessage = e instanceof Error ? e.message : String(e);
       // Improve error messages for common compact failures
       if (errorMessage.includes("model_context") || errorMessage.includes("finish_reason")) {
-        errorMessage =
-          "Compaction failed: model context exceeded. Try switching to a model with a larger context window.";
+        errorMessage = "压缩失败：模型上下文超出上限，请尝试切换到上下文窗口更大的模型。";
       } else if (errorMessage.includes("Summarization failed")) {
-        errorMessage =
-          "Compaction failed: unable to generate summary. The session may be too large for the current model.";
+        errorMessage = "压缩失败：无法生成摘要，当前模型可能无法处理过大的会话。";
       }
       setCompactError(errorMessage);
       setCompactResult(null);
@@ -1334,7 +1330,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (result.error) {
           addNotice({ type: "error", message: result.error });
         } else if (result.action !== "openSessionStats") {
-          addNotice({ type: "success", message: result.message ?? "Command completed" });
+          addNotice({ type: "success", message: result.message ?? "命令已完成" });
         }
         return result;
       };
@@ -1343,7 +1339,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         switch (commandName) {
           case "compact": {
             if (!sid || isCompacting)
-              return complete({ handled: true, error: "No active session to compact" });
+              return complete({ handled: true, error: "没有可压缩的活动会话" });
             setIsCompacting(true);
             setCompactError(null);
             setCompactResult(null);
@@ -1362,11 +1358,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
                 errorMessage.includes("model_context") ||
                 errorMessage.includes("finish_reason")
               ) {
-                errorMessage =
-                  "Compaction failed: model context exceeded. Try switching to a model with a larger context window.";
+                errorMessage = "压缩失败：模型上下文超出上限，请尝试切换到上下文窗口更大的模型。";
               } else if (errorMessage.includes("Summarization failed")) {
-                errorMessage =
-                  "Compaction failed: unable to generate summary. The session may be too large for the current model.";
+                errorMessage = "压缩失败：无法生成摘要，当前模型可能无法处理过大的会话。";
               }
               setCompactError(errorMessage);
               return complete({ handled: true, error: errorMessage });
@@ -1374,7 +1368,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
 
           case "reload": {
-            if (!sid) return complete({ handled: true, error: "No active session to reload" });
+            if (!sid) return complete({ handled: true, error: "没有可重新加载的活动会话" });
             await sendAgentCommand(sid, { type: "reload" });
             await Promise.all([
               loadSession(sid, false, true),
@@ -1386,15 +1380,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
 
           case "name": {
-            if (!sid) return complete({ handled: true, error: "No active session to name" });
-            if (!args) return complete({ handled: true, error: "Usage: /name <name>" });
+            if (!sid) return complete({ handled: true, error: "没有可命名的活动会话" });
+            if (!args) return complete({ handled: true, error: "用法：/name <名称>" });
             await sendAgentCommand(sid, { type: "set_session_name", name: args });
             if (await loadSession(sid)) promoteNewSession();
             return complete({ handled: true, message: `Session renamed to ${args}` });
           }
 
           case "session": {
-            if (!sid) return complete({ handled: true, error: "No active session" });
+            if (!sid) return complete({ handled: true, error: "没有活动会话" });
             const stats = await sendAgentCommand<SessionStatsInfo>(sid, {
               type: "get_session_stats",
             });
@@ -1411,8 +1405,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               type: "get_last_assistant_text",
             });
             const textToCopy = data?.text ?? "";
-            if (!textToCopy)
-              return complete({ handled: true, error: "No assistant message to copy" });
+            if (!textToCopy) return complete({ handled: true, error: "没有可复制的助手消息" });
             await navigator.clipboard.writeText(textToCopy);
             return complete({ handled: true, message: "Copied last assistant message" });
           }
@@ -1530,7 +1523,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
     } catch (e) {
       console.error("Failed to recall queued messages:", e);
-      addNotice({ type: "error", message: "Failed to recall queued messages" });
+      addNotice({ type: "error", message: "撤回排队消息失败" });
     }
   }, [opts.chatInputRef, addNotice]);
 

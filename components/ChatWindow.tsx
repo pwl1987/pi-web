@@ -1234,7 +1234,7 @@ function ExtensionStatusBar({ statuses }: { statuses: Array<{ key: string; text:
               whiteSpace: "nowrap",
             }}
           >
-            {status.text}
+            {renderAnsiLine(status.text, status.key)}
           </span>
         </div>
       ))}
@@ -1279,7 +1279,12 @@ function ExtensionWidgets({ widgets }: { widgets: Array<{ key: string; lines: st
               fontFamily: "var(--font-mono)",
             }}
           >
-            {widget.lines.join("\n")}
+            {widget.lines.map((line, i) => (
+              <Fragment key={`${widget.key}-${i}`}>
+                {i > 0 ? "\n" : null}
+                {renderAnsiLine(line, `${widget.key}-${i}`)}
+              </Fragment>
+            ))}
           </pre>
         </div>
       ))}

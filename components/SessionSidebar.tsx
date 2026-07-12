@@ -119,13 +119,27 @@ export function SessionSidebar({
   const sseAuthoritativeRef = useRef(false);
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Last computed /api/sessions signature — lets the background poll skip the
+  // setState (and thus any re-render/flicker) when the list is unchanged.
+  const lastSigRef = useRef<string>("");
 
-  const loadSessions = useCallback(async (showLoading = false) => {
+  const loadSessions = useCallback(async (showLoading = false, force = false) => {
     try {
       if (showLoading) setLoading(true);
       const res = await fetch("/api/sessions");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { sessions: SessionInfo[]; runningSessionIds?: string[] };
+      // Lightweight signature so background polls don't trigger a re-render (and
+      // therefore no flicker) when nothing actually changed. New sessions, name
+      // edits, deletions and message-count changes all alter the signature.
+      const sig = data.sessions
+        .map((s) => `${s.id}:${s.modified ?? ""}:${s.name ?? ""}:${s.messageCount ?? 0}`)
+        .join("|");
+      if (!force && sig === lastSigRef.current) {
+        setError(null);
+        return;
+      }
+      lastSigRef.current = sig;
       setAllSessions(data.sessions);
       // Treat the fetched running set as an initial fallback only. Once SSE is
       // live it owns this state, so a slow fetch can't revive a stale snapshot.
@@ -158,6 +172,31 @@ export function SessionSidebar({
     initialLoadDone.current = true;
     loadSessions(isFirst);
   }, [loadSessions, refreshKey]);
+
+  // Seamless auto-refresh: poll the session list in the background so new
+  // sessions, renames, deletions and message-count changes appear without a
+  // manual refresh or page load. The signature check in loadSessions() makes
+  // unchanged polls a no-op, so the list never flickers. We also refetch when
+  // the tab regains focus or becomes visible (e.g. another tab created a
+  // session while this one was backgrounded).
+  useEffect(() => {
+    const POLL_MS = 6000;
+    const tick = () => {
+      void loadSessions(false);
+    };
+    const id = setInterval(tick, POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    const onFocus = () => tick();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadSessions]);
 
   // Persist unread markers so they survive a browser refresh before the user
   // has actually opened the completed session.
@@ -568,7 +607,7 @@ export function SessionSidebar({
   const handleSessionDeleted = useCallback(
     (id: string) => {
       onSessionDeleted?.(id);
-      loadSessions();
+      loadSessions(false, true);
     },
     [onSessionDeleted, loadSessions],
   );
@@ -636,7 +675,7 @@ export function SessionSidebar({
               {t("sidebar.newSession")}
             </button>
             <button
-              onClick={() => loadSessions(false)}
+              onClick={() => loadSessions(false, true)}
               style={{
                 display: "flex",
                 alignItems: "center",

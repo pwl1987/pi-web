@@ -50,7 +50,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
         setContent(d.content ?? "");
         setExists(d.exists ?? false);
       })
-      .catch(() => setError("Failed to load"))
+      .catch(() => setError("加载失败"))
       .finally(() => setLoading(false));
   }, [fileType, level, cwd]);
 

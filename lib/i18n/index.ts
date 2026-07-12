@@ -15,7 +15,10 @@ import { zh } from "./zh";
 export type Locale = "en" | "zh";
 
 const STORAGE_KEY = "pi-language";
-const DEFAULT_LOCALE: Locale = "en";
+// Default to Chinese: this app's user-facing copy is authored in Chinese and the
+// project mandates a fully localized (Chinese) UI. English remains available via
+// the language toggle (storing "en" opts out).
+const DEFAULT_LOCALE: Locale = "zh";
 
 const dictionaries: Record<Locale, Record<string, string>> = { en, zh };
 
