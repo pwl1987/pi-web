@@ -41,17 +41,27 @@ export default defineConfig({
         "next-env.d.ts",
         ".next/**",
         "node_modules/**",
+        // Vendored / adapter layers that are deliberately untested by the
+        // host: lib/pi is the SDK decoupling shim over @earendil-works/pi-*,
+        // lib/agent-orchestrator and lib/unified-engine wrap the vendored
+        // autoplan/comet mirrors (see docs/VENDOR-INTEGRATION.md). AGENTS.md
+        // excludes vendor/ from tsconfig; counting these against coverage
+        // would dilute the host-code signal to near-zero.
+        "lib/pi/**",
+        "lib/agent-orchestrator/**",
+        "lib/unified-engine/**",
       ],
       reporter: ["text", "lcov", "html"],
       // Coverage thresholds — fail if coverage drops below baseline.
-      // Values are calibrated to the CURRENT measured baseline so the gate
-      // prevents regression rather than blocking present-day commits.
+      // Values are calibrated to the CURRENT measured baseline (after
+      // excluding the vendored adapter layers above) so the gate prevents
+      // regression rather than blocking present-day commits.
       // Raise these as test coverage grows (target: lines 60 / fn 55 / br 45).
       thresholds: {
-        lines: 4,
-        functions: 4,
-        branches: 3,
-        statements: 4,
+        lines: 6,
+        functions: 6,
+        branches: 4,
+        statements: 6,
       },
     },
   },
