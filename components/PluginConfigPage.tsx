@@ -190,13 +190,12 @@ export function PluginConfigPage({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/plugins/config?source=${encodeURIComponent(source)}`);
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
-      const body = (await res.json()) as { values: ConfigState };
-      setValues(body.values);
+      const { ok, status, data } = await csrfFetchJson<{
+        values: ConfigState;
+        error?: string;
+      }>(`/api/plugins/config?source=${encodeURIComponent(source)}`, { method: "GET" });
+      if (!ok) throw new Error(data.error ?? `HTTP ${status}`);
+      setValues(data.values);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
