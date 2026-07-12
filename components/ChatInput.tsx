@@ -572,6 +572,9 @@ export const ChatInput = memo(
     const draftKeyRef = useRef(draftKey);
     const valueRef = useRef(value);
     const attachedImagesRef = useRef(attachedImages);
+    // Guards the first draft-save so the very initial render (whose value was
+    // just hydrated from storage) doesn't re-write and clobber the saved caret.
+    const draftMountedRef = useRef(false);
     const [stopConfirming, setStopConfirming] = useState(false);
     const stopConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     valueRef.current = value;
@@ -702,20 +705,60 @@ export const ChatInput = memo(
 
     useEffect(() => {
       if (!draftKey || draftKeyRef.current !== draftKey) return;
+      // Skip the initial hydration render: its value came from storage, so
+      // re-writing it would clobber the persisted caret position. Subsequent
+      // runs persist real edits (including the live caret position).
+      if (!draftMountedRef.current) {
+        draftMountedRef.current = true;
+        return;
+      }
+      const ta = textareaRef.current;
       setDraft(draftKey, {
         value,
         images: attachedImages.map(imageToDraftImage),
+        selectionStart: ta ? ta.selectionStart : null,
+        selectionEnd: ta ? ta.selectionEnd : null,
       });
     }, [attachedImages, draftKey, value]);
+
+    useEffect(() => {
+      if (!draftKey) return;
+      const ta = textareaRef.current;
+      if (!ta) return;
+      // Restore the caret to where the user left off whenever a draft is (re)
+      // loaded into the textarea — on the initial mount (after a refresh) and
+      // when the active session's draft changes. Run in rAF so the textarea
+      // already holds the restored value; the clamped range keeps it valid even
+      // if the stored selection is longer than the restored text.
+      const draft = getDraft(draftKey);
+      const raf = requestAnimationFrame(() => {
+        const len = ta.value.length;
+        const start = draft?.selectionStart ?? len;
+        const end = draft?.selectionEnd ?? len;
+        const s = Math.max(0, Math.min(start, len));
+        const e = Math.max(0, Math.min(end, len));
+        try {
+          ta.setSelectionRange(s, e);
+        } catch {
+          // Invalid range — the browser keeps a sane default caret.
+        }
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      });
+      return () => cancelAnimationFrame(raf);
+    }, [draftKey]);
 
     useEffect(() => {
       const previousDraftKey = draftKeyRef.current;
       if (previousDraftKey === draftKey) return;
 
       if (previousDraftKey) {
+        const ta = textareaRef.current;
         setDraft(previousDraftKey, {
           value: valueRef.current,
           images: attachedImagesRef.current.map(imageToDraftImage),
+          selectionStart: ta ? ta.selectionStart : null,
+          selectionEnd: ta ? ta.selectionEnd : null,
         });
       }
 
@@ -1914,6 +1957,16 @@ export const ChatInput = memo(
                 onSelect={(e) => {
                   const el = e.currentTarget;
                   updateAtQuery(el.value, el.selectionStart);
+                  // Persist caret position on user selection so a refresh
+                  // restores the exact cursor location, not just the text.
+                  if (draftKey && draftKeyRef.current === draftKey) {
+                    setDraft(draftKey, {
+                      value: el.value,
+                      images: attachedImagesRef.current.map(imageToDraftImage),
+                      selectionStart: el.selectionStart,
+                      selectionEnd: el.selectionEnd,
+                    });
+                  }
                 }}
                 onKeyDown={handleKeyDown}
                 onCompositionStart={() => {
