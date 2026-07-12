@@ -1,7 +1,7 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest } from "next/server";
 import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, jsonOk } from "@/lib/api-utils";
 import type { SdkSettingsManager } from "@/lib/pi";
 
 const { SettingsManager, getAgentDir } = getPiAdapter();
@@ -100,7 +100,7 @@ export async function GET() {
       warningsAnthropicExtraUsage: mgr.getWarnings().anthropicExtraUsage ?? false,
     };
 
-    return NextResponse.json(settings);
+    return jsonOk(settings);
   } catch (error) {
     return errorResponse(error);
   }
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
     }
 
     await mgr.flush();
-    return NextResponse.json({ success: true });
+    return jsonOk({ success: true });
   } catch (error) {
     return errorResponse(error);
   }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { usePersistentState } from "@/hooks/usePersistentState";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { BUILTIN_MCP_TEMPLATES, type McpServerEntry, type McpTemplate } from "@/lib/mcp-templates";
 import { EnvProvisionButton } from "@/components/EnvProvisionButton";
 
@@ -273,18 +273,20 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
     setAdapterInstalling(true);
     setAdapterError(null);
     try {
-      const res = await fetch("/api/mcp-adapter", {
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<AdapterStatus & { error?: string }>("/api/mcp-adapter", {
         method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
+        body: {
           action: "install",
           source: "npm:pi-mcp-adapter",
           cwd,
           scope: "global",
-        }),
+        },
       });
-      const d = (await res.json()) as AdapterStatus & { error?: string };
-      if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
+      if (!ok || d.error) throw new Error(d.error ?? `HTTP ${status}`);
       setAdapterStatus(d);
     } catch (e) {
       setAdapterError(e instanceof Error ? e.message : String(e));
@@ -357,17 +359,15 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
     setTesting(true);
     setProbe(null);
     try {
-      const res = await fetch("/api/mcp-config/test", {
+      const { data: d } = await csrfFetchJson<ProbeResult>("/api/mcp-config/test", {
         method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
+        body: {
           transport: draft.transport,
           command: draft.command,
           args: parseArgs(draft.argsText),
           url: draft.url,
-        }),
+        },
       });
-      const d = (await res.json()) as ProbeResult;
       setProbe(d);
     } catch (e) {
       setProbe({
@@ -394,15 +394,14 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
         servers[s.name] = serverInfoToEntry(s);
       }
       servers[draft.name.trim()] = draftToEntry(draft);
-      const res = await fetch("/api/mcp-config", {
+      const r = await csrfFetchJson("/api/mcp-config", {
         method: "PUT",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ mcpServers: servers }),
+        body: { mcpServers: servers },
       });
-      if (!res.ok) {
-        const d = (await res.json()) as { errors?: McpFieldError[]; error?: string };
+      if (!r.ok) {
+        const d = r.data as { errors?: McpFieldError[]; error?: string };
         if (d.errors) setServerErrors(d.errors);
-        else setError(d.error ?? `HTTP ${res.status}`);
+        else setError(d.error ?? `HTTP ${r.status}`);
         return;
       }
       closeForm();
@@ -423,10 +422,9 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
         if (s.name === name) continue;
         servers[s.name] = serverInfoToEntry(s);
       }
-      await fetch("/api/mcp-config", {
+      await csrfFetchJson("/api/mcp-config", {
         method: "PUT",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ mcpServers: servers }),
+        body: { mcpServers: servers },
       });
       if (editingName === name) closeForm();
       void reload();
@@ -517,17 +515,16 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
           setImportError(t("mcp.importError"));
           return;
         }
-        const res = await fetch("/api/mcp-config", {
+        const r = await csrfFetchJson("/api/mcp-config", {
           method: "PUT",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ mcpServers: parsed.mcpServers }),
+          body: { mcpServers: parsed.mcpServers },
         });
-        if (!res.ok) {
-          const d = (await res.json()) as { errors?: McpFieldError[]; error?: string };
+        if (!r.ok) {
+          const d = r.data as { errors?: McpFieldError[]; error?: string };
           if (d.errors) {
             setServerErrors(d.errors);
             setImportError(t("mcp.importError"));
-          } else setImportError(d.error ?? `HTTP ${res.status}`);
+          } else setImportError(d.error ?? `HTTP ${r.status}`);
           return;
         }
         void reload();

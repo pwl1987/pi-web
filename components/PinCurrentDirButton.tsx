@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 interface Props {
   /** Working directory to act on. When null, the button renders disabled. */
@@ -47,12 +47,11 @@ export function PinCurrentDirButton({ cwd, isPinned, onPinnedChange }: Props) {
     // Optimistic flip.
     onPinnedChange(nextIsPinned);
     try {
-      const res = await fetch("/api/pinned-dirs", {
+      const { ok } = await csrfFetchJson("/api/pinned-dirs", {
         method: nextIsPinned ? "POST" : "DELETE",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ path: cwd }),
+        body: { path: cwd },
       });
-      if (!res.ok) {
+      if (!ok) {
         // Roll back the optimistic state.
         onPinnedChange(isPinned);
         return;

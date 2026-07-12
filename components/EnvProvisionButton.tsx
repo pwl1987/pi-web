@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import type {
   CapabilityEnv,
   DependencyCheck,
@@ -122,12 +122,10 @@ export function EnvProvisionButton({
           : capability
             ? [{ ...capability, cwd }]
             : [];
-        const res = await fetch("/api/mcp-config/env/scan", {
+        const { data: d } = await csrfFetchJson<EnvScanResult>("/api/mcp-config/env/scan", {
           method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ capabilities, install: true }),
+          body: { capabilities, install: true },
         });
-        const d = (await res.json()) as EnvScanResult;
         setResult(d);
       } catch (e) {
         setResult({

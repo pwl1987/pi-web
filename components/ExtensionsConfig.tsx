@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 interface ExtListItem {
   id: string;
@@ -48,10 +48,9 @@ export function ExtensionsConfig({ onClose }: Props) {
     // Optimistic update
     setList((prev) => prev.map((e) => (e.id === id ? { ...e, enabled: !current } : e)));
     try {
-      await fetch("/api/extensions/config", {
+      await csrfFetchJson("/api/extensions/config", {
         method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ id, enabled: !current }),
+        body: { id, enabled: !current },
       });
     } catch {
       /* revert on error */ void reload();
@@ -63,13 +62,14 @@ export function ExtensionsConfig({ onClose }: Props) {
     setInstalling(true);
     setMessage("");
     try {
-      const res = await fetch("/api/extensions/install", {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ path: installPath.trim() }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "Install failed");
+      const { ok, data: d } = await csrfFetchJson<{ id?: string; error?: string }>(
+        "/api/extensions/install",
+        {
+          method: "POST",
+          body: { path: installPath.trim() },
+        },
+      );
+      if (!ok) throw new Error(d.error ?? "Install failed");
       setMessage(t("extensions.installed", { id: d.id ?? "" }));
       setInstallPath("");
       setShowInstall(false);
@@ -83,13 +83,11 @@ export function ExtensionsConfig({ onClose }: Props) {
   const handleUninstall = async (id: string) => {
     if (!confirm(t("extensions.uninstallConfirm", { id }))) return;
     try {
-      const res = await fetch("/api/extensions/uninstall", {
+      const { ok, data: d } = await csrfFetchJson<{ error?: string }>("/api/extensions/uninstall", {
         method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ id }),
+        body: { id },
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "Uninstall failed");
+      if (!ok) throw new Error(d.error ?? "Uninstall failed");
       void reload();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));

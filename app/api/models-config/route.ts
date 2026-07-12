@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody, jsonOk } from "@/lib/api-utils";
 import { validateModelsConfig } from "@/lib/config-validators";
 import { getPiAdapter } from "@/lib/pi";
 
@@ -32,7 +32,7 @@ function writeModelsJson(data: Record<string, unknown>): void {
 }
 
 export async function GET() {
-  return NextResponse.json(readModelsJson());
+  return jsonOk(readModelsJson());
 }
 
 export async function PUT(req: Request) {
@@ -51,7 +51,7 @@ export async function PUT(req: Request) {
     }
     writeModelsJson(body);
     // Model registry refreshes on each /api/models request (no local cache to invalidate)
-    return NextResponse.json({ success: true });
+    return jsonOk({ success: true });
   } catch (error) {
     return errorResponse(error);
   }

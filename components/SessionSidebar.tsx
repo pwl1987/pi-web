@@ -23,7 +23,7 @@ import { AnimatedDropdown } from "./AnimatedDropdown";
 import { PiAgentTitle } from "./PiAgentTitle";
 import { SessionItem } from "./SessionItem";
 import { Icons } from "./Icons";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 interface Props {
   selectedSessionId: string | null;
@@ -390,14 +390,12 @@ export function SessionSidebar({
     setCustomPathValidating(true);
     setCustomPathError(null);
     try {
-      const res = await fetch("/api/cwd/validate", {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ cwd: path }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { cwd?: string; error?: string };
-      if (!res.ok || data.error) {
-        setCustomPathError(data.error ?? `HTTP ${res.status}`);
+      const { ok, status, data } = await csrfFetchJson<{ cwd?: string; error?: string }>(
+        "/api/cwd/validate",
+        { method: "POST", body: { cwd: path } },
+      );
+      if (!ok || data.error) {
+        setCustomPathError(data.error ?? `HTTP ${status}`);
         return;
       }
       setSelectedCwd(data.cwd ?? path);
@@ -413,8 +411,9 @@ export function SessionSidebar({
 
   const handleDefaultCwd = useCallback(async () => {
     try {
-      const res = await fetch("/api/default-cwd", { method: "POST", headers: csrfHeaders() });
-      const data = (await res.json()) as { cwd?: string; error?: string };
+      const { data } = await csrfFetchJson<{ cwd?: string; error?: string }>("/api/default-cwd", {
+        method: "POST",
+      });
       if (data.cwd) {
         setSelectedCwd(data.cwd);
         setCustomPathOpen(false);
@@ -433,14 +432,12 @@ export function SessionSidebar({
     setWtBusy(true);
     setWtError(null);
     try {
-      const res = await fetch("/api/worktrees", {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ cwd: worktreeState.projectRoot, branch }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
-      if (!res.ok || data.error || !data.path) {
-        setWtError(data.error ?? `HTTP ${res.status}`);
+      const { ok, status, data } = await csrfFetchJson<{ path?: string; error?: string }>(
+        "/api/worktrees",
+        { method: "POST", body: { cwd: worktreeState.projectRoot, branch } },
+      );
+      if (!ok || data.error || !data.path) {
+        setWtError(data.error ?? `HTTP ${status}`);
         return;
       }
       setWtNewOpen(false);
@@ -473,19 +470,17 @@ export function SessionSidebar({
       setWtBusy(true);
       setWtError(null);
       try {
-        const res = await fetch("/api/worktrees", {
-          method: "DELETE",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ cwd: worktreeState.projectRoot, path, force }),
-        });
-        const data = (await res.json().catch(() => ({}))) as { error?: string; dirty?: boolean };
-        if (!res.ok) {
+        const { ok, status, data } = await csrfFetchJson<{ error?: string; dirty?: boolean }>(
+          "/api/worktrees",
+          { method: "DELETE", body: { cwd: worktreeState.projectRoot, path, force } },
+        );
+        if (!ok) {
           if (data.dirty && !force) {
             // Dirty worktree — ask the user to confirm a force removal
             setWtConfirmRemove(path);
             return;
           }
-          setWtError(data.error ?? `HTTP ${res.status}`);
+          setWtError(data.error ?? `HTTP ${status}`);
           return;
         }
         setWtConfirmRemove(null);

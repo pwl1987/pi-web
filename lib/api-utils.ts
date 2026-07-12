@@ -13,6 +13,13 @@ export function errorResponse(error: unknown, status = 500): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
+/** Standardized JSON success response. Use for both data payloads and the
+ *  common `{ success: true }` acknowledgements returned by mutating routes,
+ *  replacing ad-hoc `NextResponse.json(...)` calls. */
+export function jsonOk<T = unknown>(data: T, init?: ResponseInit): NextResponse {
+  return NextResponse.json(data, init);
+}
+
 /** Safely parse a JSON request body with a max size limit (default 1 MB).
  *  Returns a tuple of [parsed, errorResponse] — if errorResponse is set,
  *  the caller should return it immediately. */

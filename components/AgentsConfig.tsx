@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 interface Props {
   cwd: string;
@@ -58,18 +58,17 @@ export function AgentsConfig({ cwd, onClose }: Props) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/agents-md", {
+      const r = await csrfFetchJson("/api/agents-md", {
         method: "PUT",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
+        body: {
           file: fileType,
           level,
           cwd: level === "project" ? cwd : undefined,
           content,
-        }),
+        },
       });
-      if (!res.ok) {
-        const d = await res.json();
+      if (!r.ok) {
+        const d = r.data as { error?: string };
         throw new Error(d.error ?? "Save failed");
       }
       setExists(true);
@@ -86,18 +85,19 @@ export function AgentsConfig({ cwd, onClose }: Props) {
     setOptimizing(true);
     setError("");
     try {
-      const res = await fetch("/api/agents-md/optimize", {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          content,
-          file: fileType,
-          cwd: level === "project" ? cwd : undefined,
-        }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "Optimization failed");
-      setOptimizedContent(d.optimized);
+      const { ok, data: d } = await csrfFetchJson<{ optimized?: string; error?: string }>(
+        "/api/agents-md/optimize",
+        {
+          method: "POST",
+          body: {
+            content,
+            file: fileType,
+            cwd: level === "project" ? cwd : undefined,
+          },
+        },
+      );
+      if (!ok) throw new Error(d.error ?? "Optimization failed");
+      setOptimizedContent(d.optimized ?? "");
       setMode("compare");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -21,3 +21,15 @@
 - 可插拔 `AgentRunner`：Mock（单测用）与 `createCompleteSimpleRunner(createPiLlmCompletion(cwd))`（真实后端）。
 - 单测：`lib/agent-orchestrator/orchestrator.test.mjs`（node --test --experimental-strip-types，脱 LLM）。注意：测试须直接 import `./orchestrator.ts` 等具体文件，**不能** import `./index.ts`（它会 re-export `llm-backend.ts`，后者依赖 `@/` 别名，纯 Node 无法解析）。
 - 参考项目：`jnMetaCode/agency-orchestrator`（原需求误写为 jetaCode）。
+
+### 提交 / 推送约定（2026-07-12 确认）
+- husky `pre-commit` 钩子（`.husky/pre-commit`）实际只跑：`npx lint-staged` → `npm run type-check` → `npm run test:node` → `npm run test:coverage`。**不调用 comet-guard**；`[guard]FATAL` 来自 comet 工作流/手动调用，非 git 钩子。提交时钩子会自动复跑这些校验，须全绿才提交成功。
+- lint-staged 配置：`.{js,mjs,cjs,jsx,ts,tsx}` → prettier --write + eslint --fix；`.{json,md,yaml,yml,css}` → prettier --write。
+- `openspec/**/.comet/` 已在 `.gitignore` 排除（comet-guard 运行时产物，类似 `.next/`）；`.comet.yaml` 仍受版本管理，需随 change 记录提交。
+- `vendor/comet/`、`vendor/autoplan/` 已被 `.gitignore` 忽略（vendored upstream）。
+- 仓库规范完整 CI：`npm run ci` = format:check && lint && type-check && test:node && test:coverage。
+
+### 前端共用模块约定（2026-07-13 确立）
+- **禁止**在客户端组件里裸写 `fetch(url, { headers: csrfHeaders({...}), body: JSON.stringify(...) })` + `res.json()` 模式。一律改用 `lib/csrf-fetch.ts` 的 `csrfFetchJson<T>(url, { method, body, headers })` → 返回 `{ ok, status, data }`（空/非 JSON 响应用 `.catch(() => ({}))` 兜底）。
+- 配置面板 UI 复用 `components/ui/ConfigModal.tsx` 原语：`ConfigModal`(外壳) / `ConfigSidebar` / `ConfigListRow`(选中+hover) / `ModalButton`(primary/secondary/danger) / `SaveButton`(带 saved-pop 勾选动画)。API 成功响应统一用 `lib/api-utils.ts` 的 `jsonOk(data, init)`。
+- 重构策略：保留各面板既有正确遮罩外壳，仅局部抽取重复逻辑（避免整体重写大体量 return 块引发视觉/行为回归）。

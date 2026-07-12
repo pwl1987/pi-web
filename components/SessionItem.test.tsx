@@ -11,7 +11,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import type { SessionInfo } from "@/lib/types";
 
 // --- Mocks ----------------------------------------------------------------
@@ -25,7 +25,21 @@ vi.mock("@/hooks/useExtensions", () => ({
   useExtensions: () => ({ getWorkspaceLabelItems: () => [] }),
 }));
 
+// Mock the network seam the component actually depends on (csrfFetchJson),
+// NOT the global fetch. The previous stubGlobal("fetch") was vulnerable to
+// cross-file pollution: other test files in the same worker stub fetch too,
+// and if their cleanup ran out of order the mock was reset mid-await, leaving
+// onDeleted/onRenamed never called. Mocking the module-seam avoids any shared
+// global entirely.
+vi.mock("@/lib/csrf-fetch", () => ({
+  csrfFetchJson: vi.fn().mockResolvedValue({ ok: true, status: 200, data: {} }),
+}));
+
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { SessionItem } from "./SessionItem";
+
+// Handle to the hoisted mock — typed as the real function via vi.mocked().
+const csrfFetchJsonMock = vi.mocked(csrfFetchJson);
 
 const baseSession: SessionInfo = {
   path: "/tmp/sessions/s1.jsonl",
@@ -39,12 +53,12 @@ const baseSession: SessionInfo = {
 };
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+  csrfFetchJsonMock.mockReset();
+  csrfFetchJsonMock.mockResolvedValue({ ok: true, status: 200, data: {} });
 });
 
 afterEach(() => {
   cleanup();
-  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -76,13 +90,14 @@ describe("SessionItem", () => {
     // 2) confirm → DELETE request
     fireEvent.click(screen.getByText("sidebar.delete"));
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(csrfFetchJsonMock).toHaveBeenCalledWith(
       "/api/sessions/s1",
       expect.objectContaining({ method: "DELETE" }),
     );
     // onDeleted is invoked after the awaited fetch resolves
-    await Promise.resolve();
-    expect(onDeleted).toHaveBeenCalledWith("s1");
+    await waitFor(() => {
+      expect(onDeleted).toHaveBeenCalledWith("s1");
+    });
   });
 
   it("commits a PATCH with the trimmed name on rename", async () => {
@@ -99,13 +114,13 @@ describe("SessionItem", () => {
     fireEvent.change(input, { target: { value: "  Renamed Session  " } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(fetch).toHaveBeenCalledWith("/api/sessions/s1", {
+    expect(csrfFetchJsonMock).toHaveBeenCalledWith("/api/sessions/s1", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Renamed Session" }),
+      body: { name: "Renamed Session" },
     });
-    await Promise.resolve();
-    expect(onRenamed).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(onRenamed).toHaveBeenCalled();
+    });
   });
 
   it("does not PATCH when the renamed value is unchanged", () => {
@@ -121,6 +136,6 @@ describe("SessionItem", () => {
     fireEvent.change(input, { target: { value: "My Session" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(csrfFetchJsonMock).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -62,16 +62,15 @@ export function WebSearchConfigPanel() {
       for (const [provider, key] of Object.entries(keyInputs)) {
         if (key.trim()) apiKeys[`${provider}ApiKey`] = key.trim();
       }
-      await fetch("/api/web-search-config", {
+      await csrfFetchJson("/api/web-search-config", {
         method: "PUT",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
+        body: {
           provider: data.provider,
           workflow: data.workflow,
           curatorTimeoutSeconds: data.curatorTimeoutSeconds,
           webSearchEnabled: data.webSearchEnabled,
           apiKeys,
-        }),
+        },
       });
       setSaved(true);
       void reload();

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getPinnedDirsBus } from "@/lib/pinned-dirs-bus";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 export interface PinnedDir {
   path: string;
@@ -76,12 +76,11 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
       // reload() if the API rejects.
       setItems((prev) => (prev ?? []).filter((d) => d.path !== path));
       try {
-        const res = await fetch("/api/pinned-dirs", {
+        const { ok } = await csrfFetchJson("/api/pinned-dirs", {
           method: "DELETE",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ path }),
+          body: { path },
         });
-        if (!res.ok) await reload();
+        if (!ok) await reload();
       } catch {
         await reload();
       }
@@ -99,12 +98,11 @@ export function PinnedDirsList({ onCwdChange, className }: Props) {
       const existing = items?.find((d) => d.path === path);
       if (existing && (existing.alias ?? "") === alias) return;
       try {
-        const res = await fetch("/api/pinned-dirs", {
+        const { ok } = await csrfFetchJson("/api/pinned-dirs", {
           method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ path, alias }),
+          body: { path, alias },
         });
-        if (res.ok) {
+        if (ok) {
           // Optimistic local update + notify peers.
           setItems((prev) =>
             (prev ?? []).map((d) => (d.path === path ? { ...d, alias: alias || undefined } : d)),

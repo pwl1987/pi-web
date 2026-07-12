@@ -29,7 +29,7 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { usePlanMode, setPlanMode, setOrchestratorId } from "@/lib/plan-mode-store";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
@@ -806,25 +806,21 @@ export const ChatInput = memo(
         setPlanError(null);
         try {
           if (!orchestratorId) {
-            const res = await fetch("/api/plan/orchestrate", {
-              method: "POST",
-              headers: csrfHeaders({ "Content-Type": "application/json" }),
-              body: JSON.stringify({
-                requirement: msg,
-                cwd: cwd ?? undefined,
-                config: planConfig,
-              }),
-            });
-            const data = (await res.json()) as { id?: string; error?: string };
-            if (!res.ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));
+            const { ok, data } = await csrfFetchJson<{ id?: string; error?: string }>(
+              "/api/plan/orchestrate",
+              {
+                method: "POST",
+                body: { requirement: msg, cwd: cwd ?? undefined, config: planConfig },
+              },
+            );
+            if (!ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));
             setOrchestratorId(data.id);
           } else {
-            const res = await fetch(`/api/plan/${orchestratorId}/rediscuss`, {
+            const { ok } = await csrfFetchJson(`/api/plan/${orchestratorId}/rediscuss`, {
               method: "POST",
-              headers: csrfHeaders({ "Content-Type": "application/json" }),
-              body: JSON.stringify({ feedback: msg }),
+              body: { feedback: msg },
             });
-            if (!res.ok) throw new Error(t("plan.rediscussFailed"));
+            if (!ok) throw new Error(t("plan.rediscussFailed"));
           }
           clearInput();
           setShowUndo(false);
@@ -870,22 +866,18 @@ export const ChatInput = memo(
       setEnhancing(true);
       setOriginalBeforeEnhance(value);
       try {
-        const res = await fetch("/api/agent/enhance", {
-          method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            prompt: value,
-            provider: model?.provider,
-            modelId: model?.modelId,
-            cwd,
-          }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error ?? "Enhancement failed");
+        const { ok, data: d } = await csrfFetchJson<{ error?: string; enhanced?: string }>(
+          "/api/agent/enhance",
+          {
+            method: "POST",
+            body: { prompt: value, provider: model?.provider, modelId: model?.modelId, cwd },
+          },
+        );
+        if (!ok) throw new Error(d.error ?? "Enhancement failed");
         // Replace the input content with the enhanced prompt. setValue alone
         // does not fire onChange, so showUndo is preserved until the user
         // manually edits or sends.
-        setValue(d.enhanced);
+        setValue(d.enhanced ?? "");
         setShowUndo(true);
       } catch (e) {
         setEnhanceError(e instanceof Error ? e.message : String(e));

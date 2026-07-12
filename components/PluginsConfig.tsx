@@ -8,8 +8,9 @@ import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
 import { PluginConfigPage } from "@/components/PluginConfigPage";
 import { ALL_PLUGINS } from "@/lib/recommended-plugins";
 import { PLUGIN_CONFIG_DESCRIPTORS } from "@/lib/plugin-config-descriptors";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { EnvProvisionButton } from "@/components/EnvProvisionButton";
+import { ConfigListRow, ModalButton } from "@/components/ui/ConfigModal";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -787,13 +788,15 @@ export function PluginsConfig({
       setActionError(null);
       setActionMessage(null);
       try {
-        const res = await fetch("/api/plugins", {
+        const {
+          ok,
+          status,
+          data: next,
+        } = await csrfFetchJson<PluginsResponse & { error?: string }>("/api/plugins", {
           method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ action, source: pkg.source, scope: pkg.scope, cwd }),
+          body: { action, source: pkg.source, scope: pkg.scope, cwd },
         });
-        const next = (await res.json()) as PluginsResponse & { error?: string };
-        if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
+        if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
         setData(next);
         if (action === "remove") {
           setSelected(next.packages[0] ? packageKey(next.packages[0]) : null);
@@ -825,13 +828,15 @@ export function PluginsConfig({
     setActionError(null);
     setActionMessage(null);
     try {
-      const res = await fetch("/api/plugins", {
+      const {
+        ok,
+        status,
+        data: next,
+      } = await csrfFetchJson<PluginsResponse & { error?: string }>("/api/plugins", {
         method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ action: "install", source, scope: installScope, cwd }),
+        body: { action: "install", source, scope: installScope, cwd },
       });
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
+      if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
       setData(next);
       const installed = findInstalledPackage(next.packages, source, installScope);
       setSelected(installed ? packageKey(installed) : key);
@@ -988,39 +993,27 @@ export function PluginsConfig({
                       const key = packageKey(pkg);
                       const isSelected = !addMode && selected === key;
                       return (
-                        <div
+                        <ConfigListRow
                           key={key}
+                          selected={isSelected}
                           onClick={() => {
                             setSelected(key);
                             setAddMode(false);
                             setActionError(null);
                             setActionMessage(null);
                           }}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 7,
-                            padding: "8px 8px",
-                            borderRadius: 5,
-                            cursor: "pointer",
-                            background: isSelected ? "var(--bg-selected)" : "none",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = "none";
-                          }}
+                          leading={
+                            <span
+                              style={{
+                                flexShrink: 0,
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                background: statusColor(pkg.status),
+                              }}
+                            />
+                          }
                         >
-                          <span
-                            style={{
-                              flexShrink: 0,
-                              width: 7,
-                              height: 7,
-                              borderRadius: "50%",
-                              background: statusColor(pkg.status),
-                            }}
-                          />
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div
                               style={{
@@ -1062,7 +1055,7 @@ export function PluginsConfig({
                               </div>
                             )}
                           </div>
-                        </div>
+                        </ConfigListRow>
                       );
                     })}
                   </div>
@@ -1072,48 +1065,32 @@ export function PluginsConfig({
             <div
               style={{ padding: "8px 6px", borderTop: "1px solid var(--border)", flexShrink: 0 }}
             >
-              <button
-                type="button"
+              <ConfigListRow
+                selected={addMode}
                 onClick={() => {
                   setAddMode(true);
                   setActionError(null);
                   setActionMessage(null);
                 }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "7px 8px",
-                  borderRadius: 5,
-                  border: "none",
-                  width: "100%",
-                  cursor: "pointer",
-                  background: addMode ? "var(--bg-selected)" : "none",
-                  color: addMode ? "var(--accent)" : "var(--text-dim)",
-                  fontSize: 12,
-                }}
-                onMouseEnter={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "none";
-                }}
+                style={{ padding: "7px 8px" }}
+                leading={
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                }
               >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
                 {t("plugins.addPlugin")}
-              </button>
+              </ConfigListRow>
             </div>
           </div>
 
@@ -1212,16 +1189,16 @@ export function PluginsConfig({
               </span>
             )}
           </div>
-          <button
+          <ModalButton
+            variant="secondary"
             onClick={() => void loadPlugins()}
             disabled={loading || busyKey !== null}
-            style={buttonStyle(loading || busyKey !== null)}
           >
             {t("plugins.refresh")}
-          </button>
-          <button onClick={onClose} style={buttonStyle(false)}>
+          </ModalButton>
+          <ModalButton variant="secondary" onClick={onClose}>
             {t("plugins.close")}
-          </button>
+          </ModalButton>
         </div>
       </div>
     </div>

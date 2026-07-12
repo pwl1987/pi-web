@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { useAudio } from "@/hooks/useAudio";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 interface PiSettings {
   defaultProvider: string | null;
@@ -91,37 +91,42 @@ export function SettingsPanel({
 
   // Load pi settings + model list on mount.
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => {
-        if (!r.ok) throw new Error(`Settings load failed: ${r.status}`);
-        return r.json();
-      })
-      .then(setPiSettings)
-      .catch((err) => console.error("Failed to load settings:", err));
-    fetch("/api/models")
-      .then((r) => {
-        if (!r.ok) throw new Error(`Models load failed: ${r.status}`);
-        return r.json();
-      })
-      .then((d) => {
+    void (async () => {
+      try {
+        const { ok, status, data: settings } = await csrfFetchJson<PiSettings>("/api/settings");
+        if (!ok) throw new Error(`Settings load failed: ${status}`);
+        setPiSettings(settings);
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
+      try {
+        const {
+          ok,
+          status,
+          data: d,
+        } = await csrfFetchJson<{
+          models?: Record<string, string[]>;
+        }>("/api/models");
+        if (!ok) throw new Error(`Models load failed: ${status}`);
         const list: ModelOption[] = [];
-        for (const [provider, ids] of Object.entries<unknown>(d.models ?? {})) {
+        for (const [provider, ids] of Object.entries(d.models ?? {})) {
           if (Array.isArray(ids)) {
             for (const id of ids) list.push({ provider, modelId: id, name: id });
           }
         }
         setModels(list);
-      })
-      .catch((err) => console.error("Failed to load models:", err));
+      } catch (err) {
+        console.error("Failed to load models:", err);
+      }
+    })();
   }, []);
 
   const saveField = useCallback(async (field: string, value: unknown) => {
     setSaving(true);
     try {
-      await fetch("/api/settings", {
+      await csrfFetchJson("/api/settings", {
         method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ [field]: value }),
+        body: { [field]: value },
       });
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { ConfigListRow, ModalButton, SaveButton } from "@/components/ui/ConfigModal";
 // Color icons (have their own fill colors — no background needed)
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
@@ -34,7 +35,7 @@ import NvidiaColorIcon from "@lobehub/icons/es/Nvidia/components/Color";
 import OpenCodeIcon from "@lobehub/icons/es/OpenCode/components/Mono";
 import XiaomiMiMoIcon from "@lobehub/icons/es/XiaomiMiMo/components/Mono";
 import ZAIIcon from "@lobehub/icons/es/ZAI/components/Mono";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 type IconComponent = React.ComponentType<{ size?: number | string; style?: React.CSSProperties }>;
 
@@ -764,22 +765,24 @@ function ModelDetail({
     if (!model.id.trim() || testState.phase === "testing") return;
     setTestState({ phase: "testing" });
     try {
-      const res = await fetch("/api/models-config/test", {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ providerName, provider, model }),
-      });
-      const d = (await res.json()) as {
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<{
         ok?: boolean;
         error?: string;
         latencyMs?: number;
         status?: number;
         responseText?: string;
-      };
-      if (!res.ok || !d.ok) {
+      }>("/api/models-config/test", {
+        method: "POST",
+        body: { providerName, provider, model },
+      });
+      if (!ok || !d.ok) {
         setTestState({
           phase: "error",
-          message: d.error ?? `HTTP ${res.status}`,
+          message: d.error ?? `HTTP ${status}`,
           latencyMs: d.latencyMs,
           status: d.status,
         });
@@ -1107,9 +1110,8 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   }, [provider.id, onRefresh, t]);
 
   const handleLogout = useCallback(async () => {
-    await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
+    await csrfFetchJson(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
       method: "POST",
-      headers: csrfHeaders(),
     });
     setLoginState({ phase: "idle" });
     onRefresh();
@@ -1120,14 +1122,16 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
       if (!code.trim()) return;
       setLoginState({ phase: "progress", message: t("models.verifying") });
       try {
-        const res = await fetch(`/api/auth/login/${encodeURIComponent(provider.id)}`, {
-          method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ token, code: code.trim() }),
-        });
-        if (!res.ok) {
-          const d = (await res.json().catch(() => ({}))) as { error?: string };
-          setLoginState({ phase: "error", message: d.error ?? `Server error ${res.status}` });
+        const {
+          ok,
+          status,
+          data: d,
+        } = await csrfFetchJson<{ error?: string }>(
+          `/api/auth/login/${encodeURIComponent(provider.id)}`,
+          { method: "POST", body: { token, code: code.trim() } },
+        );
+        if (!ok) {
+          setLoginState({ phase: "error", message: d.error ?? `Server error ${status}` });
           return;
         }
         setInputValue("");
@@ -1146,14 +1150,16 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
     async (token: string, value: string) => {
       setLoginState({ phase: "progress", message: t("models.continuing") });
       try {
-        const res = await fetch(`/api/auth/login/${encodeURIComponent(provider.id)}`, {
-          method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ token, code: value }),
-        });
-        if (!res.ok) {
-          const d = (await res.json().catch(() => ({}))) as { error?: string };
-          setLoginState({ phase: "error", message: d.error ?? `Server error ${res.status}` });
+        const {
+          ok,
+          status,
+          data: d,
+        } = await csrfFetchJson<{ error?: string }>(
+          `/api/auth/login/${encodeURIComponent(provider.id)}`,
+          { method: "POST", body: { token, code: value } },
+        );
+        if (!ok) {
+          setLoginState({ phase: "error", message: d.error ?? `Server error ${status}` });
         }
       } catch (e) {
         setLoginState({
@@ -1438,14 +1444,16 @@ function ApiKeyDetail({
     setError(null);
     setSavedOk(false);
     try {
-      const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ apiKey: apiKey.trim() }),
-      });
-      const d = (await res.json()) as { success?: boolean; error?: string };
-      if (!res.ok || d.error) {
-        setError(d.error ?? `HTTP ${res.status}`);
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<{ success?: boolean; error?: string }>(
+        `/api/auth/api-key/${encodeURIComponent(provider.id)}`,
+        { method: "POST", body: { apiKey: apiKey.trim() } },
+      );
+      if (!ok || d.error) {
+        setError(d.error ?? `HTTP ${status}`);
       } else {
         setApiKey("");
         setSavedOk(true);
@@ -1463,12 +1471,15 @@ function ApiKeyDetail({
     setRemoving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
-        method: "DELETE",
-        headers: csrfHeaders(),
-      });
-      const d = (await res.json()) as { success?: boolean; error?: string };
-      if (!res.ok || d.error) setError(d.error ?? `HTTP ${res.status}`);
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<{ success?: boolean; error?: string }>(
+        `/api/auth/api-key/${encodeURIComponent(provider.id)}`,
+        { method: "DELETE" },
+      );
+      if (!ok || d.error) setError(d.error ?? `HTTP ${status}`);
       else onRefresh();
     } catch (e) {
       setError(String(e));
@@ -1519,40 +1530,15 @@ function ApiKeyDetail({
             spellCheck={false}
             mono
           />
-          <button
-            onClick={handleSave}
-            disabled={saving || !apiKey.trim() || savedOk}
-            style={{
-              padding: "6px 12px",
-              background: savedOk ? "#16a34a" : apiKey.trim() ? "var(--accent)" : "var(--bg-panel)",
-              border: "none",
-              borderRadius: 5,
-              color: apiKey.trim() || savedOk ? "#fff" : "var(--text-dim)",
-              cursor: saving || !apiKey.trim() || savedOk ? "not-allowed" : "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            {savedOk && (
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            )}
-            {savedOk ? t("models.saved") : saving ? t("models.saving") : t("models.save")}
-          </button>
+          <SaveButton
+            onSave={handleSave}
+            saving={saving}
+            savedOk={savedOk}
+            disabled={!apiKey.trim()}
+            idleLabel={t("models.save")}
+            savingLabel={t("models.saving")}
+            savedLabel={t("models.saved")}
+          />
         </div>
       </Field>
 
@@ -2117,13 +2103,15 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
     setSaveError(null);
     setSavedOk(false);
     try {
-      const res = await fetch("/api/models-config", {
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<{ success?: boolean; error?: string }>("/api/models-config", {
         method: "PUT",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(config),
+        body: config,
       });
-      const d = (await res.json()) as { success?: boolean; error?: string };
-      if (!res.ok || d.error) setSaveError(d.error ?? `HTTP ${res.status}`);
+      if (!ok || d.error) setSaveError(d.error ?? `HTTP ${status}`);
       else {
         setSavedOk(true);
         setTimeout(() => setSavedOk(false), 2000);
@@ -2276,26 +2264,12 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                 {activeOAuth.map((p) => {
                   const isSelected = selection?.type === "oauth" && selection.providerId === p.id;
                   return (
-                    <div
+                    <ConfigListRow
                       key={p.id}
+                      selected={isSelected}
                       onClick={() => setSelection({ type: "oauth", providerId: p.id })}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        padding: "5px 8px",
-                        borderRadius: 5,
-                        cursor: "pointer",
-                        background: isSelected ? "var(--bg-selected)" : "none",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isSelected) e.currentTarget.style.background = "none";
-                      }}
+                      leading={<ProviderIcon id={p.id} size={16} />}
                     >
-                      <ProviderIcon id={p.id} size={16} />
                       <span
                         style={{
                           fontSize: 12,
@@ -2308,7 +2282,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                       >
                         {p.name}
                       </span>
-                    </div>
+                    </ConfigListRow>
                   );
                 })}
 
@@ -2316,26 +2290,12 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                 {activeApiKey.map((p) => {
                   const isSelected = selection?.type === "apikey" && selection.providerId === p.id;
                   return (
-                    <div
+                    <ConfigListRow
                       key={p.id}
+                      selected={isSelected}
                       onClick={() => setSelection({ type: "apikey", providerId: p.id })}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        padding: "5px 8px",
-                        borderRadius: 5,
-                        cursor: "pointer",
-                        background: isSelected ? "var(--bg-selected)" : "none",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isSelected) e.currentTarget.style.background = "none";
-                      }}
+                      leading={<ProviderIcon id={p.id} size={16} />}
                     >
-                      <ProviderIcon id={p.id} size={16} />
                       <span
                         style={{
                           fontSize: 12,
@@ -2348,7 +2308,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                       >
                         {p.displayName}
                       </span>
-                    </div>
+                    </ConfigListRow>
                   );
                 })}
 
@@ -2369,48 +2329,35 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                     const models = pData.models ?? [];
                     return (
                       <div key={pName} style={{ marginBottom: 2 }}>
-                        {/* Provider row */}
-                        <div
+                        <ConfigListRow
+                          selected={isProviderSelected}
                           onClick={() => setSelection({ type: "provider", name: pName })}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "7px 8px",
-                            borderRadius: 5,
-                            cursor: "pointer",
-                            background: isProviderSelected ? "var(--bg-selected)" : "none",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isProviderSelected)
-                              e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isProviderSelected) e.currentTarget.style.background = "none";
-                          }}
+                          style={{ padding: "7px 8px", gap: 6 }}
+                          leading={
+                            <svg
+                              width="11"
+                              height="11"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              style={{ color: "var(--text-dim)", flexShrink: 0 }}
+                            >
+                              <rect x="4" y="4" width="16" height="16" rx="2" />
+                              <rect x="9" y="9" width="6" height="6" />
+                              <line x1="9" y1="1" x2="9" y2="4" />
+                              <line x1="15" y1="1" x2="15" y2="4" />
+                              <line x1="9" y1="20" x2="9" y2="23" />
+                              <line x1="15" y1="20" x2="15" y2="23" />
+                              <line x1="20" y1="9" x2="23" y2="9" />
+                              <line x1="20" y1="14" x2="23" y2="14" />
+                              <line x1="1" y1="9" x2="4" y2="9" />
+                              <line x1="1" y1="14" x2="4" y2="14" />
+                            </svg>
+                          }
                         >
-                          <svg
-                            width="11"
-                            height="11"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            style={{ color: "var(--text-dim)", flexShrink: 0 }}
-                          >
-                            <rect x="4" y="4" width="16" height="16" rx="2" />
-                            <rect x="9" y="9" width="6" height="6" />
-                            <line x1="9" y1="1" x2="9" y2="4" />
-                            <line x1="15" y1="1" x2="15" y2="4" />
-                            <line x1="9" y1="20" x2="9" y2="23" />
-                            <line x1="15" y1="20" x2="15" y2="23" />
-                            <line x1="20" y1="9" x2="23" y2="9" />
-                            <line x1="20" y1="14" x2="23" y2="14" />
-                            <line x1="1" y1="9" x2="4" y2="9" />
-                            <line x1="1" y1="14" x2="4" y2="14" />
-                          </svg>
                           <span
                             style={{
                               fontSize: 12,
@@ -2425,7 +2372,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                           >
                             {pName}
                           </span>
-                        </div>
+                        </ConfigListRow>
 
                         {/* Model rows */}
                         {models.map((m, i) => {
@@ -2434,27 +2381,13 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                             selection.providerName === pName &&
                             selection.index === i;
                           return (
-                            <div
+                            <ConfigListRow
                               key={i}
+                              selected={isModelSelected}
                               onClick={() =>
                                 setSelection({ type: "model", providerName: pName, index: i })
                               }
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                padding: "5px 8px 5px 26px",
-                                borderRadius: 5,
-                                cursor: "pointer",
-                                background: isModelSelected ? "var(--bg-selected)" : "none",
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isModelSelected)
-                                  e.currentTarget.style.background = "var(--bg-hover)";
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isModelSelected) e.currentTarget.style.background = "none";
-                              }}
+                              style={{ padding: "5px 8px 5px 26px", gap: 6 }}
                             >
                               <span
                                 style={{
@@ -2483,7 +2416,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
                                   T
                                 </span>
                               )}
-                            </div>
+                            </ConfigListRow>
                           );
                         })}
 
@@ -2587,65 +2520,17 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
             {saveError && (
               <span style={{ fontSize: 12, color: "#f87171", flex: 1 }}>{saveError}</span>
             )}
-            <button
-              onClick={onClose}
-              style={{
-                padding: "6px 14px",
-                background: "none",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 13,
-              }}
-            >
+            <ModalButton variant="secondary" onClick={onClose}>
               {t("models.cancel")}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || savedOk}
-              style={{
-                position: "relative",
-                padding: "6px 16px",
-                minWidth: 92,
-                background: savedOk ? "#16a34a" : saving ? "var(--bg-panel)" : "var(--accent)",
-                border: "none",
-                borderRadius: 6,
-                color: savedOk ? "#fff" : saving ? "var(--text-muted)" : "#fff",
-                cursor: saving || savedOk ? "default" : "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                transition: "background-color 0.2s ease, color 0.2s ease",
-                animation: savedOk ? "saved-pop 0.45s ease" : undefined,
-              }}
-            >
-              {savedOk && (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{
-                    strokeDasharray: 18,
-                    animation: "saved-check-draw 0.35s ease forwards",
-                    flexShrink: 0,
-                  }}
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              )}
-              <span>
-                {savedOk ? t("models.saved") : saving ? t("models.saving") : t("models.save")}
-              </span>
-            </button>
+            </ModalButton>
+            <SaveButton
+              onSave={handleSave}
+              saving={saving}
+              savedOk={savedOk}
+              idleLabel={t("models.save")}
+              savingLabel={t("models.saving")}
+              savedLabel={t("models.saved")}
+            />
           </div>
         </div>
       </div>

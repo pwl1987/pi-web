@@ -7,7 +7,7 @@ import {
   type PluginConfigDescriptor,
   type PluginConfigField,
 } from "@/lib/plugin-config-descriptors";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 
 type ConfigValue = string | number | boolean | string[];
 type ConfigState = Record<string, ConfigValue>;
@@ -217,15 +217,11 @@ export function PluginConfigPage({
     setError(null);
     setMessage(null);
     try {
-      const res = await fetch(`/api/plugins/config?source=${encodeURIComponent(source)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...csrfHeaders() },
-        body: JSON.stringify({ values }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
+      const { ok, status, data } = await csrfFetchJson<{ error?: string }>(
+        `/api/plugins/config?source=${encodeURIComponent(source)}`,
+        { method: "PUT", body: { values } },
+      );
+      if (!ok) throw new Error(data.error ?? `HTTP ${status}`);
       setMessage(t("plugins.configSaved"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

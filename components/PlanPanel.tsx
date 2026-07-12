@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfHeaders } from "@/lib/csrf-client";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import {
   usePlanMode,
   setPlanMode,
@@ -106,10 +106,9 @@ export function PlanPanel() {
       const next = { ...roleModels, [roleId]: modelId };
       setRoleModels(next);
       try {
-        await fetch("/api/plan/config", {
+        await csrfFetchJson("/api/plan/config", {
           method: "PUT",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ map: next }),
+          body: { map: next },
         });
       } catch {
         /* ignore */
@@ -121,8 +120,9 @@ export function PlanPanel() {
   const loadLog = useCallback(async () => {
     if (!orchestratorId) return;
     try {
-      const res = await fetch(`/api/plan/${orchestratorId}/log?limit=200`);
-      const d = (await res.json()) as { logs?: Array<Record<string, unknown>> };
+      const { data: d } = await csrfFetchJson<{ logs?: Array<Record<string, unknown>> }>(
+        `/api/plan/${orchestratorId}/log?limit=200`,
+      );
       setLogs(d.logs ?? []);
     } catch {
       /* ignore */
@@ -131,8 +131,9 @@ export function PlanPanel() {
 
   const loadHistory = useCallback(async () => {
     try {
-      const res = await fetch("/api/plan/history");
-      const d = (await res.json()) as { orchestrations?: Array<Record<string, unknown>> };
+      const { data: d } = await csrfFetchJson<{ orchestrations?: Array<Record<string, unknown>> }>(
+        "/api/plan/history",
+      );
       setHistory(d.orchestrations ?? []);
     } catch {
       /* ignore */
@@ -150,9 +151,8 @@ export function PlanPanel() {
 
   const refresh = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`/api/plan/${id}`);
-      if (res.ok) {
-        const snap = (await res.json()) as OrchestrationSnapshot;
+      const { ok, data: snap } = await csrfFetchJson<OrchestrationSnapshot>(`/api/plan/${id}`);
+      if (ok) {
         setSnapshot(snap);
         setPlanStatus(snap.status);
       }
@@ -188,10 +188,9 @@ export function PlanPanel() {
       if (!orchestratorId) return;
       setSnapshot((s) => (s ? { ...s, selectedPlanId: planId } : s));
       try {
-        await fetch(`/api/plan/${orchestratorId}/select`, {
+        await csrfFetchJson(`/api/plan/${orchestratorId}/select`, {
           method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ planId }),
+          body: { planId },
         });
       } catch {
         /* ignore */
@@ -206,13 +205,11 @@ export function PlanPanel() {
       setBusy(true);
       setError(null);
       try {
-        const res = await fetch(`/api/plan/${orchestratorId}/confirm`, {
-          method: "POST",
-          headers: csrfHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ planId }),
-        });
-        const data = (await res.json()) as { error?: string; runId?: string };
-        if (!res.ok) throw new Error(data.error ?? "确认失败");
+        const { ok, data } = await csrfFetchJson<{ error?: string }>(
+          `/api/plan/${orchestratorId}/confirm`,
+          { method: "POST", body: { planId } },
+        );
+        if (!ok) throw new Error(data.error ?? "确认失败");
         // 讨论已交接给编程引擎，清空编排器状态以便下次以干净状态进入。
         setOrchestratorId(null);
         setPlanStatus("idle");
