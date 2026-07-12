@@ -18,6 +18,7 @@ import {
   usePlanMode,
   setPlanMode,
   setOrchestratorId,
+  setPlanStatus,
   requestOpenEngine as setRequestOpenEngine,
 } from "@/lib/plan-mode-store";
 import type { OrchestrationSnapshot, RecommendationPlan } from "@/lib/agent-orchestrator";
@@ -59,12 +60,10 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "plan.cancelled",
 };
 
-export function PlanPanel({ cwd }: { cwd?: string | null }) {
+export function PlanPanel() {
   const { t } = useI18n();
   const { planMode, orchestratorId } = usePlanMode();
-  const [requirement, setRequirement] = useState("");
   const [snapshot, setSnapshot] = useState<OrchestrationSnapshot | null>(null);
-  const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
@@ -72,13 +71,17 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
   const refresh = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/plan/${id}`);
-      if (res.ok) setSnapshot((await res.json()) as OrchestrationSnapshot);
+      if (res.ok) {
+        const snap = (await res.json()) as OrchestrationSnapshot;
+        setSnapshot(snap);
+        setPlanStatus(snap.status);
+      }
     } catch {
       /* ignore */
     }
   }, []);
 
-  // SSE：连接事件流，按事件刷新快照。
+  // SSE：连接事件流，按事件刷新快照并把状态同步到 store（供输入框判断交互方式）。
   useEffect(() => {
     if (!orchestratorId) {
       setSnapshot(null);
@@ -89,34 +92,16 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
     es.onmessage = (ev) => {
       try {
         const e = JSON.parse(ev.data) as { type: string; snapshot?: OrchestrationSnapshot };
-        if (e.type === "snapshot" && e.snapshot) setSnapshot(e.snapshot);
-        else if (orchestratorId) void refresh(orchestratorId);
+        if (e.type === "snapshot" && e.snapshot) {
+          setSnapshot(e.snapshot);
+          setPlanStatus(e.snapshot.status);
+        } else if (orchestratorId) void refresh(orchestratorId);
       } catch {
         /* ignore malformed */
       }
     };
     return () => es.close();
   }, [orchestratorId, refresh]);
-
-  const startDiscussion = useCallback(async () => {
-    if (!requirement.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/plan/orchestrate", {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ requirement: requirement.trim(), cwd: cwd ?? undefined }),
-      });
-      const data = (await res.json()) as { id?: string; error?: string };
-      if (!res.ok || !data.id) throw new Error(data.error ?? "启动失败");
-      setOrchestratorId(data.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [requirement, busy, cwd]);
 
   const selectPlan = useCallback(
     async (planId: string) => {
@@ -148,6 +133,9 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
         });
         const data = (await res.json()) as { error?: string; runId?: string };
         if (!res.ok) throw new Error(data.error ?? "确认失败");
+        // 讨论已交接给编程引擎，清空编排器状态以便下次以干净状态进入。
+        setOrchestratorId(null);
+        setPlanStatus("idle");
         setPlanMode(false); // 关闭计划模式，避免 AppShell 把它重新弹回计划面板
         setRequestOpenEngine(true); // AppShell 打开引擎面板
       } catch (e) {
@@ -159,33 +147,13 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
     [orchestratorId, busy],
   );
 
-  const resubmit = useCallback(async () => {
-    if (!orchestratorId || !feedback.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/plan/${orchestratorId}/rediscuss`, {
-        method: "POST",
-        headers: csrfHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ feedback: feedback.trim() }),
-      });
-      if (!res.ok) throw new Error("重新讨论失败");
-      setFeedback("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [orchestratorId, feedback, busy]);
-
   // 退出计划模式 → 回到普通聊天模式（状态保留在 store 中，可再次进入恢复）。
   const exitPlan = useCallback(() => setPlanMode(false), []);
-  // 新建讨论：清空当前编排器，回到需求输入界面（当前讨论状态仍可通过后端保留）。
+  // 新建讨论：清空当前编排器与状态，回到需求输入界面（状态由输入框统一录入）。
   const newDiscussion = useCallback(() => {
     setOrchestratorId(null);
+    setPlanStatus("idle");
     setSnapshot(null);
-    setRequirement("");
-    setFeedback("");
     setError(null);
   }, []);
 
@@ -217,7 +185,7 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
     );
   }
 
-  // 尚未发起讨论：需求输入。
+  // 尚未发起讨论：输入框已在底部统一接管需求录入，这里仅给出引导提示。
   if (!orchestratorId) {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -231,42 +199,12 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
             overflow: "auto",
           }}
         >
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("plan.requirement")}</div>
-          <textarea
-            value={requirement}
-            onChange={(e) => setRequirement(e.target.value)}
-            placeholder={t("plan.toolbarHint")}
-            rows={4}
-            style={{
-              width: "100%",
-              resize: "vertical",
-              background: "var(--bg)",
-              color: "var(--text)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: 10,
-              fontSize: 13,
-              fontFamily: "inherit",
-            }}
-          />
-          {error && <div style={{ color: "var(--danger, #f43f5e)", fontSize: 12 }}>{error}</div>}
-          <button
-            onClick={startDiscussion}
-            disabled={!requirement.trim() || busy}
-            style={{
-              alignSelf: "flex-start",
-              padding: "8px 16px",
-              borderRadius: 9,
-              border: "none",
-              background: "var(--accent)",
-              color: "#fff",
-              fontWeight: 600,
-              cursor: requirement.trim() && !busy ? "pointer" : "not-allowed",
-              opacity: requirement.trim() && !busy ? 1 : 0.5,
-            }}
-          >
-            {busy ? t("plan.parsing") : t("plan.enter")}
-          </button>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+            {t("plan.mode")}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            {t("plan.enterHint")}
+          </div>
         </div>
       </div>
     );
@@ -554,49 +492,11 @@ export function PlanPanel({ cwd }: { cwd?: string | null }) {
           </div>
         )}
 
-        {/* 交互闭环：退回重新讨论 */}
-        {showPlans && s.status === "awaiting_confirm" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder={t("plan.feedbackPlaceholder")}
-              rows={2}
-              style={{
-                width: "100%",
-                resize: "vertical",
-                background: "var(--bg)",
-                color: "var(--text)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: 8,
-                fontSize: 12,
-                fontFamily: "inherit",
-              }}
-            />
-            <button
-              onClick={resubmit}
-              disabled={!feedback.trim() || busy}
-              style={{
-                alignSelf: "flex-start",
-                padding: "6px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "none",
-                color: "var(--text-muted)",
-                fontSize: 12,
-                cursor: feedback.trim() && !busy ? "pointer" : "not-allowed",
-                opacity: feedback.trim() && !busy ? 1 : 0.5,
-              }}
-            >
-              {t("plan.submitFeedback")}
-            </button>
-          </div>
-        )}
-
         {s.status === "done" && (
           <button
             onClick={() => {
+              setOrchestratorId(null);
+              setPlanStatus("idle");
               setPlanMode(false);
               setRequestOpenEngine(true);
             }}

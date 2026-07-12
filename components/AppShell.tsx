@@ -1569,7 +1569,7 @@ export function AppShell() {
                       overflow: "hidden",
                     }}
                   >
-                    <PlanPanel cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null} />
+                    <PlanPanel />
                   </div>
                 )}
               </div>

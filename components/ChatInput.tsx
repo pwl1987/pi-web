@@ -30,7 +30,7 @@ import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfHeaders } from "@/lib/csrf-client";
-import { usePlanMode, setPlanMode } from "@/lib/plan-mode-store";
+import { usePlanMode, setPlanMode, setOrchestratorId } from "@/lib/plan-mode-store";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
 import { getToolLabel } from "@/lib/tool-labels";
@@ -519,7 +519,10 @@ export const ChatInput = memo(
   ) {
     const isMobile = useIsMobile();
     const { t } = useI18n();
-    const { planMode } = usePlanMode();
+    const { planMode, orchestratorId, planStatus } = usePlanMode();
+    // 计划模式下输入框复用的本地状态：提交中守卫与错误提示。
+    const [planBusy, setPlanBusy] = useState(false);
+    const [planError, setPlanError] = useState<string | null>(null);
     const [value, setValue] = useState(() => (draftKey ? (getDraft(draftKey)?.value ?? "") : ""));
     const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
     const [modelDropdownRect, setModelDropdownRect] = useState<{
@@ -789,9 +792,47 @@ export const ChatInput = memo(
 
     const handleSend = useCallback(async () => {
       const msg = value.trim();
-      if (!msg && !attachedImages.length) return;
       if (isStreaming) return;
       onAudioUnlock?.();
+
+      // 计划模式：统一经由消息输入框触发与交互（无独立输入组件）。
+      // - 尚无激活讨论 → 以输入内容作为需求发起多智能体讨论；
+      // - 讨论处于「等待确认」→ 以输入内容作为反馈重新讨论；
+      // - 其它进行中状态 → 不接受输入，避免打断编排。
+      if (planMode) {
+        if (!msg || planBusy) return;
+        if (orchestratorId && planStatus !== "awaiting_confirm") return;
+        setPlanBusy(true);
+        setPlanError(null);
+        try {
+          if (!orchestratorId) {
+            const res = await fetch("/api/plan/orchestrate", {
+              method: "POST",
+              headers: csrfHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify({ requirement: msg, cwd: cwd ?? undefined }),
+            });
+            const data = (await res.json()) as { id?: string; error?: string };
+            if (!res.ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));
+            setOrchestratorId(data.id);
+          } else {
+            const res = await fetch(`/api/plan/${orchestratorId}/rediscuss`, {
+              method: "POST",
+              headers: csrfHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify({ feedback: msg }),
+            });
+            if (!res.ok) throw new Error(t("plan.rediscussFailed"));
+          }
+          clearInput();
+          setShowUndo(false);
+        } catch (e) {
+          setPlanError(e instanceof Error ? e.message : String(e));
+        } finally {
+          setPlanBusy(false);
+        }
+        return;
+      }
+
+      if (!msg && !attachedImages.length) return;
       if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
         const result = await onBuiltinCommand(msg);
         if (result.handled) {
@@ -802,7 +843,21 @@ export const ChatInput = memo(
       onSend(msg, attachedImages.length ? attachedImages : undefined);
       clearInput();
       setShowUndo(false);
-    }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+    }, [
+      value,
+      attachedImages,
+      isStreaming,
+      planMode,
+      orchestratorId,
+      planStatus,
+      planBusy,
+      onBuiltinCommand,
+      onSend,
+      clearInput,
+      onAudioUnlock,
+      cwd,
+      t,
+    ]);
 
     const handleEnhance = useCallback(async () => {
       // Guard: no empty prompt, no concurrent run, no streaming.
@@ -1983,11 +2038,15 @@ export const ChatInput = memo(
                 onInput={handleInput}
                 onPaste={handlePaste}
                 placeholder={
-                  isStreaming && (onSteer || onFollowUp)
-                    ? t("input.placeholderSteer")
-                    : isStreaming
-                      ? t("input.placeholderRunning")
-                      : t("input.placeholderIdle")
+                  planMode
+                    ? orchestratorId
+                      ? t("plan.placeholderFeedback")
+                      : t("plan.placeholderRequirement")
+                    : isStreaming && (onSteer || onFollowUp)
+                      ? t("input.placeholderSteer")
+                      : isStreaming
+                        ? t("input.placeholderRunning")
+                        : t("input.placeholderIdle")
                 }
                 rows={1}
                 style={{
@@ -2097,7 +2156,13 @@ export const ChatInput = memo(
               ) : (
                 <button
                   onClick={handleSend}
-                  disabled={!value.trim() && !attachedImages.length}
+                  disabled={
+                    planMode
+                      ? !value.trim() ||
+                        planBusy ||
+                        (orchestratorId != null && planStatus !== "awaiting_confirm")
+                      : !value.trim() && !attachedImages.length
+                  }
                   style={{
                     flexShrink: 0,
                     alignSelf: "flex-end",
@@ -2154,6 +2219,23 @@ export const ChatInput = memo(
             >
               <span style={{ fontWeight: 600 }}>{t("input.enhanceError")}:</span>
               <span style={{ color: "var(--text-muted)" }}>{enhanceError}</span>
+            </div>
+          )}
+
+          {planMode && planError && (
+            <div
+              style={{
+                marginBottom: 6,
+                fontSize: 12,
+                color: "#ef4444",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{t("plan.error")}:</span>
+              <span style={{ color: "var(--text-muted)" }}>{planError}</span>
             </div>
           )}
 

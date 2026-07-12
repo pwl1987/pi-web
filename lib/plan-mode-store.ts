@@ -11,6 +11,9 @@ export interface PlanModeSnapshot {
   planMode: boolean;
   /** 当前讨论编排器 id（null 表示尚未开始讨论） */
   orchestratorId: string | null;
+  /** 讨论编排器的当前状态（idle/parsing/discussing/synthesizing/awaiting_confirm/executing/done/failed/cancelled）。
+   *  供输入框判断「无激活讨论 → 发起」或「等待确认 → 反馈重议」。 */
+  planStatus: string;
   /** 请求 AppShell 打开引擎面板的信号（确认方案后由 PlanPanel 置位） */
   requestOpenEngine: boolean;
 }
@@ -18,6 +21,7 @@ export interface PlanModeSnapshot {
 const EMPTY: PlanModeSnapshot = {
   planMode: false,
   orchestratorId: null,
+  planStatus: "idle",
   requestOpenEngine: false,
 };
 
@@ -68,6 +72,9 @@ export function setPlanMode(v: boolean): void {
 }
 export function setOrchestratorId(id: string | null): void {
   getPlanModeStore().update({ orchestratorId: id });
+}
+export function setPlanStatus(status: string): void {
+  getPlanModeStore().update({ planStatus: status });
 }
 export function requestOpenEngine(v: boolean): void {
   getPlanModeStore().update({ requestOpenEngine: v });
