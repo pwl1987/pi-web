@@ -5,7 +5,6 @@ dist
 *.map
 pnpm-lock.yaml
 package-lock.json
-bun.lock
 coverage
 
 # IDE / agent session artifacts (not project source)
