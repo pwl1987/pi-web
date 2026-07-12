@@ -73,7 +73,11 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
     description: "Context window optimization — saves up to 98% of context",
     tier: "recommended",
     pinned: true,
-    complements: ["pi-rtk", "pi-hypa"],
+    // NB: the Hypa compression plugin was renamed/scoped to @hypabolic/pi-hypa.
+    // Reference the real package name here so the Plugins panel's install-state
+    // detection (keyed by source/name) matches the actually-installed package —
+    // otherwise it shows as "not installed" while complementedBy shows "installed".
+    complements: ["pi-rtk", "@hypabolic/pi-hypa"],
   },
   {
     source: "npm:@hypabolic/pi-hypa",
