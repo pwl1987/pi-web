@@ -519,7 +519,7 @@ export const ChatInput = memo(
   ) {
     const isMobile = useIsMobile();
     const { t } = useI18n();
-    const { planMode, orchestratorId, planStatus } = usePlanMode();
+    const { planMode, orchestratorId, planStatus, planConfig } = usePlanMode();
     // 计划模式下输入框复用的本地状态：提交中守卫与错误提示。
     const [planBusy, setPlanBusy] = useState(false);
     const [planError, setPlanError] = useState<string | null>(null);
@@ -809,7 +809,11 @@ export const ChatInput = memo(
             const res = await fetch("/api/plan/orchestrate", {
               method: "POST",
               headers: csrfHeaders({ "Content-Type": "application/json" }),
-              body: JSON.stringify({ requirement: msg, cwd: cwd ?? undefined }),
+              body: JSON.stringify({
+                requirement: msg,
+                cwd: cwd ?? undefined,
+                config: planConfig,
+              }),
             });
             const data = (await res.json()) as { id?: string; error?: string };
             if (!res.ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));

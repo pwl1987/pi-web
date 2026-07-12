@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useUnifiedEngine } from "@/hooks/useUnifiedEngine";
 import { StageStepper } from "./StageStepper";
 import { PlanTaskCard } from "./PlanTaskCard";
@@ -67,6 +67,30 @@ export function AutonomousCodingDashboard() {
     controlRun,
   } = useUnifiedEngine();
   const selected = runs.find((r) => r.runId === selectedRunId) ?? null;
+
+  // 运行日志视图：按当前选中 run 过滤引擎日志（持久化，跨重启可追踪）。
+  const [showEngineLog, setShowEngineLog] = useState(false);
+  const [engineLogs, setEngineLogs] = useState<Array<Record<string, unknown>>>([]);
+  useEffect(() => {
+    if (!showEngineLog || !selectedRunId) return;
+    let cancelled = false;
+    fetch(`/api/engine/log?scope=engine&limit=500`)
+      .then((r) => r.json())
+      .then((d) => {
+        const all = (d.logs ?? []) as Array<Record<string, unknown>>;
+        if (!cancelled)
+          setEngineLogs(
+            all.filter(
+              (l) =>
+                ((l.meta as Record<string, unknown> | undefined)?.runId ?? "") === selectedRunId,
+            ),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [showEngineLog, selectedRunId]);
 
   return (
     <div
@@ -171,7 +195,40 @@ export function AutonomousCodingDashboard() {
         </div>
 
         <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{t("engine.feedback")}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              onClick={() => setShowEngineLog(false)}
+              style={{
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: !showEngineLog
+                  ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                  : "none",
+                color: !showEngineLog ? "var(--text)" : "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              {t("engine.live")}
+            </button>
+            <button
+              onClick={() => setShowEngineLog(true)}
+              style={{
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: showEngineLog
+                  ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                  : "none",
+                color: showEngineLog ? "var(--text)" : "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              {t("engine.logView")}
+            </button>
+          </div>
           <div
             style={{
               overflowY: "auto",
@@ -181,24 +238,46 @@ export function AutonomousCodingDashboard() {
               gap: 6,
             }}
           >
-            {events.map((e, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  borderLeft: "2px solid var(--border)",
-                  paddingLeft: 8,
-                  lineHeight: 1.4,
-                }}
-              >
-                <span style={{ color: "var(--accent)" }}>[{e.type}]</span> {e.message ?? ""}
-              </div>
-            ))}
-            {events.length === 0 && (
+            {showEngineLog ? (
+              engineLogs.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("engine.emptyLog")}</div>
+              ) : (
+                engineLogs.map((l, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-dim)",
+                      borderLeft: "2px solid var(--border)",
+                      paddingLeft: 8,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <span style={{ color: "#64748b" }}>{String(l.at).slice(11, 19)}</span>{" "}
+                    <span style={{ color: "var(--text)" }}>{String(l.message)}</span>
+                  </div>
+                ))
+              )
+            ) : events.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("engine.noEvents")}</div>
+            ) : (
+              events.map((e, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    borderLeft: "2px solid var(--border)",
+                    paddingLeft: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <span style={{ color: "var(--accent)" }}>[{e.type}]</span> {e.message ?? ""}
+                </div>
+              ))
             )}
           </div>
+          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{t("engine.persistedHint")}</div>
         </div>
       </div>
     </div>

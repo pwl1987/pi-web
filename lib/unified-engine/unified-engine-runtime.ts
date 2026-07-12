@@ -11,6 +11,8 @@ import type {
   Stage,
 } from "./unified-engine-types";
 import { STAGES } from "./unified-engine-types";
+import { log } from "../engine-logger.ts";
+import { saveEngineRun, loadAllEngineRuns } from "./persistence.ts";
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -38,11 +40,39 @@ export class EngineRuntime {
   private requirements = new Map<string, Requirement>();
   private listeners = new Set<(e: EngineEvent) => void>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private rehydrated = false;
 
   constructor(
     private readonly planGen: PlanGeneratorPort,
     private readonly wf: WorkflowStateMachinePort,
   ) {}
+
+  /** 把单条运行态原子落盘（best-effort），空闲/重启后仍可恢复。 */
+  private persistRun(run: RunState): void {
+    try {
+      saveEngineRun(run);
+    } catch {
+      // 持久化失败不阻断引擎。
+    }
+  }
+
+  /** 把全部在途运行态刷盘（防御性，用于空闲前）。 */
+  private flushAll(): void {
+    for (const run of this.runs.values()) this.persistRun(run);
+  }
+
+  /** 进程重启 / 内存被清空后，从磁盘 rehydrate 进内存（不覆盖在途运行）。 */
+  private ensureRehydrated(): void {
+    if (this.rehydrated) return;
+    this.rehydrated = true;
+    try {
+      for (const rec of loadAllEngineRuns()) {
+        if (!this.runs.has(rec.id)) this.runs.set(rec.id, rec.run);
+      }
+    } catch {
+      // best-effort：恢复失败不阻断引擎。
+    }
+  }
 
   subscribe(cb: (e: EngineEvent) => void): () => void {
     this.listeners.add(cb);
@@ -61,17 +91,22 @@ export class EngineRuntime {
   private touch(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      // 空闲超时：销毁运行态，释放资源
+      // 空闲超时：先 flush 全部在途运行态到磁盘（磁盘仍在，可恢复），再清空内存释放资源。
+      this.flushAll();
       this.runs.clear();
       this.listeners.clear();
+      // 重置 rehydrate 标记，使后续访问可再次从磁盘重载历史（按需恢复）。
+      this.rehydrated = false;
     }, IDLE_TIMEOUT_MS);
   }
 
   listRuns(): RunState[] {
+    this.ensureRehydrated();
     return [...this.runs.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   getRunState(runId: string): RunState {
+    this.ensureRehydrated();
     const run = this.runs.get(runId);
     if (!run) throw new Error(`运行不存在：${runId}`);
     return run;
@@ -110,6 +145,8 @@ export class EngineRuntime {
       updatedAt: new Date().toISOString(),
     };
     this.runs.set(runId, run);
+    this.persistRun(run);
+    log("info", "engine", `创建 change：${changeName}`, { runId: run.runId });
     this.emit({ type: "run.created", runId, payload: run });
     return run;
   }
@@ -118,6 +155,8 @@ export class EngineRuntime {
     const run = this.getRunState(runId);
     run.status = "running";
     run.updatedAt = new Date().toISOString();
+    this.persistRun(run);
+    log("info", "engine", `启动运行`, { runId: run.runId });
     this.emit({ type: "run.updated", runId, payload: run });
     await this.runLoop(run);
     return run;
@@ -127,6 +166,8 @@ export class EngineRuntime {
     const run = this.getRunState(runId);
     run.status = "paused";
     run.updatedAt = new Date().toISOString();
+    this.persistRun(run);
+    log("info", "engine", `暂停运行`, { runId: run.runId });
     this.emit({ type: "run.updated", runId, payload: run });
   }
 
@@ -134,6 +175,8 @@ export class EngineRuntime {
     const run = this.getRunState(runId);
     run.status = "running";
     run.updatedAt = new Date().toISOString();
+    this.persistRun(run);
+    log("info", "engine", `恢复运行`, { runId: run.runId });
     this.emit({ type: "run.updated", runId, payload: run });
     await this.runLoop(run);
     return run;
@@ -150,6 +193,8 @@ export class EngineRuntime {
       // design：生成计划
       run.stage = "design";
       run.updatedAt = new Date().toISOString();
+      this.persistRun(run);
+      log("info", "engine", `阶段切换：design`, { runId: run.runId });
       this.emit({ type: "stage.changed", runId: run.runId, payload: { stage: run.stage } });
       const plan = await this.planGen.generatePlan({
         title: req.title,
@@ -161,9 +206,12 @@ export class EngineRuntime {
       // build：拆解并执行任务
       run.stage = "build";
       run.updatedAt = new Date().toISOString();
+      this.persistRun(run);
+      log("info", "engine", `阶段切换：build`, { runId: run.runId });
       this.emit({ type: "stage.changed", runId: run.runId, payload: { stage: run.stage } });
       const tasks = await this.planGen.enqueueTasks(plan.id);
       run.tasks = tasks;
+      this.persistRun(run);
       this.emit({ type: "run.updated", runId: run.runId, payload: run });
 
       for (const task of tasks) {
@@ -173,17 +221,22 @@ export class EngineRuntime {
         });
         task.status = res.status;
         task.result = res.output;
+        log("debug", "engine", `任务完成：${task.id} → ${task.status}`, { runId: run.runId });
         this.emit({ type: "task.updated", runId: run.runId, payload: task });
       }
 
       // verify：comet 守卫校验（失败则反馈闭环，此处简化为标记失败）
       run.stage = "verify";
       run.updatedAt = new Date().toISOString();
+      this.persistRun(run);
+      log("info", "engine", `阶段切换：verify`, { runId: run.runId });
       this.emit({ type: "stage.changed", runId: run.runId, payload: { stage: run.stage } });
 
       const guardBuild = await this.safeGuard(run, "build");
       if (!guardBuild.passed) {
         run.status = "failed";
+        this.persistRun(run);
+        log("warn", "engine", `build 守卫未通过：${guardBuild.message}`, { runId: run.runId });
         this.emit({
           type: "guard",
           runId: run.runId,
@@ -197,6 +250,8 @@ export class EngineRuntime {
       const guardVerify = await this.safeGuard(run, "verify");
       if (!guardVerify.passed) {
         run.status = "failed";
+        this.persistRun(run);
+        log("warn", "engine", `verify 守卫未通过：${guardVerify.message}`, { runId: run.runId });
         this.emit({
           type: "guard",
           runId: run.runId,
@@ -211,11 +266,15 @@ export class EngineRuntime {
       run.stage = "archive";
       run.status = "completed";
       run.updatedAt = new Date().toISOString();
+      this.persistRun(run);
+      log("info", "engine", `运行完成`, { runId: run.runId });
       this.emit({ type: "stage.changed", runId: run.runId, payload: { stage: run.stage } });
       this.emit({ type: "run.updated", runId: run.runId, payload: run });
     } catch (e) {
       run.status = "failed";
       run.updatedAt = new Date().toISOString();
+      this.persistRun(run);
+      log("error", "engine", `运行失败：${(e as Error).message}`, { runId: run.runId });
       this.emit({
         type: "log",
         runId: run.runId,

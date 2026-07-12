@@ -6,6 +6,23 @@
 
 import { useSyncExternalStore } from "react";
 
+export type ControllerMode = "hybrid" | "deterministic" | "llm";
+
+/** 计划讨论的可配置项（发起讨论时随 orchestrate 请求体下发给后端）。 */
+export interface PlanConfigSlice {
+  controllerMode: ControllerMode;
+  maxRounds: number;
+  stabilizeThreshold: number;
+  concurrency: number;
+}
+
+export const DEFAULT_PLAN_CONFIG: PlanConfigSlice = {
+  controllerMode: "hybrid",
+  maxRounds: 4,
+  stabilizeThreshold: 0.85,
+  concurrency: 1,
+};
+
 export interface PlanModeSnapshot {
   /** 是否处于计划模式（讨论模式） */
   planMode: boolean;
@@ -16,6 +33,8 @@ export interface PlanModeSnapshot {
   planStatus: string;
   /** 请求 AppShell 打开引擎面板的信号（确认方案后由 PlanPanel 置位） */
   requestOpenEngine: boolean;
+  /** 计划讨论配置（总控模式 / 轮次上限 / 收敛阈值 / 并发度） */
+  planConfig: PlanConfigSlice;
 }
 
 const EMPTY: PlanModeSnapshot = {
@@ -23,6 +42,7 @@ const EMPTY: PlanModeSnapshot = {
   orchestratorId: null,
   planStatus: "idle",
   requestOpenEngine: false,
+  planConfig: { ...DEFAULT_PLAN_CONFIG },
 };
 
 class PlanModeStore {
@@ -78,4 +98,8 @@ export function setPlanStatus(status: string): void {
 }
 export function requestOpenEngine(v: boolean): void {
   getPlanModeStore().update({ requestOpenEngine: v });
+}
+export function setPlanConfig(patch: Partial<PlanConfigSlice>): void {
+  const store = getPlanModeStore();
+  store.update({ planConfig: { ...store.getState().planConfig, ...patch } });
 }

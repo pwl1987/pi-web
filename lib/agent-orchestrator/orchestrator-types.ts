@@ -34,6 +34,8 @@ export interface AgentRole {
   color: string;
   /** 一句话能力描述（i18n 键） */
   blurb: string;
+  /** 该角色默认底层模型（provider/model），缺省时回退到全局默认模型。 */
+  modelId?: string;
 }
 
 // 运行时被实例化的 Agent（讨论参与者）。
@@ -80,6 +82,11 @@ export interface RoundSummary {
   arbiterConsensus?: boolean;
   /** 该轮文本指纹（用于稳定度收敛判定） */
   fingerprint: string;
+  /**
+   * 该轮的压缩摘要（由本轮消息确定性派生，零额外 Token），
+   * 用于后续轮次的上下文压缩（formatCompactTranscript）：旧轮次只保留此摘要，降低 Token 消耗。
+   */
+  summaryText?: string;
 }
 
 // 收敛状态。
@@ -91,6 +98,35 @@ export interface ConvergenceState {
   round: number;
   /** 0~1 共识度（由仲裁者评分或稳定度推导） */
   consensusScore?: number;
+}
+
+// --- 总控 Agent（混合策略节奏管控）------------------------------------------
+
+/** 总控模式：deterministic 纯规则 / llm 每轮轻量裁定 / hybrid 混合（默认）。 */
+export type ControllerMode = "deterministic" | "llm" | "hybrid";
+
+/** 总控每轮的结构化决策。 */
+export type ControllerDecision =
+  | { action: "continue"; reason: string }
+  | { action: "stop"; reason: string; converged: boolean }
+  | { action: "redirect"; targetRoleId: string; question: string; reason: string }
+  | { action: "clarify"; question: string; reason: string };
+
+/** 总控运行状态（暴露给前端展示节奏与节省）。 */
+export interface ControllerState {
+  mode: ControllerMode;
+  /** 计划轮次（maxRounds） */
+  roundsPlanned: number;
+  /** 实际执行轮次 */
+  roundsExecuted: number;
+  /** 估算节省的 Token（早停未执行轮次 × 参与者 × 单轮单角色预估） */
+  tokensSavedEstimate: number;
+  /** 全部决策历史 */
+  decisions: ControllerDecision[];
+  /** 最近一次决策 */
+  lastDecision?: ControllerDecision;
+  /** 连续信息增量过低的轮数 */
+  stagnantRounds: number;
 }
 
 // 推荐方案（共识转化后的多个独立见解）。
@@ -130,6 +166,7 @@ export type OrchestrationStatus =
   | "discussing"
   | "synthesizing"
   | "awaiting_confirm"
+  | "awaiting_clarify"
   | "executing"
   | "done"
   | "failed"
@@ -149,6 +186,14 @@ export interface OrchestratorConfig {
   turnTimeoutMs: number;
   /** 单轮单角色最大重试 */
   turnMaxRetries: number;
+  /** 总控模式：hybrid（默认）/ deterministic / llm */
+  controllerMode: ControllerMode;
+  /** 信息增量低于该值视为无进展（连续 2 轮触发早停） */
+  infoDeltaThreshold: number;
+  /** 跨轮重复度高于该值视为原地踏步、触发早停（0~1） */
+  repetitionThreshold: number;
+  /** 单轮单角色预估 Token（用于总控节省估算，仅统计展示用） */
+  estimatedTokensPerTurn: number;
 }
 
 export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
@@ -158,6 +203,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
   concurrency: 1,
   turnTimeoutMs: 90_000,
   turnMaxRetries: 1,
+  controllerMode: "hybrid",
+  infoDeltaThreshold: 0.08,
+  repetitionThreshold: 0.9,
+  estimatedTokensPerTurn: 1200,
 };
 
 // 意图解析结果（需求接收与解析模块输出）。
@@ -191,6 +240,10 @@ export interface OrchestrationSnapshot {
   selectedPlanId?: string;
   /** 确认后拆分的任务（执行阶段） */
   tasks: OrchestratedTask[];
+  /** 总控运行状态（节奏/轮次/节省 Token 展示） */
+  control?: ControllerState;
+  /** 总控澄清问题（awaiting_clarify 时展示，引导用户提供反馈） */
+  clarifyQuestion?: string;
   error?: string;
   updatedAt: number;
 }
@@ -204,7 +257,15 @@ export type OrchestratorEvent =
   | { type: "agent.thinking"; agentId: string; round: number; at: number }
   | { type: "message"; message: DiscussionMessage; at: number }
   | { type: "round.end"; summary: RoundSummary; convergence: ConvergenceState; at: number }
+  | { type: "controller.decision"; decision: ControllerDecision; round: number; at: number }
   | { type: "plans"; plans: RecommendationPlan[]; at: number }
   | { type: "task.changed"; tasks: OrchestratedTask[]; at: number }
+  | {
+      type: "log";
+      level: "debug" | "info" | "warn" | "error";
+      scope: "orchestrator";
+      message: string;
+      at: number;
+    }
   | { type: "error"; message: string; at: number }
   | { type: "done"; snapshot: OrchestrationSnapshot; at: number };

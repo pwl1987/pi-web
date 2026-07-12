@@ -19,7 +19,10 @@ import {
   setPlanMode,
   setOrchestratorId,
   setPlanStatus,
+  setPlanConfig,
   requestOpenEngine as setRequestOpenEngine,
+  type PlanConfigSlice,
+  type ControllerMode,
 } from "@/lib/plan-mode-store";
 import type { OrchestrationSnapshot, RecommendationPlan } from "@/lib/agent-orchestrator";
 
@@ -62,11 +65,86 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function PlanPanel() {
   const { t } = useI18n();
-  const { orchestratorId } = usePlanMode();
+  const { orchestratorId, planConfig } = usePlanMode();
   const [snapshot, setSnapshot] = useState<OrchestrationSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  // 配置区 / 角色模型 / 日志 / 历史 相关状态
+  const [modelOptions, setModelOptions] = useState<
+    Array<{ id: string; name: string; provider: string }>
+  >([]);
+  const [roles, setRoles] = useState<Array<{ id: string; name: string; modelId: string | null }>>([]);
+  const [roleModels, setRoleModels] = useState<Record<string, string>>({});
+  const [showConfig, setShowConfig] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
+
+  // 加载可选模型、角色库、当前角色→模型映射（配置区与角色模型下拉）。
+  useEffect(() => {
+    fetch("/api/models")
+      .then((r) => r.json())
+      .then((d) => setModelOptions(d.modelList ?? []))
+      .catch(() => {});
+    fetch("/api/plan/roles")
+      .then((r) => r.json())
+      .then((d) => setRoles(d.roles ?? []))
+      .catch(() => {});
+    fetch("/api/plan/config")
+      .then((r) => r.json())
+      .then((d) => setRoleModels(d.map ?? {}))
+      .catch(() => {});
+  }, []);
+
+  // 保存某角色的底层模型（持久化到 /api/plan/config）。
+  const setRoleModel = useCallback(
+    async (roleId: string, modelId: string) => {
+      const next = { ...roleModels, [roleId]: modelId };
+      setRoleModels(next);
+      try {
+        await fetch("/api/plan/config", {
+          method: "PUT",
+          headers: csrfHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ map: next }),
+        });
+      } catch {
+        /* ignore */
+      }
+    },
+    [roleModels],
+  );
+
+  const loadLog = useCallback(async () => {
+    if (!orchestratorId) return;
+    try {
+      const res = await fetch(`/api/plan/${orchestratorId}/log?limit=200`);
+      const d = (await res.json()) as { logs?: Array<Record<string, unknown>> };
+      setLogs(d.logs ?? []);
+    } catch {
+      /* ignore */
+    }
+  }, [orchestratorId]);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/plan/history");
+      const d = (await res.json()) as { orchestrations?: Array<Record<string, unknown>> };
+      setHistory(d.orchestrations ?? []);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // 展开日志/历史视图时拉取并定期刷新日志。
+  useEffect(() => {
+    if (!showLog || !orchestratorId) return;
+    void loadLog();
+    void loadHistory();
+    const timer = setInterval(() => void loadLog(), 4000);
+    return () => clearInterval(timer);
+  }, [showLog, orchestratorId, loadLog, loadHistory]);
 
   const refresh = useCallback(async (id: string) => {
     try {
@@ -180,7 +258,35 @@ export function PlanPanel() {
   if (!orchestratorId) {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-        {modeHeader()}
+        {modeHeader(
+          <button
+            onClick={() => setShowConfig((v) => !v)}
+            style={{
+              marginLeft: "auto",
+              padding: "4px 10px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: showConfig
+                ? "color-mix(in srgb, var(--accent) 12%, transparent)"
+                : "none",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            {t("plan.config")}
+          </button>,
+        )}
+        {showConfig && (
+          <ConfigSection
+            planConfig={planConfig}
+            onConfig={setPlanConfig}
+            roles={roles}
+            modelOptions={modelOptions}
+            roleModels={roleModels}
+            onRoleModel={setRoleModel}
+          />
+        )}
         <div
           style={{
             padding: 20,
@@ -196,6 +302,7 @@ export function PlanPanel() {
           <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
             {t("plan.enterHint")}
           </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("plan.persisted")}</div>
         </div>
       </div>
     );
@@ -245,7 +352,44 @@ export function PlanPanel() {
             · {t("plan.consensus", { reason: convergeReason })}
           </span>
         )}
+        {s.control?.lastDecision && (
+          <span style={{ fontSize: 11, color: "var(--accent)" }}>
+            · {t("plan.controllerPacing")}：
+            {t(`plan.controllerAction.${s.control.lastDecision.action}`)} ·{" "}
+            {s.control.lastDecision.reason}
+          </span>
+        )}
+        {s.control?.tokensSavedEstimate ? (
+          <span
+            style={{
+              fontSize: 11,
+              color: "#10b981",
+              border: "1px solid color-mix(in srgb, #10b981 40%, transparent)",
+              borderRadius: 6,
+              padding: "1px 6px",
+            }}
+          >
+            {t("plan.tokensSaved")}：≈{s.control.tokensSavedEstimate}
+          </span>
+        ) : null}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setShowConfig((v) => !v)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: showConfig
+                ? "color-mix(in srgb, var(--accent) 12%, transparent)"
+                : "none",
+              color: "var(--text-muted)",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+            title={t("plan.config")}
+          >
+            {t("plan.config")}
+          </button>
           <button
             onClick={newDiscussion}
             disabled={busy}
@@ -301,8 +445,48 @@ export function PlanPanel() {
         ))}
       </div>
 
+      {/* 配置区（可折叠） */}
+      {showConfig && (
+        <ConfigSection
+          planConfig={planConfig}
+          onConfig={setPlanConfig}
+          roles={roles}
+          modelOptions={modelOptions}
+          roleModels={roleModels}
+          onRoleModel={setRoleModel}
+        />
+      )}
+
+      {/* 日志/历史切换 + 持久化提示 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "6px 14px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <button
+          onClick={() => setShowLog((v) => !v)}
+          style={{
+            padding: "3px 9px",
+            borderRadius: 7,
+            border: "1px solid var(--border)",
+            background: showLog ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "none",
+            color: "var(--text-muted)",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          {t("plan.log")} / {t("plan.history")}
+        </button>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("plan.persisted")}</span>
+      </div>
+
       {/* 主体 */}
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 14 }}>
+        {showLog && <LogHistorySection logs={logs} history={history} />}
         {error && (
           <div style={{ color: "var(--danger, #f43f5e)", fontSize: 12, marginBottom: 10 }}>
             {error}
@@ -503,6 +687,249 @@ export function PlanPanel() {
           >
             {t("plan.openEngine")}
           </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Slider({
+  label,
+  min,
+  max,
+  step = 1,
+  value,
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step?: number;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ fontSize: 12, color: "var(--text)", width: 84, flexShrink: 0 }}>{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ flex: 1, accentColor: "var(--accent)" }}
+      />
+      <span style={{ fontSize: 11, color: "var(--text-muted)", width: 36, textAlign: "right" }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ConfigSection({
+  planConfig,
+  onConfig,
+  roles,
+  modelOptions,
+  roleModels,
+  onRoleModel,
+}: {
+  planConfig: PlanConfigSlice;
+  onConfig: (patch: Partial<PlanConfigSlice>) => void;
+  roles: Array<{ id: string; name: string; modelId: string | null }>;
+  modelOptions: Array<{ id: string; name: string; provider: string }>;
+  roleModels: Record<string, string>;
+  onRoleModel: (roleId: string, modelId: string) => void;
+}) {
+  const { t } = useI18n();
+  const modes: ControllerMode[] = ["hybrid", "deterministic", "llm"];
+  return (
+    <div
+      style={{
+        borderBottom: "1px solid var(--border)",
+        padding: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        background: "color-mix(in srgb, var(--bg) 60%, transparent)",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("plan.configHint")}</div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 12, color: "var(--text)", width: 84, flexShrink: 0 }}>
+          {t("plan.controllerMode")}
+        </span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {modes.map((m) => {
+            const active = planConfig.controllerMode === m;
+            return (
+              <button
+                key={m}
+                onClick={() => onConfig({ controllerMode: m })}
+                style={{
+                  padding: "3px 9px",
+                  borderRadius: 7,
+                  border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                  background: active
+                    ? "color-mix(in srgb, var(--accent) 14%, transparent)"
+                    : "none",
+                  color: active ? "var(--text)" : "var(--text-muted)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                {t(`plan.controller.${m}`)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Slider
+        label={t("plan.maxRounds")}
+        min={1}
+        max={8}
+        value={planConfig.maxRounds}
+        onChange={(v) => onConfig({ maxRounds: v })}
+      />
+      <Slider
+        label={t("plan.stabilizeThreshold")}
+        min={0.5}
+        max={0.99}
+        step={0.01}
+        value={planConfig.stabilizeThreshold}
+        onChange={(v) => onConfig({ stabilizeThreshold: v })}
+      />
+      <Slider
+        label={t("plan.concurrency")}
+        min={1}
+        max={4}
+        value={planConfig.concurrency}
+        onChange={(v) => onConfig({ concurrency: v })}
+      />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>
+          {t("plan.roleModel")}
+        </span>
+        {roles.length === 0 ? (
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("plan.emptyHistory")}</span>
+        ) : (
+          roles.map((r) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", width: 90, flexShrink: 0 }}>
+                {r.name}
+              </span>
+              <select
+                value={roleModels[r.id] ?? ""}
+                onChange={(e) => void onRoleModel(r.id, e.target.value)}
+                style={{
+                  flex: 1,
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  padding: "3px 6px",
+                }}
+              >
+                <option value="">{t("plan.roleModelDefault")}</option>
+                {modelOptions.map((m) => (
+                  <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LogHistorySection({
+  logs,
+  history,
+}: {
+  logs: Array<Record<string, unknown>>;
+  history: Array<Record<string, unknown>>;
+}) {
+  const { t } = useI18n();
+  const levelColor: Record<string, string> = {
+    debug: "#64748b",
+    info: "#3b82f6",
+    warn: "#f59e0b",
+    error: "#f43f5e",
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+          {t("plan.log")}
+        </div>
+        {logs.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("plan.emptyLog")}</div>
+        ) : (
+          <div
+            style={{
+              maxHeight: 200,
+              overflow: "auto",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+            }}
+          >
+            {logs.map((l, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  padding: "4px 8px",
+                  borderBottom: "1px solid var(--border)",
+                  fontSize: 11,
+                  alignItems: "baseline",
+                }}
+              >
+                <span style={{ color: levelColor[String(l.level)] ?? "#64748b" }}>●</span>
+                <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+                  {String(l.at).slice(11, 19)}
+                </span>
+                <span style={{ color: "var(--text)" }}>{String(l.message)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+          {t("plan.history")}
+        </div>
+        {history.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("plan.emptyHistory")}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {history.map((h, i) => (
+              <div
+                key={i}
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: 8,
+                  fontSize: 11,
+                }}
+              >
+                <div style={{ color: "var(--text)" }}>{String(h.requirement)}</div>
+                <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
+                  {String(h.status)} · {t("plan.round", { round: Number(h.roundCount ?? 0) })} ·{" "}
+                  {t("plan.tokensSaved")} ≈{Number(h.tokensSavedEstimate || 0)}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

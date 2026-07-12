@@ -38,11 +38,58 @@ export function formatTranscript(messages: DiscussionMessage[]): string {
     .join("\n\n");
 }
 
-/** 真实后端：封装 completeSimple 的单轮补全。 */
+/**
+ * 上下文压缩版 transcript（Token 优化）：
+ * - 当前轮（round >= currentRound）与用户原始需求（round 0）保留全文；
+ * - 更早的轮次若存在压缩摘要，则只保留一行摘要，显著降低后续轮次的上下文体积。
+ * 无摘要（如重构前数据或 round 0）时回退为全文，保证向后兼容。
+ */
+export function formatCompactTranscript(
+  messages: DiscussionMessage[],
+  rounds: Array<{ round: number; summaryText?: string }>,
+  currentRound: number,
+): string {
+  if (messages.length === 0) return "（尚无讨论，这是第一轮。）";
+  const summaryByRound = new Map<number, string>();
+  for (const r of rounds) {
+    if (r.round < currentRound && r.summaryText) summaryByRound.set(r.round, r.summaryText);
+  }
+  return messages
+    .map((m) => {
+      if (m.round >= currentRound || m.round === 0 || !summaryByRound.has(m.round)) {
+        const prefix =
+          m.kind === "user"
+            ? "【用户需求】"
+            : m.kind === "arbiter"
+              ? "【仲裁者】"
+              : `【${m.fromName}】`;
+        return `${prefix}\n${m.content}`;
+      }
+      return summaryByRound.get(m.round) as string;
+    })
+    .join("\n\n");
+}
+
+/** 真实后端：封装 completeSimple 的单轮补全（单一模型）。 */
 export function createCompleteSimpleRunner(llm: LlmCompletion): AgentRunner {
   return {
     async complete(_role, systemPrompt, userMessage) {
       const content = await llm(systemPrompt, userMessage);
+      return { content };
+    },
+  };
+}
+
+/**
+ * 角色感知 Runner：按角色动态选择底层模型。
+ * factory(role) 返回该角色对应的 LlmCompletion（由 resolveLlmForRole 构造），
+ * 从而实现「每个专业领域 Agent 使用不同底层大模型」。
+ */
+export function createRoleAwareRunner(factory: (role: AgentRole) => LlmCompletion): AgentRunner {
+  return {
+    async complete(role, _systemPrompt, userMessage) {
+      const llm = factory(role);
+      const content = await llm(role.systemPrompt, userMessage);
       return { content };
     },
   };
