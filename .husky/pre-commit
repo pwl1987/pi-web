@@ -1,4 +1,4 @@
 npx lint-staged
 npm run type-check
 npm run test:node
-npm run test:coverage
+npx vitest run

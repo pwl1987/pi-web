@@ -281,8 +281,10 @@ EventSource.onmessage → handleAgentEvent → setMessages → MessageView
 npx lint-staged
 npm run type-check
 npm run test:node
-npm run test:coverage
+npx vitest run
 ```
+
+> 覆盖率门禁（`test:coverage`）不在 pre-commit 里跑——它是防回归手段，CI 的 `npm run ci` 已覆盖。pre-commit 只跑 `vitest run`（无 coverage 报告生成开销），兼顾反馈速度与本地通过 CI 的保证。
 
 `package.json` `lint-staged`：
 

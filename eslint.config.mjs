@@ -1,5 +1,6 @@
 import coreWebVitals from "eslint-config-next/core-web-vitals";
 import typescript from "eslint-config-next/typescript";
+import prettier from "eslint-config-prettier";
 
 /**
  * ESLint v9 flat config.
@@ -8,6 +9,11 @@ import typescript from "eslint-config-next/typescript";
  *  1. eslint-config-next/core-web-vitals — React, accessibility, Core Web Vitals
  *  2. eslint-config-next/typescript   — @typescript-eslint rules for Next.js
  *  3. Custom overrides                 — project-specific rule tuning
+ *  4. eslint-config-prettier           — disables all rules that conflict with
+ *     Prettier (semi, quotes, comma-dangle, …). Must be LAST so it wins.
+ *     Prettier owns formatting; ESLint owns logic/style. Without this, any
+ *     eslint-config-next upgrade could silently introduce rules that fight
+ *     `prettier --write` in lint-staged.
  */
 const eslintConfig = [
   // Flat-config compatible presets from Next.js 16
@@ -75,6 +81,10 @@ const eslintConfig = [
       "vendor/**",
     ],
   },
+
+  // Must be last — turns off every ESLint rule that is unnecessary or might
+  // conflict with Prettier. Owns no rules of its own; purely subtractive.
+  prettier,
 ];
 
 export default eslintConfig;
