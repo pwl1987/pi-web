@@ -14,7 +14,14 @@ try {
 }
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai"],
+  serverExternalPackages: [
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-ai",
+    // 上游 vendor 镜像仅在服务端经 child_process（comet .mjs）与 createRequire（autoplan）调用，
+    // 绝不静态 import 进 bundle；此处显式列出作为防呆，确保即便未来误引用也不会被打包。
+    "vendor/autoplan",
+    "vendor/comet",
+  ],
   // Reduce client JS size and skip shipping source maps in production
   productionBrowserSourceMaps: false,
   poweredByHeader: false,

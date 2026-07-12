@@ -23,12 +23,18 @@ export function PiAgentTitle() {
   const VERSION_CHAR_COUNT = 6;
   const TITLE_CHAR_COUNT = 8;
 
-  const triggerScramble = useCallback((toVersion: boolean) => {
-    setShowVersion(toVersion);
-    setScrambling(true);
-    const charCount = toVersion ? VERSION_CHAR_COUNT : TITLE_CHAR_COUNT;
-    setTimeout(() => setScrambling(false), charCount * 4 * SCRAMBLE_FRAME_MS + SCRAMBLE_BUFFER_MS);
-  }, []);
+  const triggerScramble = useCallback(
+    (toVersion: boolean) => {
+      setShowVersion(toVersion);
+      setScrambling(true);
+      const charCount = toVersion ? VERSION_CHAR_COUNT : TITLE_CHAR_COUNT;
+      setTimeout(
+        () => setScrambling(false),
+        charCount * 4 * SCRAMBLE_FRAME_MS + SCRAMBLE_BUFFER_MS,
+      );
+    },
+    [SCRAMBLE_FRAME_MS, SCRAMBLE_BUFFER_MS, VERSION_CHAR_COUNT, TITLE_CHAR_COUNT],
+  );
 
   const handleClick = useCallback(() => {
     if (revertTimerRef.current) clearTimeout(revertTimerRef.current);

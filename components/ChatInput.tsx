@@ -30,6 +30,7 @@ import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfHeaders } from "@/lib/csrf-client";
+import { usePlanMode, setPlanMode } from "@/lib/plan-mode-store";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
 import { getToolLabel } from "@/lib/tool-labels";
@@ -518,6 +519,7 @@ export const ChatInput = memo(
   ) {
     const isMobile = useIsMobile();
     const { t } = useI18n();
+    const { planMode } = usePlanMode();
     const [value, setValue] = useState(() => (draftKey ? (getDraft(draftKey)?.value ?? "") : ""));
     const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
     const [modelDropdownRect, setModelDropdownRect] = useState<{
@@ -2336,6 +2338,56 @@ export const ChatInput = memo(
                   {t(enhancing ? "input.enhancing" : "input.enhance")}
                 </button>
               )}
+              {/* 计划模式开关：进入/退出多 Agent 协同讨论 */}
+              <button
+                onClick={() => setPlanMode(!planMode)}
+                title={planMode ? t("plan.exit") : t("plan.enter")}
+                style={{
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  height: 32,
+                  padding: "0 10px",
+                  background: planMode ? "var(--accent)" : "none",
+                  border: `1px solid ${
+                    planMode
+                      ? "var(--accent)"
+                      : "color-mix(in srgb, var(--border) 70%, transparent)"
+                  }`,
+                  borderRadius: 9,
+                  color: planMode ? "#fff" : "var(--text-muted)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  if (planMode) return;
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  if (planMode) return;
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 11l3 3 8-8" />
+                  <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" />
+                </svg>
+                {t("plan.mode")}
+              </button>
               {/* Model selector — visible always, disabled during streaming */}
               {modelOptions.length > 0 && currentName && onModelChange && (
                 <div

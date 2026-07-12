@@ -1,0 +1,50 @@
+import { NextResponse } from "next/server";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
+import {
+  registerDefaultEngine,
+  getUnifiedEngineAdapter,
+  getEngineRuntimeInstance,
+} from "@/lib/unified-engine/unified-engine-adapter";
+
+// GET /api/engine/runs —— 列举所有运行（融合引擎全局状态）
+export async function GET() {
+  try {
+    registerDefaultEngine();
+    const runs = getEngineRuntimeInstance().listRuns();
+    return NextResponse.json({ runs });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+// POST /api/engine/runs  body: { runId, action: "start" | "pause" | "resume" }
+export async function POST(req: Request) {
+  const csrf = validateCsrf(req);
+  if (csrf) return csrf;
+
+  try {
+    const body = (await req.json()) as { runId?: unknown; action?: unknown };
+    const runId = typeof body.runId === "string" ? body.runId : "";
+    const action = typeof body.action === "string" ? body.action : "";
+    if (!runId) return NextResponse.json({ error: "runId 必填" }, { status: 400 });
+
+    registerDefaultEngine();
+    const adapter = getUnifiedEngineAdapter();
+    let run;
+    if (action === "start") run = await adapter.startRun(runId);
+    else if (action === "pause") {
+      await adapter.pauseRun(runId);
+      run = adapter.getRunState(runId);
+    } else if (action === "resume") run = await adapter.resumeRun(runId);
+    else
+      return NextResponse.json(
+        { error: "未知 action（应为 start/pause/resume）" },
+        { status: 400 },
+      );
+
+    return NextResponse.json(run);
+  } catch (error) {
+    return errorResponse(error);
+  }
+}

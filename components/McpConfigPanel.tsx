@@ -6,7 +6,6 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { csrfHeaders } from "@/lib/csrf-client";
 import { BUILTIN_MCP_TEMPLATES, type McpServerEntry, type McpTemplate } from "@/lib/mcp-templates";
 import { EnvProvisionButton } from "@/components/EnvProvisionButton";
-import type { CapabilityEnv } from "@/lib/env-types";
 
 interface McpServerInfo {
   name: string;

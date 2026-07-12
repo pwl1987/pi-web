@@ -1,0 +1,57 @@
+# VENDOR.lock — 上游 vendoring 版本锁定文件
+#
+# 本文件是 vendor/ 下上游镜像的"唯一可信版本来源"。
+# scripts/sync-vendor.mjs 读取本文件完成：fetch/checkout 上游指定 ref → 应用 vendor/patches → 校验。
+# 手工修改 commit / branch 后运行 `node scripts/sync-vendor.mjs` 即可平滑跟进上游迭代。
+#
+# 字段说明（每个 repo）：
+#   remote      上游 git 地址（同步时 fetch 的来源）
+#   branch      钉选分支（仅记录，实际以 commit 为准）
+#   commit      钉选 commit SHA（同步时 checkout 的精确目标）
+#   license     上游许可证（合规记录）
+#   pinned_at   本地钉选时间（ISO）
+#   patches     已应用的本地补丁列表（相对 vendor/patches/<repo>/ 目录）
+#   trim        同步裁剪规则：同步后删除这些顶层目录/文件，仅保留服务端运行必需核心模块
+
+autoplan:
+  remote: https://github.com/lyming99/autoplan
+  branch: main
+  commit: e06c2b2be052e141ccb19c1e18b16f2927d5cd89
+  license: Apache-2.0
+  pinned_at: "2026-07-12"
+  patches: []
+  # autoplan 自带 Vite 前端与构建产物，服务端集成仅需 src 中的计划/执行器逻辑核心
+  trim:
+    - ui
+    - assets
+    - build
+    - snapshot
+    - index.html
+    - vite.config.ts
+    - "*.tmp"
+
+comet:
+  remote: https://github.com/rpamis/comet
+  branch: master
+  commit: a2b804d575bc99574b245fd52b45fa42016a130c
+  license: MIT
+  pinned_at: "2026-07-12"
+  patches: []
+  # comet 的 eval/website/platform/docs/bin 等非运行时部分在 pi-web 服务端无需引入
+  trim:
+    - website
+    - eval
+    - platform
+    - docs
+    - img
+    - bin
+    - test
+    - "*.md"
+    - "*.toml"
+    - pnpm-lock.yaml
+    - CHANGELOG.md
+    - NEWS.md
+    - CONTRIBUTING.md
+    - CONTRIBUTING-zh.md
+    - CLAUDE.md
+    - AGENTS.md

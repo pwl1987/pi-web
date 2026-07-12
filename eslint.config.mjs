@@ -58,10 +58,22 @@ const eslintConfig = [
     },
   },
 
-  // Ignore patterns (flat config equivalent of .eslintignore)
+  // Ignore patterns (flat-config equivalent of .eslintignore).
+  // .codebuddy / .zcode hold IDE/agent session memory and plans — they are
+  // not project source and must not affect lint or format gates.
   {
     name: "pi-web/ignores",
-    ignores: [".next/**", "node_modules/**", "dist/**", "coverage/**", "*.min.js"],
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "dist/**",
+      "coverage/**",
+      "*.min.js",
+      ".codebuddy/**",
+      ".zcode/**",
+      // vendor/ 为第三方 vendored 代码（如 vendor/comet），不参与本仓库的 lint 与格式门禁。
+      "vendor/**",
+    ],
   },
 ];
 

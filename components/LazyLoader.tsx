@@ -11,6 +11,10 @@ import { Skeleton } from "./Skeleton";
  * Accepts either a plain component or a React.lazy() result. Extra props
  * are forwarded to the wrapped component via the index signature.
  */
+// ponytail: LazyLoader 的 props 透传语义要求接受任意具体组件（AppShell 等
+// 传入具名 props 的 LazyExoticComponent），这里故意用 `any` 保留兼容。
+// 收紧到 Record<string, unknown> 会让调用方（AppShell.tsx 1751 等）类型报错。
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export function LazyLoader({
   component: Comp,
   fallback,

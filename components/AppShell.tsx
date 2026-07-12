@@ -25,6 +25,8 @@ import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
 import { ConstraintPanel } from "./ConstraintPanel";
+import { AutonomousCodingDashboard } from "./AutonomousCodingDashboard";
+import { PlanPanel } from "./PlanPanel";
 import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
 import { TopBarButton } from "./TopBarButton";
@@ -35,6 +37,7 @@ import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useExtensions } from "@/hooks/useExtensions";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
+import { usePlanMode, requestOpenEngine as setRequestOpenEngine } from "@/lib/plan-mode-store";
 import { useConstraints } from "@/lib/constraints/useConstraints";
 import { translate } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
@@ -56,6 +59,7 @@ export function AppShell() {
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
   const { configured: configuredProviders, loading: providersLoading } = useConfiguredProviders();
   const runtime = useAgentRuntime();
+  const { planMode, requestOpenEngine } = usePlanMode();
   const { errors: constraintErrors, warns: constraintWarns } = useConstraints();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
@@ -172,7 +176,15 @@ export function AppShell() {
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<
-    "branches" | "system" | "session" | "panels" | "subagents" | "constraints" | null
+    | "branches"
+    | "system"
+    | "session"
+    | "panels"
+    | "subagents"
+    | "constraints"
+    | "engine"
+    | "plan"
+    | null
   >(null);
   const [activePanelTab, setActivePanelTab] = useState<"mcp" | "web-search">("mcp");
   const [topPanelPos, setTopPanelPos] = useState<{
@@ -182,7 +194,17 @@ export function AppShell() {
   } | null>(null);
 
   const toggleTopPanel = useCallback(
-    (panel: "branches" | "system" | "session" | "panels" | "subagents" | "constraints") => {
+    (
+      panel:
+        | "branches"
+        | "system"
+        | "session"
+        | "panels"
+        | "subagents"
+        | "constraints"
+        | "engine"
+        | "plan",
+    ) => {
       if (isMobile) setSidebarOpen(false);
       setActiveTopPanel((cur) => (cur === panel ? null : panel));
     },
@@ -225,6 +247,20 @@ export function AppShell() {
     ro.observe(bar);
     return () => ro.disconnect();
   }, [activeTopPanel]);
+
+  // 计划模式开关 → 自动打开/关闭 Plan 面板。
+  useEffect(() => {
+    if (planMode && activeTopPanel !== "plan") setActiveTopPanel("plan");
+    if (!planMode && activeTopPanel === "plan") setActiveTopPanel(null);
+  }, [planMode, activeTopPanel]);
+
+  // 用户确认方案后，编排器请求打开编程引擎面板。
+  useEffect(() => {
+    if (requestOpenEngine) {
+      setActiveTopPanel("engine");
+      setRequestOpenEngine(false);
+    }
+  }, [requestOpenEngine]);
 
   // Right panel — file tabs only
   const [fileTabs, setFileTabs] = usePersistentState<Tab[]>("file-tabs", []);
@@ -911,6 +947,15 @@ export function AppShell() {
                     </span>
                   )}
                 </TopBarButton>
+                <TopBarButton
+                  active={activeTopPanel === "engine"}
+                  onClick={() => toggleTopPanel("engine")}
+                  title={t("engine.title")}
+                  aria-label={t("engine.title")}
+                >
+                  <Icons.Subagent size={12} style={{ flexShrink: 0 }} />
+                  {!isMobile && <span>{t("engine.title")}</span>}
+                </TopBarButton>
               </div>
             )}
             {/* Subagent status badge — shows when subagents are running */}
@@ -1484,6 +1529,36 @@ export function AppShell() {
                     }}
                   >
                     <ConstraintPanel />
+                  </div>
+                )}
+                {activeTopPanel === "engine" && (
+                  <div
+                    style={{
+                      background: "var(--bg-panel)",
+                      borderBottom: "1px solid var(--border)",
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <AutonomousCodingDashboard />
+                  </div>
+                )}
+                {activeTopPanel === "plan" && (
+                  <div
+                    style={{
+                      background: "var(--bg-panel)",
+                      borderBottom: "1px solid var(--border)",
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <PlanPanel cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null} />
                   </div>
                 )}
               </div>
