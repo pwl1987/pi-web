@@ -13,6 +13,7 @@ import type {
   SessionTreeNode,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
+import { localizeExtensionUiRequest } from "@/lib/plugin-ui-i18n";
 import type { ContextUsage } from "@/lib/pi-types";
 import {
   streamReducer,
@@ -90,6 +91,10 @@ type AgentStateResponse = {
   isCompacting?: boolean;
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
+  // Pending extension UI requests (dialogs/custom panels/widgets/status) the
+  // server is still awaiting a response for. Surfaced so a missed SSE event
+  // can be recovered by the reconcile poll instead of requiring a refresh.
+  pendingUiRequests?: ExtensionUiRequest[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
 };
 
@@ -266,6 +271,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
+  // Refs mirror the displayed dialog/custom-UI id so the reconcile recovery can
+  // skip requests already on screen (re-applying would reset an in-progress
+  // input/editor dialog). Updated alongside the state in the effects below.
+  const extensionDialogRef = useRef<ExtensionUiDialogRequest | null>(null);
+  const extensionCustomUiRef = useRef<ExtensionUiCustomRequest | null>(null);
+  useEffect(() => {
+    extensionDialogRef.current = extensionDialog;
+  }, [extensionDialog]);
+  useEffect(() => {
+    extensionCustomUiRef.current = extensionCustomUi;
+  }, [extensionCustomUi]);
   const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({
@@ -656,59 +672,100 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const handleExtensionUiRequest = useCallback(
     (request: ExtensionUiRequest) => {
-      switch (request.method) {
+      // External localization override for the @juicesharp/rpiv-* plugins:
+      // force Chinese chrome without touching plugin source. Pure + idempotent
+      // (already-Chinese text is unaffected). This is the single choke point
+      // for both live SSE events and reconcile recovery.
+      const req = localizeExtensionUiRequest(request);
+      switch (req.method) {
         case "select":
         case "confirm":
         case "input":
         case "editor":
-          setExtensionDialog(request);
+          setExtensionDialog(req);
           break;
         case "notify": {
           addNotice({
-            id: request.id,
-            message: request.message,
-            type: request.notifyType ?? "info",
+            id: req.id,
+            message: req.message,
+            type: req.notifyType ?? "info",
           });
           break;
         }
         case "setStatus":
           setExtensionStatuses((prev) => {
-            const rest = prev.filter((item) => item.key !== request.statusKey);
-            return request.statusText
-              ? [...rest, { key: request.statusKey, text: request.statusText }]
-              : rest;
+            const rest = prev.filter((item) => item.key !== req.statusKey);
+            return req.statusText ? [...rest, { key: req.statusKey, text: req.statusText }] : rest;
           });
           break;
         case "setWidget":
           setExtensionWidgets((prev) => {
-            const rest = prev.filter((item) => item.key !== request.widgetKey);
-            return request.widgetLines
+            const rest = prev.filter((item) => item.key !== req.widgetKey);
+            return req.widgetLines
               ? [
                   ...rest,
                   {
-                    key: request.widgetKey,
-                    lines: request.widgetLines,
-                    placement: request.widgetPlacement ?? "aboveEditor",
+                    key: req.widgetKey,
+                    lines: req.widgetLines,
+                    placement: req.widgetPlacement ?? "aboveEditor",
                   },
                 ]
               : rest;
           });
           break;
         case "setTitle":
-          if (request.title) document.title = request.title;
+          if (req.title) document.title = req.title;
           break;
         case "set_editor_text":
-          opts.chatInputRef?.current?.insertText(request.text);
+          opts.chatInputRef?.current?.insertText(req.text);
           break;
         case "custom":
           setExtensionCustomUi((current) => {
-            if (request.closed) return current?.id === request.id ? null : current;
-            return request;
+            if (req.closed) return current?.id === req.id ? null : current;
+            return req;
           });
           break;
       }
     },
     [addNotice, opts.chatInputRef],
+  );
+
+  /**
+   * Recovery path for missed `extension_ui_request` events. The server keeps
+   * every pending UI request in `pendingUiRequests` (replayed to new SSE
+   * listeners on connect). If an event was dropped between the client and the
+   * server while the stream stayed OPEN, the reconcile poll re-applies it here
+   * so the questionnaire / todo overlay pops without a manual page refresh.
+   *
+   * Dialogs/custom panels are deduped against what's already on screen — a
+   * re-apply would reset an in-progress `input`/`editor` dialog. Transient
+   * requests (`notify`/`setTitle`) are skipped; `setWidget`/`setStatus` are
+   * idempotent re-applies.
+   */
+  const recoverExtensionUiRequest = useCallback(
+    (request: ExtensionUiRequest) => {
+      const req = localizeExtensionUiRequest(request);
+      switch (req.method) {
+        case "notify":
+        case "setTitle":
+          return;
+        case "select":
+        case "confirm":
+        case "input":
+        case "editor":
+          if (extensionDialogRef.current?.id === req.id) return;
+          setExtensionDialog(req);
+          return;
+        case "custom":
+          if (extensionCustomUiRef.current?.id === req.id) return;
+          setExtensionCustomUi(req);
+          return;
+        default:
+          // setWidget / setStatus — idempotent re-apply.
+          handleExtensionUiRequest(req);
+      }
+    },
+    [handleExtensionUiRequest],
   );
 
   const finishPromptWithoutStream = useCallback(
@@ -791,11 +848,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // (wrapper destroyed) means nothing is compacting.
         setIsCompacting(state?.isCompacting ?? false);
         setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
-        const busy =
-          data.running &&
-          state &&
-          (state.isStreaming || state.isPromptRunning || state.isCompacting);
-        if (busy || !agentRunningRef.current) return;
+        // Recover extension UI that may have been missed by the SSE stream
+        // (network drop, half-open connection). This MUST run regardless of
+        // whether the agent is busy, because interactive UIs — the
+        // rpiv-ask-user-question questionnaire and the rpiv-todo overlay — are
+        // live *while* the agent is blocked awaiting the user's answer. Without
+        // this, a dropped event leaves the questionnaire/overlay hidden until a
+        // manual page refresh. Widgets/statuses are idempotent re-applies; the
+        // dialog/custom panel recovery dedupes against what's already on screen.
         if (state) {
           if (state.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
           if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
@@ -803,13 +863,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             setExtensionStatuses(state.extensionStatuses ?? []);
           if (state.extensionWidgets !== undefined)
             setExtensionWidgets(state.extensionWidgets ?? []);
+          if (state.pendingUiRequests) {
+            for (const r of state.pendingUiRequests) recoverExtensionUiRequest(r);
+          }
         }
+        const busy =
+          data.running &&
+          state &&
+          (state.isStreaming || state.isPromptRunning || state.isCompacting);
+        if (busy || !agentRunningRef.current) return;
         await finishPromptWithoutStream(sid, runId);
       } catch {
         // Network still down — the next poll / visibility / online tick retries.
       }
     },
-    [finishPromptWithoutStream],
+    [finishPromptWithoutStream, recoverExtensionUiRequest],
   );
 
   // Recovery net for missed SSE events: while the agent is running, verify

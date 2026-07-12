@@ -233,5 +233,7 @@ export type AgentStateResponse = {
   isCompacting?: boolean;
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
+  // Pending extension UI requests the server is still awaiting a response for.
+  pendingUiRequests?: ExtensionUiRequest[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
 };

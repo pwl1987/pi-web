@@ -1698,7 +1698,7 @@ function ExtensionCustomPanel({
             borderBottom: "1px solid var(--border)",
           }}
         >
-          <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 650 }}>Extension panel</div>
+          <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 650 }}>扩展面板</div>
           <button
             onClick={() => onInput(request, "\x03")}
             style={{
@@ -1711,7 +1711,7 @@ function ExtensionCustomPanel({
               fontSize: 12,
             }}
           >
-            Close
+            关闭
           </button>
         </div>
         <pre

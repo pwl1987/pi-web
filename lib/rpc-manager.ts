@@ -370,6 +370,12 @@ export class AgentSessionWrapper {
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
           extensionStatuses: this.getExtensionStatuses(),
           extensionWidgets: this.getExtensionWidgets(),
+          // Pending UI requests (dialogs / custom panels / widgets / status)
+          // the server is still awaiting a response for. The client's reconcile
+          // poll re-applies these so a missed SSE event auto-recovers without a
+          // manual page refresh (e.g. the rpiv-ask-user-question questionnaire
+          // or the rpiv-todo overlay popping into the conversation).
+          pendingUiRequests: this.getPendingUiRequests() as ExtensionUiRequest[],
         };
       }
 
@@ -616,6 +622,10 @@ export class AgentSessionWrapper {
 
   private getExtensionWidgets(): ExtensionWidgetItem[] {
     return Array.from(this.extensionWidgets.values());
+  }
+
+  private getPendingUiRequests(): AgentEvent[] {
+    return Array.from(this.pendingUiRequests.values());
   }
 
   private getCustomUiWidth(options: unknown): number {
