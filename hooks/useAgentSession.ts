@@ -578,9 +578,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     async (sid: string) => {
       const result = await connectEvents(sid);
       if (result.status === "connected" || result.source.readyState === EventSource.OPEN) return;
-      if (eventSourceRef.current === result.source) eventSourceRef.current = null;
-      result.source.close();
-      throw new EventStreamConnectionError(result.status);
+
+      // Fatal: the server returned a non-recoverable error (e.g. 404/500 or a
+      // Content-Type mismatch) and the EventSource will NOT auto-reconnect.
+      // Close it and surface the error so the caller can react.
+      if (result.status === "closed") {
+        if (eventSourceRef.current === result.source) eventSourceRef.current = null;
+        result.source.close();
+        throw new EventStreamConnectionError(result.status);
+      }
+
+      // "timeout": the stream hadn't confirmed a `connected` event within the
+      // window, but the EventSource is still alive and will auto-reconnect (and
+      // reconnect again via the onerror handler while the agent is running).
+      // Don't discard the user's message over a transient connect delay —
+      // proceed to send the prompt and let the 15s reconciliation poll (plus
+      // visibilitychange/online) recover any events we may have missed.
+      console.warn(
+        "Event stream not confirmed within timeout; proceeding with send and relying on SSE reconnect + state reconciliation.",
+      );
     },
     [connectEvents],
   );
