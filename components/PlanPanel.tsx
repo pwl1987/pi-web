@@ -62,7 +62,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function PlanPanel() {
   const { t } = useI18n();
-  const { planMode, orchestratorId } = usePlanMode();
+  const { orchestratorId } = usePlanMode();
   const [snapshot, setSnapshot] = useState<OrchestrationSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export function PlanPanel() {
         // 讨论已交接给编程引擎，清空编排器状态以便下次以干净状态进入。
         setOrchestratorId(null);
         setPlanStatus("idle");
-        setPlanMode(false); // 关闭计划模式，避免 AppShell 把它重新弹回计划面板
+        setPlanMode(false); // 关闭计划模式，回到普通聊天
         setRequestOpenEngine(true); // AppShell 打开引擎面板
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -175,15 +175,6 @@ export function PlanPanel() {
       </button>
     </div>
   );
-
-  // 未进入计划模式：提示先开启。
-  if (!planMode) {
-    return (
-      <div style={{ padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
-        {t("plan.toolbarHint")}
-      </div>
-    );
-  }
 
   // 尚未发起讨论：输入框已在底部统一接管需求录入，这里仅给出引导提示。
   if (!orchestratorId) {

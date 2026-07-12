@@ -35,6 +35,7 @@ import { ErrorState } from "./ErrorState";
 import { SkeletonLines } from "./Skeleton";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { PlanPanel } from "./PlanPanel";
 import { useMessageScroll } from "@/hooks/useMessageScroll";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useAudio } from "@/hooks/useAudio";
@@ -42,6 +43,7 @@ import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Icons } from "./Icons";
 import { useI18n } from "@/hooks/useI18n";
+import { usePlanMode } from "@/lib/plan-mode-store";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 
 interface Props {
@@ -245,6 +247,8 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio } = useAudio();
   const isMobile = useIsMobile();
   const { t } = useI18n();
+  // 计划模式：在消息区内联渲染讨论面板，复用底部同一输入框（不弹独立覆盖层）。
+  const { planMode } = usePlanMode();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
   // wrapping handleAgentEventRef because useAgentSession overwrites that ref
@@ -689,7 +693,27 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
         <ExtensionCustomPanel request={extensionCustomUi} onInput={sendExtensionCustomInput} />
       )}
 
-      {isEmptyNew ? (
+      {planMode ? (
+        <>
+          {/* 计划模式：讨论内容直接内联于消息区，底部复用同一输入框，不再弹出独立覆盖层 */}
+          <div className="relative flex flex-1 flex-col overflow-hidden">
+            <PlanPanel />
+          </div>
+          <div className="relative">
+            <div
+              style={{
+                padding: `0 ${CHAT_COLUMN_PADDING}px`,
+                paddingRight: isMobile ? CHAT_COLUMN_PADDING : CHAT_INPUT_RIGHT_PADDING,
+              }}
+            >
+              <div style={{ maxWidth: 820, margin: "0 auto" }}>
+                <ExtensionWidgets widgets={belowEditorWidgets} />
+              </div>
+            </div>
+            {chatInputElement}
+          </div>
+        </>
+      ) : isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
           <div className="w-full max-w-[820px]">
             <div

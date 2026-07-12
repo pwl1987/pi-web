@@ -913,7 +913,6 @@ export const en = {
   "plan.enter": "Enter plan mode",
   "plan.exit": "Exit plan mode",
   "plan.newDiscussion": "New discussion",
-  "plan.toolbarHint": "Discuss the plan with multiple agents before coding",
   "plan.parsing": "Analyzing requirement…",
   "plan.discussing": "Agents discussing (round {round}/{max})",
   "plan.synthesizing": "Generating recommendation plans…",

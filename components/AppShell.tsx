@@ -26,7 +26,6 @@ import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
 import { ConstraintPanel } from "./ConstraintPanel";
 import { AutonomousCodingDashboard } from "./AutonomousCodingDashboard";
-import { PlanPanel } from "./PlanPanel";
 import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
 import { TopBarButton } from "./TopBarButton";
@@ -59,7 +58,7 @@ export function AppShell() {
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
   const { configured: configuredProviders, loading: providersLoading } = useConfiguredProviders();
   const runtime = useAgentRuntime();
-  const { planMode, requestOpenEngine } = usePlanMode();
+  const { requestOpenEngine } = usePlanMode();
   const { errors: constraintErrors, warns: constraintWarns } = useConstraints();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
@@ -176,15 +175,7 @@ export function AppShell() {
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<
-    | "branches"
-    | "system"
-    | "session"
-    | "panels"
-    | "subagents"
-    | "constraints"
-    | "engine"
-    | "plan"
-    | null
+    "branches" | "system" | "session" | "panels" | "subagents" | "constraints" | "engine" | null
   >(null);
   const [activePanelTab, setActivePanelTab] = useState<"mcp" | "web-search">("mcp");
   const [topPanelPos, setTopPanelPos] = useState<{
@@ -195,15 +186,7 @@ export function AppShell() {
 
   const toggleTopPanel = useCallback(
     (
-      panel:
-        | "branches"
-        | "system"
-        | "session"
-        | "panels"
-        | "subagents"
-        | "constraints"
-        | "engine"
-        | "plan",
+      panel: "branches" | "system" | "session" | "panels" | "subagents" | "constraints" | "engine",
     ) => {
       if (isMobile) setSidebarOpen(false);
       setActiveTopPanel((cur) => (cur === panel ? null : panel));
@@ -247,23 +230,6 @@ export function AppShell() {
     ro.observe(bar);
     return () => ro.disconnect();
   }, [activeTopPanel]);
-
-  // 计划模式开关 → 自动打开/关闭 Plan 面板。
-  // 关键：只在 planMode 发生「跳变」时同步面板，绝不因 activeTopPanel 变化而强制回弹，
-  // 否则用户在计划模式下点开其它顶部面板会被立刻拉回 Plan 面板，形成锁死。
-  const prevPlanModeRef = useRef(planMode);
-  useEffect(() => {
-    const prev = prevPlanModeRef.current;
-    prevPlanModeRef.current = planMode;
-    if (prev === planMode) return;
-    if (planMode) {
-      // 进入计划模式：打开 Plan 面板。
-      setActiveTopPanel("plan");
-    } else {
-      // 退出计划模式：仅当当前正停留在 Plan 面板时才关闭，避免误关其它面板。
-      setActiveTopPanel((cur) => (cur === "plan" ? null : cur));
-    }
-  }, [planMode]);
 
   // 用户确认方案后，编排器请求打开编程引擎面板。
   useEffect(() => {
@@ -1555,21 +1521,6 @@ export function AppShell() {
                     }}
                   >
                     <AutonomousCodingDashboard />
-                  </div>
-                )}
-                {activeTopPanel === "plan" && (
-                  <div
-                    style={{
-                      background: "var(--bg-panel)",
-                      borderBottom: "1px solid var(--border)",
-                      flex: 1,
-                      minHeight: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <PlanPanel />
                   </div>
                 )}
               </div>

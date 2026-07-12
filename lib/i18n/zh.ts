@@ -906,7 +906,6 @@ export const zh = {
   "plan.enter": "进入计划模式",
   "plan.exit": "退出计划模式",
   "plan.newDiscussion": "新建讨论",
-  "plan.toolbarHint": "编码前与多个智能体充分讨论方案",
   "plan.parsing": "正在解析需求…",
   "plan.discussing": "智能体讨论中（第 {round}/{max} 轮）",
   "plan.synthesizing": "正在生成推荐方案…",
