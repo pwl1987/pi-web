@@ -55,14 +55,19 @@ const DEP_LABEL: Record<DependencyStatus, string> = {
  *  reading the live config/plugin APIs. Used by the "scan everything" mode so
  *  that no associated dependency is ever omitted from the integrity check. */
 async function buildFullInventory(cwd?: string): Promise<CapabilityEnv[]> {
-  const [mcp, plug] = await Promise.all([
-    fetch("/api/mcp-config").then((r) => r.json().catch(() => ({}))),
-    fetch(`/api/plugins?cwd=${encodeURIComponent(cwd ?? "")}`).then((r) =>
-      r.json().catch(() => ({})),
+  const [mcpRes, plugRes] = await Promise.all([
+    csrfFetchJson<{ servers?: Array<Record<string, unknown>> }>("/api/mcp-config", {
+      method: "GET",
+    }),
+    csrfFetchJson<{ packages?: Array<Record<string, unknown>> }>(
+      `/api/plugins?cwd=${encodeURIComponent(cwd ?? "")}`,
+      { method: "GET" },
     ),
   ]);
+  const mcp = mcpRes.data;
+  const plug = plugRes.data;
   const caps: CapabilityEnv[] = [];
-  for (const s of (mcp?.servers ?? []) as Array<Record<string, unknown>>) {
+  for (const s of (mcp.servers ?? []) as Array<Record<string, unknown>>) {
     const name = String(s.name ?? "");
     if (s.url) {
       caps.push({ kind: "mcp", id: name, label: name, url: String(s.url) });
@@ -78,7 +83,7 @@ async function buildFullInventory(cwd?: string): Promise<CapabilityEnv[]> {
       });
     }
   }
-  for (const p of (plug?.packages ?? []) as Array<Record<string, unknown>>) {
+  for (const p of (plug.packages ?? []) as Array<Record<string, unknown>>) {
     const source = String(p.source ?? "");
     caps.push({ kind: "plugin", id: source, label: source, source, cwd });
   }
