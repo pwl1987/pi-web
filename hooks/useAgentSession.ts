@@ -694,23 +694,29 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         case "setStatus":
           setExtensionStatuses((prev) => {
+            const existing = prev.find((item) => item.key === req.statusKey);
+            if (existing && existing.text === req.statusText) return prev;
             const rest = prev.filter((item) => item.key !== req.statusKey);
             return req.statusText ? [...rest, { key: req.statusKey, text: req.statusText }] : rest;
           });
           break;
         case "setWidget":
           setExtensionWidgets((prev) => {
+            const placement = req.widgetPlacement ?? "aboveEditor";
+            const lines = req.widgetLines ?? [];
+            const existing = prev.find((item) => item.key === req.widgetKey);
+            // Identical content → keep the same array reference so the reconcile
+            // poll (and live re-apply) doesn't trigger needless re-renders.
+            if (
+              existing &&
+              existing.placement === placement &&
+              existing.lines.length === lines.length &&
+              existing.lines.every((l, i) => l === lines[i])
+            ) {
+              return prev;
+            }
             const rest = prev.filter((item) => item.key !== req.widgetKey);
-            return req.widgetLines
-              ? [
-                  ...rest,
-                  {
-                    key: req.widgetKey,
-                    lines: req.widgetLines,
-                    placement: req.widgetPlacement ?? "aboveEditor",
-                  },
-                ]
-              : rest;
+            return lines.length ? [...rest, { key: req.widgetKey, lines, placement }] : rest;
           });
           break;
         case "setTitle":
@@ -860,9 +866,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (state.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
           if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
           if (state.extensionStatuses !== undefined)
-            setExtensionStatuses(state.extensionStatuses ?? []);
+            setExtensionStatuses((prev) => {
+              const next = state.extensionStatuses ?? [];
+              if (
+                prev.length === next.length &&
+                prev.every((p, i) => p.key === next[i].key && p.text === next[i].text)
+              ) {
+                return prev;
+              }
+              return next;
+            });
           if (state.extensionWidgets !== undefined)
-            setExtensionWidgets(state.extensionWidgets ?? []);
+            setExtensionWidgets((prev) => {
+              const next = state.extensionWidgets ?? [];
+              const same =
+                prev.length === next.length &&
+                prev.every(
+                  (p, i) =>
+                    p.key === next[i].key &&
+                    p.placement === next[i].placement &&
+                    p.lines.length === next[i].lines.length &&
+                    p.lines.every((l, j) => l === next[i].lines[j]),
+                );
+              return same ? prev : next;
+            });
           if (state.pendingUiRequests) {
             for (const r of state.pendingUiRequests) recoverExtensionUiRequest(r);
           }
