@@ -3,7 +3,7 @@ import { join } from "path";
 import { readJsonFile, writeJsonFileAtomic, ensureParentDir, getAgentDir } from "@/lib/config-file";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
-import { validateMcpServers } from "@/lib/config-validators";
+import { validateMcpServersDetailed } from "@/lib/config-validators";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +59,9 @@ export async function GET() {
       lifecycle: entry.lifecycle ?? "lazy",
       auth: entry.auth ?? false,
       idleTimeout: entry.idleTimeout,
+      requestTimeoutMs: entry.requestTimeoutMs,
+      env: entry.env,
+      headers: entry.headers,
       toolCount: cache.servers?.[name]?.tools?.length ?? 0,
       resourceCount: cache.servers?.[name]?.resources?.length ?? 0,
     }));
@@ -85,9 +88,9 @@ export async function PUT(req: Request) {
     );
     if (parseError) return parseError;
 
-    const serversError = validateMcpServers(body.mcpServers);
-    if (serversError) {
-      return NextResponse.json({ error: serversError.error }, { status: serversError.status });
+    const serversError = validateMcpServersDetailed(body.mcpServers);
+    if (serversError.length > 0) {
+      return NextResponse.json({ errors: serversError }, { status: 400 });
     }
 
     // Merge with existing config (preserve imports if present).

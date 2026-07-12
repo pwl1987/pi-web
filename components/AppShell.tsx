@@ -1050,8 +1050,10 @@ export function AppShell() {
                   top: topPanelPos.top,
                   left: topPanelPos.left,
                   width: topPanelPos.width,
-                  maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
-                  overflowY: "auto",
+                  height: `calc(100dvh - ${topPanelPos.top}px)`,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
                   zIndex: 500,
                 }}
               >
@@ -1060,12 +1062,18 @@ export function AppShell() {
                     style={{
                       background: "var(--bg-panel)",
                       borderBottom: "1px solid var(--border)",
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
                     }}
                   >
                     {systemPrompt ? (
                       <div
                         style={{
-                          maxHeight: "min(600px, 75vh)",
+                          flex: 1,
+                          minHeight: 0,
                           overflowY: "auto",
                           padding: "12px 16px",
                           color: "var(--text-muted)",
@@ -1368,8 +1376,11 @@ export function AppShell() {
                     style={{
                       background: "var(--bg-panel)",
                       borderBottom: "1px solid var(--border)",
-                      maxHeight: "min(600px, 75vh)",
-                      overflowY: "auto",
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
                     }}
                   >
                     <div
@@ -1379,6 +1390,7 @@ export function AppShell() {
                         borderBottom: "1px solid var(--border)",
                         position: "sticky",
                         top: 0,
+                        flexShrink: 0,
                         background: "var(--bg-panel)",
                         zIndex: 1,
                       }}
@@ -1411,8 +1423,8 @@ export function AppShell() {
                         </button>
                       ))}
                     </div>
-                    <div style={{ maxHeight: "min(560px, 70vh)", overflowY: "auto" }}>
-                      {activePanelTab === "mcp" && <McpConfigPanel />}
+                    <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                      {activePanelTab === "mcp" && <McpConfigPanel cwd={activeCwd ?? undefined} />}
                       {activePanelTab === "web-search" && <WebSearchConfigPanel />}
                     </div>
                   </div>
@@ -1569,7 +1581,7 @@ export function AppShell() {
           <div style={{ flex: 1, overflow: "hidden" }}>
             {activeFileTab?.kind === "builtin" && activeFileTab.builtinId ? (
               activeFileTab.builtinId === "mcp" ? (
-                <McpConfigPanel />
+                <McpConfigPanel cwd={activeCwd ?? undefined} />
               ) : activeFileTab.builtinId === "web-search" ? (
                 <WebSearchConfigPanel />
               ) : activeFileTab.builtinId === "subagents" ? (

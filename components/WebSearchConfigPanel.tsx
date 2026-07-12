@@ -92,7 +92,7 @@ export function WebSearchConfigPanel() {
   if (!data) return null;
 
   return (
-    <div style={{ padding: 12, fontSize: 12, height: "100%", overflowY: "auto" }}>
+    <div style={{ padding: 12, fontSize: 12, height: "100%" }}>
       <div
         style={{
           display: "flex",

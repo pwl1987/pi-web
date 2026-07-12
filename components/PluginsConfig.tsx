@@ -9,6 +9,7 @@ import { PluginConfigPage } from "@/components/PluginConfigPage";
 import { ALL_PLUGINS } from "@/lib/recommended-plugins";
 import { PLUGIN_CONFIG_DESCRIPTORS } from "@/lib/plugin-config-descriptors";
 import { csrfHeaders } from "@/lib/csrf-client";
+import { EnvProvisionButton } from "@/components/EnvProvisionButton";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -675,6 +676,22 @@ function PackageDetail({
           {t("plugins.resolvedResources")}
         </div>
         <ResourceList pkg={pkg} />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t("env.title")}</div>
+        <EnvProvisionButton
+          capability={{
+            kind: "plugin",
+            id: pkg.source,
+            label: pkg.source,
+            source: pkg.source,
+            cwd,
+          }}
+          cwd={cwd}
+          compact
+          fullScan
+        />
       </div>
 
       {actionMessage && <div style={{ fontSize: 12, color: "#16a34a" }}>{actionMessage}</div>}
