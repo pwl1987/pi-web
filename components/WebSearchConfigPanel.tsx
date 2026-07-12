@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { SaveButton } from "@/components/ui/ConfigModal";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -35,10 +36,11 @@ export function WebSearchConfigPanel() {
 
   const reload = useCallback(async () => {
     try {
-      const res = await fetch("/api/web-search-config");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = (await res.json()) as WebSearchData;
-      setData(d);
+      const { ok, status, data } = await csrfFetchJson<WebSearchData>("/api/web-search-config", {
+        method: "GET",
+      });
+      if (!ok) throw new Error(`HTTP ${status}`);
+      setData(data);
       setKeyInputs({});
       setShowKeys({});
       setError(null);
@@ -195,12 +197,12 @@ export function WebSearchConfigPanel() {
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={() => void handleSave()} disabled={saving} style={btnStyle}>
-          {saving ? t("common.saving") : t("common.save")}
-        </button>
-        {saved && (
-          <span style={{ fontSize: 11, color: "var(--accent)" }}>✓ {t("common.saved")}</span>
-        )}
+        <SaveButton
+          onSave={() => void handleSave()}
+          saving={saving}
+          savedOk={saved}
+          disabled={!data}
+        />
       </div>
 
       {data.configPath && (
