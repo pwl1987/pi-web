@@ -75,7 +75,9 @@ export function PlanPanel() {
   const [modelOptions, setModelOptions] = useState<
     Array<{ id: string; name: string; provider: string }>
   >([]);
-  const [roles, setRoles] = useState<Array<{ id: string; name: string; modelId: string | null }>>([]);
+  const [roles, setRoles] = useState<Array<{ id: string; name: string; modelId: string | null }>>(
+    [],
+  );
   const [roleModels, setRoleModels] = useState<Record<string, string>>({});
   const [showConfig, setShowConfig] = useState(false);
   const [showLog, setShowLog] = useState(false);
