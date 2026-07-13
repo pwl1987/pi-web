@@ -28,7 +28,16 @@ type Params = { params: Promise<{ provider: string }> };
 // Avoid redundant API calls when the client polls rapidly (tab switch,
 // page-foreground events, etc.). Each provider entry lives 2 s; concurrent
 // requests for the same provider within that window share the same promise.
-const dedupCache = new Map<string, { expiresAt: number; promise: Promise<Response> }>();
+//
+// 缓存存的是已解析的纯数据（CachedPayload），而非 Response 对象。Response 的 body
+// 是一次性流：首个请求返回给 Next.js 后 body 即被消费，后续命中缓存再 r.clone()
+// 会抛 "Body has already been consumed"（clone 必须在 body 未读时调用）。改为缓存
+// plain object，每个请求命中时新建 NextResponse，无 body 流问题。
+type CachedPayload = {
+  status: number;
+  body: Record<string, unknown>;
+};
+const dedupCache = new Map<string, { expiresAt: number; promise: Promise<CachedPayload> }>();
 const DEDUP_TTL_MS = 2_000;
 
 export async function GET(_req: Request, { params }: Params) {
@@ -38,7 +47,10 @@ export async function GET(_req: Request, { params }: Params) {
   // Reuse in-flight or recent result
   const cached = dedupCache.get(providerId);
   if (cached && cached.expiresAt > now) {
-    return cached.promise.then((r) => r.clone());
+    // 命中缓存：用纯数据新建 Response，不依赖共享的 Response body 流。
+    return cached.promise.then((payload) =>
+      NextResponse.json(payload.body, { status: payload.status }),
+    );
   }
 
   const promise = handleRequest(providerId);
@@ -51,13 +63,14 @@ export async function GET(_req: Request, { params }: Params) {
     }
   }
 
-  return promise;
+  // 首个请求：从 promise 拿到纯数据，也新建 Response（与缓存命中路径一致）。
+  return promise.then((payload) => NextResponse.json(payload.body, { status: payload.status }));
 }
 
-async function handleRequest(providerId: string): Promise<Response> {
+async function handleRequest(providerId: string): Promise<CachedPayload> {
   const cfg = SUPPORTED_TOKEN_USAGE_PROVIDERS[providerId];
   if (!cfg) {
-    return NextResponse.json({ ok: false, reason: "unsupported" }, { status: 404 });
+    return { status: 404, body: { ok: false, reason: "unsupported" } };
   }
 
   let apiKey: string | undefined;
@@ -66,11 +79,11 @@ async function handleRequest(providerId: string): Promise<Response> {
     apiKey = await authStorage.getApiKey(providerId);
   } catch {
     // Storage layer may fail — treat as not configured; UI will silently hide.
-    return NextResponse.json({ ok: false, reason: "not_configured" });
+    return { status: 200, body: { ok: false, reason: "not_configured" } };
   }
 
   if (!apiKey) {
-    return NextResponse.json({ ok: false, reason: "not_configured" });
+    return { status: 200, body: { ok: false, reason: "not_configured" } };
   }
 
   try {
@@ -82,23 +95,28 @@ async function handleRequest(providerId: string): Promise<Response> {
     if (!info) {
       // Server responded but the payload didn't carry usable fields.
       // Treat as a soft "no data" so the UI doesn't flap on transient shapes.
-      return NextResponse.json({
+      return {
+        status: 200,
+        body: { ok: false, reason: "error", error: "Empty or unparseable token-plan response" },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        info: serializeInfo(info),
+        providerDisplayName: cfg.displayName,
+      },
+    };
+  } catch (err) {
+    return {
+      status: 200,
+      body: {
         ok: false,
         reason: "error",
-        error: "Empty or unparseable token-plan response",
-      });
-    }
-    return NextResponse.json({
-      ok: true,
-      info: serializeInfo(info),
-      providerDisplayName: cfg.displayName,
-    });
-  } catch (err) {
-    return NextResponse.json({
-      ok: false,
-      reason: "error",
-      error: err instanceof Error ? err.message : String(err),
-    });
+        error: err instanceof Error ? err.message : String(err),
+      },
+    };
   }
 }
 

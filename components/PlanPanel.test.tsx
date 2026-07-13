@@ -329,7 +329,7 @@ describe("plan-mode-store localStorage 持久化", () => {
     expect(getPlanModeStore().getState().orchestratorId).toBeNull();
   });
 
-  it("store 首次构造时从 localStorage 恢复（模拟 F5 刷新）", async () => {
+  it("store 构造期不读 localStorage，hydrate() 后才恢复（模拟 F5 刷新，避免 hydration mismatch）", async () => {
     // 模拟刷新前写入的持久化状态
     localStorage.setItem(
       "pi-plan-mode",
@@ -340,17 +340,39 @@ describe("plan-mode-store localStorage 持久化", () => {
         planStatus: "discussing",
       }),
     );
-    // 清除 globalThis 单例 + 重置模块缓存，强制下次 import 重新构造 store 并 hydrate
+    // 清除 globalThis 单例 + 重置模块缓存，强制下次 import 重新构造 store
     (globalThis as Record<string, unknown>).__piPlanModeStore = undefined;
     vi.resetModules();
 
-    // 重新 import 拿到新的 store 实例（构造时触发 hydrateFromStorage）
+    // 重新 import 拿到新的 store 实例
     const { getPlanModeStore: freshGet } = await import("@/lib/plan-mode-store");
-    const state = freshGet().getState();
+    const freshStore = freshGet();
+    // 构造期不读 localStorage：首帧应保持 EMPTY（与 SSR 一致，防 hydration mismatch）
+    let state = freshStore.getState();
+    expect(state.planMode).toBe(false);
+    expect(state.orchestratorId).toBeNull();
+    expect(state.planStatus).toBe("idle");
+
+    // 显式 hydrate 后并入 localStorage 持久化字段（usePlanMode 的 useEffect 触发此路径）
+    freshStore.hydrate();
+    state = freshStore.getState();
     expect(state.planMode).toBe(true);
     expect(state.orchestratorId).toBe("orc-recovered");
     expect(state.planStatus).toBe("discussing");
     // 非持久化字段应保持默认值
     expect(state.requestOpenEngine).toBe(false);
+  });
+
+  it("getPlanModeStore 丢弃缺少 hydrate 的旧单例（HMR 热重载后旧实例被重建）", () => {
+    // 模拟 HMR 前遗留的旧单例：缺 hydrate 方法（旧版 PlanModeStore）
+    (globalThis as Record<string, unknown>).__piPlanModeStore = {
+      hydrate: undefined,
+      getSnapshot: () => 0,
+      getState: () => ({ planMode: true }),
+    };
+    // getPlanModeStore 应检测到旧实例缺 hydrate 并重建
+    const store = getPlanModeStore();
+    expect(typeof store.hydrate).toBe("function");
+    expect(store.getState().planMode).toBe(false);
   });
 });

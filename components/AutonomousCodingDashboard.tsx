@@ -7,7 +7,18 @@ import { PlanTaskCard } from "./PlanTaskCard";
 import { RequirementTree } from "./RequirementTree";
 import { Skeleton } from "./Skeleton";
 import { useI18n } from "@/hooks/useI18n";
+import { stripAnsi } from "@/lib/ansi";
 import type { RunState } from "@/lib/unified-engine/unified-engine-types";
+
+/** 把引擎日志的 ISO 时间戳（UTC）转为本地时区 HH:MM:SS 显示。 */
+function formatLogTime(at: unknown): string {
+  const s = String(at ?? "");
+  if (!s) return "";
+  const d = new Date(s);
+  return Number.isNaN(d.getTime())
+    ? s.slice(11, 19)
+    : d.toLocaleTimeString("zh-CN", { hour12: false });
+}
 
 const inputStyle: CSSProperties = {
   background: "var(--bg)",
@@ -276,8 +287,10 @@ export function AutonomousCodingDashboard() {
                       lineHeight: 1.4,
                     }}
                   >
-                    <span style={{ color: "#64748b" }}>{String(l.at).slice(11, 19)}</span>{" "}
-                    <span style={{ color: "var(--text)" }}>{String(l.message)}</span>
+                    <span style={{ color: "#64748b" }}>{formatLogTime(l.at)}</span>{" "}
+                    <span style={{ color: "var(--text)" }}>
+                      {stripAnsi(String(l.message ?? ""))}
+                    </span>
                   </div>
                 ))
               )
@@ -295,7 +308,8 @@ export function AutonomousCodingDashboard() {
                     lineHeight: 1.4,
                   }}
                 >
-                  <span style={{ color: "var(--accent)" }}>[{e.type}]</span> {e.message ?? ""}
+                  <span style={{ color: "var(--accent)" }}>[{e.type}]</span>{" "}
+                  {stripAnsi(String(e.message ?? ""))}
                 </div>
               ))
             )}

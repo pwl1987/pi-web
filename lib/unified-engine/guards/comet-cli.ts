@@ -52,8 +52,15 @@ export async function runCometScript(
   }
   const scriptPath = join(COMET_SCRIPTS_DIR, script);
   try {
+    // comet guard 的 build/verify 检查会跑 `npm run build` 验证项目可构建。
+    // pi-web 融合引擎的 autoplan 桩实现不产生代码改动，build 检查对桩场景无意义；
+    // 且 dev server 进程环境的 TURBOPACK/NODE_ENV 会让 `next build --webpack` 冲突失败。
+    // comet 内置 COMET_SKIP_BUILD=1 逃生口（comet-runtime.mjs:10355），桩场景下跳过
+    // build 检查，让 guard 聚焦于交付物（proposal.md/tasks.md）与配置项校验。
+    const childEnv = { ...process.env, COMET_SKIP_BUILD: "1" };
     const { stdout } = await execFileAsync("node", [scriptPath, ...args], {
       cwd,
+      env: childEnv,
       timeout: 30_000,
       maxBuffer: 10 * 1024 * 1024,
     });

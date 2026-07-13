@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 export type ControllerMode = "hybrid" | "deterministic" | "llm";
 
@@ -104,14 +104,28 @@ function clearPersistedState(): void {
 }
 
 class PlanModeStore {
-  private snapshot: PlanModeSnapshot;
+  private snapshot: PlanModeSnapshot = EMPTY;
   private listeners = new Set<() => void>();
   private version = 0;
+  // 是否已把 localStorage 的持久化字段并入 snapshot。
+  // store 构造期不读 localStorage —— 否则客户端首帧的 getSnapshot 会带上
+  // 持久化值，而 SSR/首帧 getServerSnapshot 返回 EMPTY，造成 hydration
+  // mismatch（AppShell 顶部状态条在服务端不渲染、客户端渲染）。改在
+  // usePlanMode 挂载后调用 hydrate() 显式并入，与 usePersistentState 范式一致。
+  private hydrated = false;
 
-  constructor() {
-    // 首次构造时从 localStorage 同步恢复持久化字段，保证客户端首帧即正确。
+  /** 从 localStorage 并入持久化字段。仅在客户端、且仅首次调用生效。
+   *  由 usePlanMode 的 useEffect 在挂载后触发，确保 SSR 与 hydration 首帧
+   *  都读 EMPTY，避免 hydration mismatch。 */
+  hydrate(): void {
+    if (this.hydrated) return;
+    this.hydrated = true;
     const persisted = loadPersistedState();
-    this.snapshot = persisted ? { ...EMPTY, ...persisted } : EMPTY;
+    if (persisted) {
+      this.snapshot = { ...EMPTY, ...persisted };
+      this.version++;
+      this.listeners.forEach((cb) => cb());
+    }
   }
 
   subscribe = (cb: () => void): (() => void) => {
@@ -145,13 +159,32 @@ declare global {
 }
 
 export function getPlanModeStore(): PlanModeStore {
-  if (!globalThis.__piPlanModeStore) globalThis.__piPlanModeStore = new PlanModeStore();
-  return globalThis.__piPlanModeStore;
+  // globalThis 单例跨 HMR 存活：若热重载后旧实例缺少新方法（如 hydrate），
+  // 直接复用会触发 "store.hydrate is not a function"。检测到方法缺失时重建，
+  // 重建会走构造期（不读 localStorage），随后由 usePlanMode 的 useEffect 重新 hydrate。
+  const existing = globalThis.__piPlanModeStore;
+  if (!existing || typeof existing.hydrate !== "function") {
+    const store = new PlanModeStore();
+    globalThis.__piPlanModeStore = store;
+    return store;
+  }
+  return existing;
 }
 
 export function usePlanMode(): PlanModeSnapshot {
   const store = getPlanModeStore();
-  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  // SSR 与客户端 hydration 首帧都返回 EMPTY（getServerSnapshot 的职责），
+  // 避免服务端渲染与客户端首帧不一致导致 hydration mismatch。
+  // 挂载后由下方 useEffect 调用 store.hydrate() 并入 localStorage 持久化值。
+  useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    // getServerSnapshot：SSR 与首帧一致返回 version=0 对应的 EMPTY。
+    store.getSnapshot,
+  );
+  useEffect(() => {
+    store.hydrate();
+  }, [store]);
   return store.getState();
 }
 
