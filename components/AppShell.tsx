@@ -36,7 +36,11 @@ import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useExtensions } from "@/hooks/useExtensions";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
-import { usePlanMode, requestOpenEngine as setRequestOpenEngine } from "@/lib/plan-mode-store";
+import {
+  usePlanMode,
+  requestOpenEngine as setRequestOpenEngine,
+  setPlanMode,
+} from "@/lib/plan-mode-store";
 import { useConstraints } from "@/lib/constraints/useConstraints";
 import { translate } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
@@ -58,7 +62,7 @@ export function AppShell() {
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
   const { configured: configuredProviders, loading: providersLoading } = useConfiguredProviders();
   const runtime = useAgentRuntime();
-  const { requestOpenEngine } = usePlanMode();
+  const { requestOpenEngine, planMode, planStatus } = usePlanMode();
   const { errors: constraintErrors, warns: constraintWarns } = useConstraints();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
@@ -1526,6 +1530,107 @@ export function AppShell() {
               </div>
             )}
           </div>
+
+          {planMode && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 14px",
+                background: "var(--color-doc-bg)",
+                borderBottom: "1px solid var(--border)",
+                fontSize: 12,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background:
+                    planStatus === "awaiting_confirm"
+                      ? "var(--color-warning)"
+                      : planStatus === "executing"
+                        ? "var(--git-added)"
+                        : planStatus === "done"
+                          ? "var(--git-added)"
+                          : planStatus === "failed"
+                            ? "var(--color-error-soft)"
+                            : planStatus === "cancelled"
+                              ? "var(--text-dim)"
+                              : "var(--accent)",
+                  animation:
+                    planStatus === "parsing" ||
+                    planStatus === "discussing" ||
+                    planStatus === "synthesizing" ||
+                    planStatus === "awaiting_confirm" ||
+                    planStatus === "executing"
+                      ? "inspector-pulse 1.5s ease-in-out infinite"
+                      : "none",
+                }}
+              />
+              <span
+                style={{
+                  color:
+                    planStatus === "awaiting_confirm"
+                      ? "var(--color-warning)"
+                      : planStatus === "executing"
+                        ? "var(--git-added)"
+                        : planStatus === "done"
+                          ? "var(--git-added)"
+                          : planStatus === "failed"
+                            ? "var(--color-error-soft)"
+                            : "var(--text)",
+                }}
+              >
+                {planStatus === "parsing" && t("plan.parsing")}
+                {planStatus === "discussing" && t("plan.discussing", { round: 1, max: 4 })}
+                {planStatus === "synthesizing" && t("plan.synthesizing")}
+                {planStatus === "awaiting_confirm" && t("plan.awaitingConfirm")}
+                {planStatus === "executing" && t("plan.executing")}
+                {planStatus === "done" && t("plan.done")}
+                {planStatus === "failed" && t("plan.failed")}
+                {planStatus === "cancelled" && t("plan.cancelled")}
+              </span>
+              {(planStatus === "done" || planStatus === "failed" || planStatus === "cancelled") && (
+                <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      setActiveTopPanel("engine");
+                    }}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--accent)",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      fontSize: 11,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("plan.openEngine")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPlanMode(false);
+                    }}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      background: "none",
+                      color: "var(--text-muted)",
+                      fontSize: 11,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("plan.exit")}
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Chat content */}
           <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>

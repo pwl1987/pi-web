@@ -28,6 +28,7 @@ import {
   type ControllerMode,
 } from "@/lib/plan-mode-store";
 import type { OrchestrationSnapshot, RecommendationPlan } from "@/lib/agent-orchestrator";
+import { PlanMarkdownBody } from "./PlanMarkdownBody";
 
 const COLOR_DOT: Record<string, string> = {
   sky: "background:#0ea5e9",
@@ -583,10 +584,6 @@ export function PlanPanel() {
                   </div>
                   <div
                     style={{
-                      fontSize: 12.5,
-                      color: "var(--text)",
-                      whiteSpace: "pre-wrap",
-                      lineHeight: 1.5,
                       maxHeight: 220,
                       overflow: "auto",
                       background: "var(--bg)",
@@ -595,7 +592,7 @@ export function PlanPanel() {
                       padding: "8px 10px",
                     }}
                   >
-                    {m.content}
+                    <PlanMarkdownBody>{m.content}</PlanMarkdownBody>
                   </div>
                 </div>
               </div>
@@ -619,38 +616,86 @@ export function PlanPanel() {
             )}
             {s.plans.map((p: RecommendationPlan) => {
               const selected = s.selectedPlanId === p.id;
+              const confidenceColor =
+                p.confidence >= 0.8
+                  ? "var(--git-added)"
+                  : p.confidence >= 0.6
+                    ? "var(--color-warning)"
+                    : "var(--color-error-soft)";
+              const riskLevel =
+                p.confidence >= 0.8
+                  ? t("plan.riskSafe")
+                  : p.confidence >= 0.6
+                    ? t("plan.riskCaution")
+                    : t("plan.riskDanger");
               return (
                 <div
                   key={p.id}
                   onClick={() => selectPlan(p.id)}
                   style={{
+                    borderLeft: selected ? "3px solid var(--accent)" : "3px solid transparent",
                     border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
                     borderRadius: 10,
                     padding: 12,
-                    background: selected
-                      ? "color-mix(in srgb, var(--accent) 8%, transparent)"
-                      : "var(--bg)",
+                    background: selected ? "var(--accent-bg)" : "var(--bg)",
                     cursor: "pointer",
+                    transition: "all 0.15s ease",
                   }}
                 >
+                  <div
+                    style={{
+                      height: 4,
+                      borderRadius: 2,
+                      background: "var(--bg-hover)",
+                      overflow: "hidden",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${p.confidence * 100}%`,
+                        background: confidenceColor,
+                        transition: "width 0.3s ease",
+                      }}
+                    />
+                  </div>
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      gap: 8,
                     }}
                   >
-                    <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
-                      {p.title}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
+                        {p.title}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          padding: "1px 5px",
+                          borderRadius: 4,
+                          backgroundColor:
+                            p.confidence >= 0.8
+                              ? "var(--color-success-bg)"
+                              : p.confidence >= 0.6
+                                ? "color-mix(in srgb, var(--color-warning) 15%, transparent)"
+                                : "var(--color-error-bg)",
+                          color: confidenceColor,
+                        }}
+                      >
+                        {riskLevel}
+                      </span>
+                    </div>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t("plan.confidence")}: {Math.round(p.confidence * 100)}%
                     </span>
                   </div>
-                  <div
-                    style={{ fontSize: 12.5, color: "var(--text)", marginTop: 6, lineHeight: 1.5 }}
-                  >
-                    {p.summary}
+                  <div style={{ marginTop: 6 }}>
+                    <PlanMarkdownBody>{p.summary}</PlanMarkdownBody>
                   </div>
                   <div
                     style={{
@@ -660,15 +705,11 @@ export function PlanPanel() {
                       marginTop: 8,
                     }}
                   >
-                    <PlanList
-                      title={t("plan.pros")}
-                      items={p.pros}
-                      color="var(--accent, #10b981)"
-                    />
+                    <PlanList title={t("plan.pros")} items={p.pros} color="var(--git-added)" />
                     <PlanList
                       title={t("plan.cons")}
                       items={p.cons}
-                      color="var(--danger, #f43f5e)"
+                      color="var(--color-error-soft)"
                     />
                   </div>
                   <PlanList
@@ -1010,7 +1051,7 @@ function PlanList({ title, items, color }: { title: string; items: string[]; col
       <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: "var(--text)" }}>
         {items.map((it, i) => (
           <li key={i} style={{ marginBottom: 2 }}>
-            {it}
+            <PlanMarkdownBody>{it}</PlanMarkdownBody>
           </li>
         ))}
       </ul>

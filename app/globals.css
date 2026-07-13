@@ -756,6 +756,18 @@ span.linenumber {
     background-position: 0 50%;
   }
 }
+
+@keyframes inspector-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
 .skeleton {
   background: linear-gradient(
     90deg,

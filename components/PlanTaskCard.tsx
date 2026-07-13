@@ -6,9 +6,9 @@ import { useI18n } from "@/hooks/useI18n";
 const STATUS_COLOR: Record<TaskStatus, string> = {
   pending: "var(--text-dim)",
   running: "var(--accent)",
-  completed: "#22C55E",
-  failed: "#EF4444",
-  skipped: "#F59E0B",
+  completed: "var(--git-added)",
+  failed: "var(--color-error-soft)",
+  skipped: "var(--color-warning)",
 };
 
 export function PlanTaskCard({ task }: { task: Task }) {
