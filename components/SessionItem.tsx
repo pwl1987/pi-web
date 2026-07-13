@@ -9,6 +9,14 @@ import { RunningSessionIndicator, UnreadSessionIndicator } from "./StatusIndicat
 import { formatRelativeTime } from "@/lib/session-utils";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
+import {
+  iconButtonStyle,
+  iconButtonStyleHover,
+  iconButtonStyleHoverError,
+  iconButtonStyleDefault,
+  collapseButtonStyle,
+  smallInputStyle,
+} from "@/lib/styles";
 
 export function SessionItem({
   session,
@@ -189,17 +197,7 @@ export function SessionItem({
             if (e.key === "Escape") setRenaming(false);
           }}
           autoFocus
-          style={{
-            flex: 1,
-            fontSize: 12,
-            padding: "5px 8px",
-            border: "1px solid var(--accent)",
-            borderRadius: 5,
-            outline: "none",
-            background: "var(--bg)",
-            color: "var(--text)",
-            height: 30,
-          }}
+          style={smallInputStyle}
         />
       ) : (
         /* ── Normal view ── */
@@ -358,19 +356,8 @@ export function SessionItem({
               }}
               title={collapsed ? t("sidebar.expandForks") : t("sidebar.collapseForks")}
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 20,
-                height: 20,
-                padding: 0,
-                flexShrink: 0,
-                background: "none",
-                border: "none",
-                color: "var(--text-dim)",
-                cursor: "pointer",
+                ...collapseButtonStyle,
                 transform: collapsed ? "rotate(-90deg)" : "none",
-                transition: "transform 0.15s",
               }}
             >
               <svg
@@ -395,30 +382,12 @@ export function SessionItem({
                 onClick={startRename}
                 title={t("sidebar.rename")}
                 aria-label={t("sidebar.rename")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 32,
-                  height: 32,
-                  padding: 0,
-                  background: "var(--bg-hover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 7,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
-                }}
+                style={iconButtonStyle}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-selected)";
-                  e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "var(--accent-soft)";
+                  Object.assign(e.currentTarget.style, iconButtonStyleHover);
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
+                  Object.assign(e.currentTarget.style, iconButtonStyleDefault);
                 }}
               >
                 <svg
@@ -438,30 +407,12 @@ export function SessionItem({
                 onClick={handleDeleteClick}
                 title={t("sidebar.delete")}
                 aria-label={t("sidebar.delete")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 32,
-                  height: 32,
-                  padding: 0,
-                  background: "var(--bg-hover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 7,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
-                }}
+                style={iconButtonStyle}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--error-bg)";
-                  e.currentTarget.style.color = "var(--color-error-border)";
-                  e.currentTarget.style.borderColor = "var(--error-soft)";
+                  Object.assign(e.currentTarget.style, iconButtonStyleHoverError);
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
+                  Object.assign(e.currentTarget.style, iconButtonStyleDefault);
                 }}
               >
                 <svg
