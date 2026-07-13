@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useAsync } from "@/hooks/useAsync";
 import {
   PLUGIN_CONFIG_DESCRIPTORS,
   type PluginConfigDescriptor,
@@ -181,14 +182,11 @@ export function PluginConfigPage({
     PLUGIN_CONFIG_DESCRIPTORS[`npm:${source.replace(/^npm:/, "")}`];
 
   const [values, setValues] = useState<ConfigState | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const { ok, status, data } = await csrfFetchJson<{
         values: ConfigState;
@@ -197,15 +195,13 @@ export function PluginConfigPage({
       if (!ok) throw new Error(data.error ?? `HTTP ${status}`);
       setValues(data.values);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+      throw e;
     }
   }, [source]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    void run(load);
+  }, [load, run]);
 
   const setField = (key: string, v: ConfigValue) =>
     setValues((prev) => (prev ? { ...prev, [key]: v } : prev));
