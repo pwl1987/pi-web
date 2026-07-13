@@ -228,7 +228,7 @@ export class EngineRuntime {
         return;
       }
 
-      // design：生成计划
+      // design：生成计划（内存态；hotfix workflow 下 comet 无 design 阶段，计划生成属于 open 阶段内容）
       run.stage = "design";
       run.updatedAt = new Date().toISOString();
       this.persistRun(run);
@@ -241,16 +241,27 @@ export class EngineRuntime {
       });
       run.planId = plan.id;
 
-      // build：拆解并执行任务
+      // 拆解任务 + 写交付物（proposal.md/tasks.md）。
+      // comet 的 open→build 推进要求这两个文件已存在，故在 advanceStage("open") 前写入。
+      const tasks = await this.planGen.enqueueTasks(plan.id);
+      run.tasks = tasks;
+      this.persistRun(run);
+      this.emit({ type: "run.updated", runId: run.runId, payload: run });
+      await this.planGen.prepareBuildDeliverables(plan.id, {
+        cwd: run.cwd,
+        changeName: run.changeName,
+      });
+
+      // 推进 comet phase: open → build（hotfix 直接到 build；full 到 design）。
+      // 此前 comet phase 一直是 open，必须先推进才能后续 build-complete 转换。
+      await this.safeAdvance(run, "open");
+
+      // build：执行任务
       run.stage = "build";
       run.updatedAt = new Date().toISOString();
       this.persistRun(run);
       log("info", "engine", `阶段切换：build`, { runId: run.runId });
       this.emit({ type: "stage.changed", runId: run.runId, payload: { stage: run.stage } });
-      const tasks = await this.planGen.enqueueTasks(plan.id);
-      run.tasks = tasks;
-      this.persistRun(run);
-      this.emit({ type: "run.updated", runId: run.runId, payload: run });
 
       for (const task of tasks) {
         const res = await this.planGen.runTask(task.id, {
@@ -263,7 +274,7 @@ export class EngineRuntime {
         this.emit({ type: "task.updated", runId: run.runId, payload: task });
       }
 
-      // verify：comet 守卫校验（失败则反馈闭环，此处简化为标记失败）
+      // verify：comet 守卫校验 + 推进 build→verify
       run.stage = "verify";
       run.updatedAt = new Date().toISOString();
       this.persistRun(run);

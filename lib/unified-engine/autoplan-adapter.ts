@@ -102,22 +102,21 @@ export function createAutoPlanAdapter(): PlanGeneratorPort {
       ts.forEach((t) => tasks.set(t.id, t));
       return ts;
     },
+    async prepareBuildDeliverables(planId: string, ctx: RunContext): Promise<void> {
+      // 在 build 阶段开始前写交付物（proposal.md/tasks.md）到 change 目录。
+      // comet 的 open→build 推进（guard open --apply）就要求这两个文件存在且非空，
+      // 故须在 enqueueTasks 后、advanceStage("open") 前调用。
+      // 内容用英文匹配 .comet.yaml 默认 language=en。
+      try {
+        writeDeliverables(ctx, planId);
+      } catch {
+        // 落盘失败不阻断（best-effort，guard 会给出明确失败原因）。
+      }
+    },
     async runTask(taskId: string, ctx: RunContext): Promise<TaskResult> {
       const t = tasks.get(taskId);
       if (!t) return { taskId, status: "failed" };
       t.status = "running";
-
-      // 落盘 comet build 守卫要求的交付物：proposal.md + tasks.md。
-      // comet hotfix workflow 的 build→verify guard 检查这两个文件存在、非空、
-      // tasks.md 有 '- [x]' 标记且无未完成 '- [ ]'。autoplan 桩实现的任务是内存态，
-      // 若不落盘，guard 会报 "tasks.md is missing" / "proposal.md exists" 失败。
-      // 首个任务执行时写入（幂等：已存在则跳过），内容用英文匹配 .comet.yaml 默认 language=en。
-      try {
-        writeDeliverables(ctx, t.planId);
-      } catch {
-        // 落盘失败不阻断任务执行（best-effort，guard 会给出明确失败原因）。
-      }
-
       t.result = `已完成：${t.title}（change=${ctx.changeName}, cwd=${ctx.cwd}）`;
       t.status = "completed";
       return { taskId, status: "completed", output: t.result };

@@ -16,6 +16,10 @@ export interface PlanGeneratorPort {
   readonly generatePlan: (req: RequirementInput) => Promise<Plan>;
   /** 计划拆解为任务队列（等价于 autoplan planTaskSync + planLifecycle.insertPlan） */
   readonly enqueueTasks: (planId: string) => Promise<Task[]>;
+  /** 在 build 阶段开始前写交付物（proposal.md/tasks.md）到 change 目录。
+   *  comet 的 open→build 推进（guard open --apply）就要求这两个文件存在，
+   *  故须在 enqueueTasks 后、advanceStage("open") 前调用。 */
+  readonly prepareBuildDeliverables: (planId: string, ctx: RunContext) => Promise<void>;
   /** 执行单个任务（等价于 autoplan taskExecution.processPlan） */
   readonly runTask: (taskId: string, ctx: RunContext) => Promise<TaskResult>;
   /** 提交反馈回流重规划（等价于 autoplan IntakeService.createFeedback） */
