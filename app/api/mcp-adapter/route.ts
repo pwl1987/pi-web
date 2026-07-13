@@ -61,7 +61,7 @@ async function getStatus(cwd: string): Promise<AdapterStatus> {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd");
-  if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
+  if (!cwd) return errorResponse("cwd required", 400);
   try {
     return NextResponse.json(await getStatus(cwd));
   } catch (error) {
@@ -76,18 +76,13 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json()) as { action?: string; cwd?: string; scope?: string };
-    if (!body.cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
-    if (body.action !== "install") {
-      return NextResponse.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
-    }
+    if (!body.cwd) return errorResponse("cwd required", 400);
+    if (body.action !== "install") return errorResponse(`Unsupported action: ${body.action}`, 400);
     const { packageManager } = buildManager(body.cwd);
     const local = body.scope === "project";
     await packageManager.installAndPersist(ADAPTER_SOURCE, { local });
     return NextResponse.json(await getStatus(body.cwd));
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
-    );
+    return errorResponse(error instanceof Error ? error.message : String(error), 500);
   }
 }

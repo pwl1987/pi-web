@@ -290,7 +290,7 @@ function readScope(scope: unknown): PluginScope {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd");
-  if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
+  if (!cwd) return errorResponse("cwd required", 400);
 
   try {
     return NextResponse.json(await readPlugins(cwd));
@@ -311,8 +311,8 @@ export async function POST(req: Request) {
       scope?: PluginScope;
       cwd?: string;
     };
-    if (!body.cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
-    if (!body.action) return NextResponse.json({ error: "action required" }, { status: 400 });
+    if (!body.cwd) return errorResponse("cwd required", 400);
+    if (!body.action) return errorResponse("action required", 400);
 
     const settingsManager = SettingsManager.create(body.cwd, getAgentDir());
     const packageManager = new DefaultPackageManager({
@@ -324,38 +324,32 @@ export async function POST(req: Request) {
     const local = readScope(body.scope) === "project";
 
     if (body.action === "install") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       await packageManager.installAndPersist(source, { local });
     } else if (body.action === "remove") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       // System-default (pinned) plugins cannot be removed — they are the
       // bedrock of the pi-web experience and several UI surfaces depend on them.
       if (isPinned(source)) {
-        return NextResponse.json(
-          { error: `Cannot remove pinned system-default plugin: ${source}` },
-          { status: 409 },
-        );
+        return errorResponse(`Cannot remove pinned system-default plugin: ${source}`, 409);
       }
       await packageManager.removeAndPersist(source, { local });
     } else if (body.action === "update") {
       await packageManager.update(source);
     } else if (body.action === "disable") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       setPackageDisabled(settingsManager, source, readScope(body.scope), true);
       await settingsManager.flush();
     } else if (body.action === "enable") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       setPackageDisabled(settingsManager, source, readScope(body.scope), false);
       await settingsManager.flush();
     } else {
-      return NextResponse.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
+      return errorResponse(`Unsupported action: ${body.action}`, 400);
     }
 
     return NextResponse.json(await readPlugins(body.cwd));
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
-    );
+    return errorResponse(error instanceof Error ? error.message : String(error), 500);
   }
 }
