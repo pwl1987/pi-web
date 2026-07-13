@@ -19,6 +19,7 @@ export const ALLOWED_AGENT_COMMANDS: ReadonlySet<string> = new Set([
   "set_model",
   "set_thinking_level",
   "set_session_name",
+  "set_session_parent",
   "get_session_stats",
   "get_last_assistant_text",
   "set_auto_compaction",

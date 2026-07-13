@@ -73,8 +73,58 @@ export function SessionSidebar({
 }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  // ponytail: plan-mode 编排器虚拟根（id=orchId），由 /api/plan/history 拉取，
+  // buildSessionTree 把它作为子树的 parent，把带 orchestratorParentId 的 session
+  // 收纳其下。SessionInfo 形态保持与 pi session 同构以便复用 SessionItem 渲染。
+  const [orchestrators, setOrchestrators] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ponytail: 拉取编排器快照构建虚拟根。用 ref 读最新 allSessions 让回调稳定
+  // （依赖 []），loadSessions 可直接调用而不会反复重建。
+  const allSessionsRef = useRef(allSessions);
+  allSessionsRef.current = allSessions;
+  const loadOrchestrators = useCallback(async () => {
+    try {
+      const res = await fetch("/api/plan/history");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        orchestrations?: Array<{
+          id: string;
+          status: string;
+          requirement: string;
+          updatedAt: number;
+          roundCount: number;
+          planCount: number;
+        }>;
+      };
+      const items = data.orchestrations ?? [];
+      const childCwdByOrch = new Map<string, string>();
+      for (const s of allSessionsRef.current) {
+        if (s.orchestratorParentId && s.cwd && !childCwdByOrch.has(s.orchestratorParentId)) {
+          childCwdByOrch.set(s.orchestratorParentId, s.cwd);
+        }
+      }
+      const vRoots: SessionInfo[] = items.map((o) => {
+        const cwd = childCwdByOrch.get(o.id) ?? "";
+        const name = `📋 计划讨论：${(o.requirement ?? "").slice(0, 40)}`;
+        return {
+          id: o.id,
+          path: `orchestrator://${o.id}`,
+          cwd,
+          projectRoot: cwd || undefined,
+          name,
+          created: new Date(o.updatedAt).toISOString(),
+          modified: new Date(o.updatedAt).toISOString(),
+          messageCount: o.roundCount + o.planCount,
+          firstMessage: o.requirement || "(空需求)",
+        };
+      });
+      setOrchestrators(vRoots);
+    } catch {
+      // best-effort：拉取失败保留上次结果
+    }
+  }, []);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -144,6 +194,8 @@ export function SessionSidebar({
       }
       lastSigRef.current = sig;
       setAllSessions(data.sessions);
+      // ponytail: sessions 拉取后立即同步拉 orchestrators，避免先显示孤儿 child 再出现 parent 的闪烁。
+      void loadOrchestrators();
       // Treat the fetched running set as an initial fallback only. Once SSE is
       // live it owns this state, so a slow fetch can't revive a stale snapshot.
       if (!sseAuthoritativeRef.current) {
@@ -616,7 +668,10 @@ export function SessionSidebar({
       : null);
 
   // Build parent-child tree within the filtered set
-  const sessionTree = useMemo(() => buildSessionTree(filteredSessions), [filteredSessions]);
+  const sessionTree = useMemo(
+    () => buildSessionTree(filteredSessions, { orchestrators }),
+    [filteredSessions, orchestrators],
+  );
 
   // Stable deletion handler so memoized <SessionTreeItem> rows don't re-render
   // on every parent render (the inline arrow previously broke memoization).

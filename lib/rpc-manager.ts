@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { readFileSync, writeFileSync, renameSync } from "fs";
 import { getPiAdapter } from "./pi";
 import { createDefaultExtensionTheme } from "./extension-theme";
 import { cacheSessionPath, resolveSessionPath } from "./session-reader";
@@ -131,6 +132,42 @@ export class AgentSessionWrapper {
 
   get sessionFile(): string {
     return this.inner.sessionFile ?? "";
+  }
+
+  /**
+   * 改写 session 文件 header line 的 parentSession 字段。
+   * 典型用法：plan-mode 创建的 pi session 入口设 marker = `orchestrator:<orchId>`，
+   * session-reader 在 listAllSessions 解析时识别该前缀，归一化为 orchestratorParentId。
+   * 实现：读首行（header）、改 parentSession、原子 tmp+rename 回写。
+   * parentSession 在 pi 里仅用于显示元数据（参见 AGENTS.md），不会破坏聊天内容。
+   * 空字符串视为清空 marker。文件缺失或 header 损坏时抛错（路由层会包装为 ok=false）。
+   */
+  setSessionParent(parentSession: string): void {
+    const filePath = this.inner.sessionFile;
+    if (!filePath) throw new Error("Session has no file path; cannot set parentSession");
+    let raw: string;
+    try {
+      raw = readFileSync(filePath, "utf8");
+    } catch (e) {
+      throw new Error(`failed to read session file: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const newlineIdx = raw.indexOf("\n");
+    if (newlineIdx < 0) throw new Error("Session file has no header line");
+    let header: Record<string, unknown>;
+    try {
+      header = JSON.parse(raw.slice(0, newlineIdx)) as Record<string, unknown>;
+    } catch (e) {
+      throw new Error(
+        `session header is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    if (parentSession) header.parentSession = parentSession;
+    else delete header.parentSession;
+    const newHeader = JSON.stringify(header);
+    const rest = raw.slice(newlineIdx);
+    const tmp = `${filePath}.parent.tmp`;
+    writeFileSync(tmp, newHeader + rest, "utf8");
+    renameSync(tmp, filePath);
   }
 
   isAlive(): boolean {

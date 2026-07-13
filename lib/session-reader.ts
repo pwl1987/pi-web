@@ -39,6 +39,15 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
       messageCount: s.messageCount,
       firstMessage: s.firstMessage || "(no messages)",
       parentSessionId: s.parentSessionPath ? pathToId.get(s.parentSessionPath) : undefined,
+      // ponytail: 识别 plan-mode 注入的 marker `orchestrator:<orchId>`，归一化为
+      // orchestratorParentId 供 SessionSidebar 子树渲染。普通 fork 不走此分支
+      // (pathToId 已把 pi session 路径解析为 id，marker 不会出现在 byId 中)。
+      orchestratorParentId: (() => {
+        const p = s.parentSessionPath;
+        if (!p) return undefined;
+        const m = /^orchestrator:([\w-]+)$/.exec(p);
+        return m ? m[1] : undefined;
+      })(),
       projectRoot: project?.projectRoot ?? s.cwd,
       ...(project?.isWorktree && project.branch ? { worktreeBranch: project.branch } : {}),
     };

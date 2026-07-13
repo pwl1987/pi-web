@@ -91,16 +91,27 @@ export interface SessionTreeNode {
   children: SessionTreeNode[];
 }
 
-export function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
+export function buildSessionTree(
+  sessions: SessionInfo[],
+  options?: { orchestrators?: SessionInfo[] },
+): SessionTreeNode[] {
+  const orchestrators = options?.orchestrators ?? [];
   const byId = new Map<string, SessionTreeNode>();
+
+  // ponytail: orchestrator 虚拟根优先入桶（id 用 orchId），随后 sessions 入桶，
+  // 冲突时 orchestrator 优先（不覆盖），确保 plan-mode 入口被收纳而非重复。
+  for (const o of orchestrators) {
+    byId.set(o.id, { session: o, children: [] });
+  }
   for (const s of sessions) {
-    byId.set(s.id, { session: s, children: [] });
+    if (!byId.has(s.id)) byId.set(s.id, { session: s, children: [] });
   }
 
-  // Build a map of parentSessionId chains so we can resolve missing ancestors
+  // 父子关系：orchestratorParentId 优先（plan-mode 入口），其次 parentSessionId（fork）。
   const parentOf = new Map<string, string>();
   for (const s of sessions) {
-    if (s.parentSessionId) parentOf.set(s.id, s.parentSessionId);
+    if (s.orchestratorParentId) parentOf.set(s.id, s.orchestratorParentId);
+    else if (s.parentSessionId) parentOf.set(s.id, s.parentSessionId);
   }
 
   // Walk up the parentSessionId chain to find the nearest ancestor that exists in byId
@@ -127,11 +138,17 @@ export function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
     }
   }
 
+  // ponytail: 过滤空 orchestrator 节点（无 child 的虚拟根不显示，避免堆栈噪音）。
+  // 由 SessionSidebar 负责把 orchestrator 节点 id 标到 SessionInfo 上，
+  // 通过判断 children.length === 0 识别。
+  const orchIdSet = new Set(orchestrators.map((o) => o.id));
+  const filteredRoots = roots.filter((n) => !orchIdSet.has(n.session.id) || n.children.length > 0);
+
   // Sort each level by modified desc
   const sort = (nodes: SessionTreeNode[]) => {
     nodes.sort((a, b) => b.session.modified.localeCompare(a.session.modified));
     nodes.forEach((n) => sort(n.children));
   };
-  sort(roots);
-  return roots;
+  sort(filteredRoots);
+  return filteredRoots;
 }

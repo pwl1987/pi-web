@@ -23,6 +23,14 @@ export const DEFAULT_PLAN_CONFIG: PlanConfigSlice = {
   concurrency: 1,
 };
 
+/** pi session → 编排器的链接条目。每个 plan-mode 会话都对应一个轻量 pi session
+ *  作为侧栏入口（名为「📋 计划讨论：…」），点击该条目时通过此映射恢复 PlanPanel。 */
+export interface PlanLinkEntry {
+  orchestratorId: string;
+  /** 编排器上下文目录；与 pi session 的 cwd 一致。 */
+  cwd: string;
+}
+
 export interface PlanModeSnapshot {
   /** 是否处于计划模式（讨论模式） */
   planMode: boolean;
@@ -40,6 +48,11 @@ export interface PlanModeSnapshot {
   requestOpenEngine: boolean;
   /** 计划讨论配置（总控模式 / 轮次上限 / 收敛阈值 / 并发度） */
   planConfig: PlanConfigSlice;
+  /** pi sessionId → 编排器链接表。每个 plan-mode 会话都对应一个轻量 pi session 作为侧栏入口。
+   *  键 = 侧栏 SessionInfo.id；值 = { orchestratorId, cwd }。
+   *  点击侧栏条目时由 AppShell 查此映射恢复 PlanPanel 的 SSE；删除侧栏条目时反向清理。
+   *  持久化到 localStorage，刷新后仍可点击恢复。 */
+  planSessionLinks: Record<string, PlanLinkEntry>;
 }
 
 const EMPTY: PlanModeSnapshot = {
@@ -49,6 +62,7 @@ const EMPTY: PlanModeSnapshot = {
   planStatus: "idle",
   requestOpenEngine: false,
   planConfig: { ...DEFAULT_PLAN_CONFIG },
+  planSessionLinks: {},
 };
 
 // F5 刷新后浏览器 globalThis 清空，plan-mode-store 会回到 EMPTY，导致正在进行的
@@ -56,12 +70,14 @@ const EMPTY: PlanModeSnapshot = {
 // 到 localStorage，刷新后在 store 首次构造时同步 hydrate，PlanPanel 的 SSE useEffect
 // 随即重连，服务端 ensureRehydrated() 从 JSONL 还原编排器，完整恢复链路打通。
 // requestOpenEngine 是瞬时信号（确认后消费即清）、planConfig 已有服务端持久化，不镜像。
+// planSessionLinks 必须持久化——刷新后点击侧栏条目才能恢复 PlanPanel。
 const PLAN_STORAGE_KEY = "pi-plan-mode";
 const PERSISTED_KEYS = [
   "planMode",
   "orchestratorId",
   "resumableOrchestratorId",
   "planStatus",
+  "planSessionLinks",
 ] as const;
 
 /** 需要持久化的子集（仅恢复所需字段）。 */
@@ -87,6 +103,7 @@ function savePersistedState(snapshot: PlanModeSnapshot): void {
       orchestratorId: snapshot.orchestratorId,
       resumableOrchestratorId: snapshot.resumableOrchestratorId,
       planStatus: snapshot.planStatus,
+      planSessionLinks: snapshot.planSessionLinks,
     };
     window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(subset));
   } catch {
@@ -122,7 +139,13 @@ class PlanModeStore {
     this.hydrated = true;
     const persisted = loadPersistedState();
     if (persisted) {
-      this.snapshot = { ...EMPTY, ...persisted };
+      // planSessionLinks 反序列化兜底：旧版本没有此字段时给空对象，避免 undefined 蔓延。
+      const { planSessionLinks, ...rest } = persisted;
+      this.snapshot = {
+        ...EMPTY,
+        ...rest,
+        planSessionLinks: planSessionLinks ?? {},
+      };
       this.version++;
       this.listeners.forEach((cb) => cb());
     }
@@ -148,6 +171,7 @@ class PlanModeStore {
 
   reset(): void {
     this.snapshot = EMPTY;
+    this.hydrated = false;
     clearPersistedState();
     this.version++;
     this.listeners.forEach((cb) => cb());
@@ -188,7 +212,8 @@ export function usePlanMode(): PlanModeSnapshot {
   return store.getState();
 }
 
-// 命令式操作（非 React 组件内调用）。
+// ─── 命令式操作（非 React 组件内调用） ─────────────────────────────
+
 export function setPlanMode(v: boolean): void {
   getPlanModeStore().update({ planMode: v });
 }
@@ -232,4 +257,37 @@ export function requestOpenEngine(v: boolean): void {
 export function setPlanConfig(patch: Partial<PlanConfigSlice>): void {
   const store = getPlanModeStore();
   store.update({ planConfig: { ...store.getState().planConfig, ...patch } });
+}
+
+/**
+ * 把编排器 id 绑定到 pi sessionId（侧栏条目）。
+ * ChatInput 在 plan 分支创建编排成功后调用：
+ *   1. POST /api/agent/new 建轻量 pi session → 拿到 piSessionId
+ *   2. POST /api/agent/[piSessionId] 调 set_session_name 写侧栏可见名
+ *   3. linkPlanSession(piSessionId, orchId, cwd) 持久化链接
+ * 之后侧栏 SessionSidebar 会通过 listAllSessions() 看到这条带 📋 前缀的会话；
+ * 点击该条目时 AppShell.handleSelectSession 反向查 link 触发恢复。
+ */
+export function linkPlanSession(piSessionId: string, entry: PlanLinkEntry): void {
+  if (!piSessionId || !entry.orchestratorId) return;
+  const store = getPlanModeStore();
+  store.update({
+    planSessionLinks: { ...store.getState().planSessionLinks, [piSessionId]: entry },
+  });
+}
+
+/** 解除 pi session 与编排器的绑定（删除侧栏条目时反向清理）。 */
+export function unlinkPlanSession(piSessionId: string): void {
+  if (!piSessionId) return;
+  const store = getPlanModeStore();
+  const next = { ...store.getState().planSessionLinks };
+  if (!(piSessionId in next)) return;
+  delete next[piSessionId];
+  store.update({ planSessionLinks: next });
+}
+
+/** 查 pi sessionId 对应的编排器链接（AppShell 选中侧栏条目时调用）。 */
+export function getPlanLink(piSessionId: string): PlanLinkEntry | undefined {
+  if (!piSessionId) return undefined;
+  return getPlanModeStore().getState().planSessionLinks[piSessionId];
 }

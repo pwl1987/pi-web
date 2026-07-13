@@ -84,3 +84,34 @@ export function clearOrchestratorSnapshots(): void {
     // ignore
   }
 }
+
+/**
+ * 删除指定 id 的编排快照（幂等）。
+ * 当前模型下 orchestrator 是平级、无父子结构——「child」概念由 SessionSidebar
+ * 通过 pi session header 的 parentSession marker 表达，不在持久化文件中。
+ * 本函数仅清理该 id 自身的记录；记录不存在时返回 removedCount=0 不抛错。
+ * 返回 { removedCount, remaining } 便于上层 API 报告。
+ */
+export function removeOrchestratorSnapshot(id: string): {
+  removedCount: number;
+  remaining: number;
+} {
+  if (!id) return { removedCount: 0, remaining: 0 };
+  try {
+    const all = loadAllOrchestratorSnapshots();
+    const filtered = all.filter((r) => r.id !== id);
+    const removedCount = all.length - filtered.length;
+    if (removedCount === 0) {
+      return { removedCount: 0, remaining: all.length };
+    }
+    const lines = filtered.map((r) => JSON.stringify(r)).join("\n");
+    const file = storeFilePath();
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, lines, "utf8");
+    renameSync(tmp, file);
+    return { removedCount, remaining: filtered.length };
+  } catch {
+    // best-effort：失败按零进度返回，让上层决定是否重试
+    return { removedCount: 0, remaining: 0 };
+  }
+}

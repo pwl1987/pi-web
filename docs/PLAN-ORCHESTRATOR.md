@@ -188,6 +188,58 @@ message / round.end / plans / done` 等事件（SSE 推送）。
 
 ---
 
+## 10. 侧栏会话树整合
+
+plan-mode 的会话**不写** `~/.pi/agent/sessions/*.jsonl`，因此在原架构下不会出现在
+SessionSidebar。为解决「侧栏可见、可恢复」需求，设计如下整合机制：
+
+### 入口会话 + parentSession marker
+
+`components/ChatInput.tsx` 在创建 plan orchestrator 后，**再创建一个轻量 pi session**
+作为侧栏入口，并设其 header 的 `parentSession` 为 `orchestrator:<orchId>`：
+
+```ts
+// 1) 建轻量 pi session
+POST /api/agent/new  body: { cwd, type: "ensure_session" }
+                    → { sessionId: piId }
+
+// 2) 命名 + 写入 marker
+POST /api/agent/[piId]  body: { type: "set_session_name", name: "📋 计划讨论：…" }
+POST /api/agent/[piId]  body: { type: "set_session_parent", parentSession: "orchestrator:<orchId>" }
+```
+
+`set_session_parent` 命令（`lib/rpc-manager.ts:AgentSessionWrapper.setSessionParent`）
+原子改写 .jsonl 首行 header 的 `parentSession` 字段（tmp + rename），不动 entries。
+`parentSession` 在 pi 中仅用于显示元数据（参见 AGENTS.md），不会破坏聊天内容。
+
+### 解析 + 收纳
+
+`lib/session-reader.ts:listAllSessions` 识别 `parentSession` 以 `orchestrator:` 开头的
+行，归一化到新字段 `SessionInfo.orchestratorParentId`（不破坏原有 `parentSessionId` 行为）。
+
+`lib/session-utils.ts:buildSessionTree(sessions, { orchestrators })` 接受
+orchestrators 列表作额外输入（`/api/plan/history` 拉取后映射为虚拟 SessionInfo），
+把带 `orchestratorParentId` 的 session 挂到对应 orch 节点下，并从顶层移除。空 orch
+节点自动隐藏，避免堆栈噪音。
+
+### 反向清理
+
+`AppShell.handleSessionDeleted` 删除 plan-mode 入口会话时：
+
+1. `unlinkPlanSession(sessionId)` 清客户端 link
+2. fire-and-forget `DELETE /api/plan/[orchId]` 清理服务端持久化快照
+
+`DELETE` 端点幂等：记录不存在返回 `{ ok: true, removedCount: 0 }`，写入失败
+返回 `{ ok: false, reason }` 让前端可观察、可重试。
+
+调用时机清单：
+
+- 用户删除侧栏 plan-mode 入口会话（自动）
+- 用户在 PlanPanel 中放弃/取消讨论（可扩展）
+- 服务端 10 分钟空闲超时自动回收 in-memory orchestrator（无需调 DELETE）
+
+---
+
 ## 9. 验证
 
 - `npx tsc --noEmit` 通过；`npx eslint` 对新增文件无 error。

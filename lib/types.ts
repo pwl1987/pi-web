@@ -278,6 +278,10 @@ export interface SessionInfo {
   messageCount: number;
   firstMessage: string;
   parentSessionId?: string; // set if this session was forked from another
+  /** plan-mode 入口标记：当 session header 的 parentSession 形如 `orchestrator:<orchId>`
+   *  时由 session-reader 归一化到此处，SessionSidebar 据此把该 session 挂到对应
+   *  orchestrator 虚拟根节点下而非显示为顶层条目。普通 fork session 该字段为 undefined。 */
+  orchestratorParentId?: string;
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient
    *  SessionInfo objects before the first refresh. Fall back to cwd. */

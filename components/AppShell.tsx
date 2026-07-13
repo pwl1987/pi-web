@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow, type ChatWindowHandle } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
@@ -40,6 +41,9 @@ import {
   usePlanMode,
   requestOpenEngine as setRequestOpenEngine,
   setPlanMode,
+  setOrchestratorId,
+  getPlanLink,
+  unlinkPlanSession,
 } from "@/lib/plan-mode-store";
 import { useConstraints } from "@/lib/constraints/useConstraints";
 import { translate } from "@/lib/i18n";
@@ -387,6 +391,13 @@ export function AppShell() {
       setSelectedSession(session);
       setSystemPrompt(null);
       setInitialSessionRestored(true);
+      // ponytail: 选中 plan-mode 入口会话时自动恢复 PlanPanel SSE；通过反向查 link 表
+      // （避免遍历所有 session）。非 plan session 走原 ChatWindow 渲染路径。
+      const planLink = getPlanLink(session.id);
+      if (planLink) {
+        setPlanMode(true);
+        setOrchestratorId(planLink.orchestratorId);
+      }
       // On mobile, collapse the overlay drawer so the chat is revealed after pick.
       if (isMobile && !isRestore) setSidebarOpen(false);
       if (isRestore) {
@@ -478,6 +489,18 @@ export function AppShell() {
 
   const handleSessionDeleted = useCallback(
     (sessionId: string) => {
+      // ponytail: 删除 plan-mode 入口会话时反向清理：先清客户端 link，
+      // 再 fire-and-forget 调 DELETE /api/plan/[orchId] 删服务端持久化快照。
+      // 失败不影响删除主流程——下次重启时 10 分钟空闲超时也会回收 in-memory orchestrator。
+      const orchId = getPlanLink(sessionId)?.orchestratorId;
+      unlinkPlanSession(sessionId);
+      if (orchId) {
+        void csrfFetchJson(`/api/plan/${encodeURIComponent(orchId)}`, { method: "DELETE" }).catch(
+          () => {
+            /* best-effort */
+          },
+        );
+      }
       setRefreshKey((k) => k + 1);
       if (selectedSession?.id === sessionId) {
         const cwd = selectedSession.cwd;

@@ -30,7 +30,12 @@ import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
-import { usePlanMode, setPlanMode, setOrchestratorId } from "@/lib/plan-mode-store";
+import {
+  usePlanMode,
+  setPlanMode,
+  setOrchestratorId,
+  linkPlanSession,
+} from "@/lib/plan-mode-store";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
 import { getToolLabel } from "@/lib/tool-labels";
@@ -818,6 +823,38 @@ export const ChatInput = memo(
             );
             if (!ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));
             setOrchestratorId(data.id);
+            // ponytail: 顺手建一个轻量 pi session 作为侧栏入口；失败不影响 plan 主流程
+            void (async () => {
+              try {
+                if (!cwd) return;
+                const { ok: newOk, data: newData } = await csrfFetchJson<{
+                  sessionId?: string;
+                }>("/api/agent/new", {
+                  method: "POST",
+                  body: { cwd, type: "ensure_session" },
+                });
+                if (!newOk || !newData?.sessionId) return;
+                const piId = newData.sessionId;
+                const title = `📋 计划讨论：${msg.slice(0, 40)}`;
+                await csrfFetchJson(`/api/agent/${encodeURIComponent(piId)}`, {
+                  method: "POST",
+                  body: { type: "set_session_name", name: title },
+                });
+                // ponytail: 同步写 parentSession marker `orchestrator:<orchId>`，
+                // 让 session-reader 解析为 orchestratorParentId，侧栏把该 session
+                // 挂到对应 orchestrator 节点下而非顶层显示。
+                await csrfFetchJson(`/api/agent/${encodeURIComponent(piId)}`, {
+                  method: "POST",
+                  body: {
+                    type: "set_session_parent",
+                    parentSession: `orchestrator:${data.id}`,
+                  },
+                });
+                linkPlanSession(piId, { orchestratorId: data.id as string, cwd });
+              } catch {
+                /* best-effort：失败不阻断 plan */
+              }
+            })();
           } else {
             const { ok } = await csrfFetchJson(`/api/plan/${orchestratorId}/rediscuss`, {
               method: "POST",
