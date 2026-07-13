@@ -6,7 +6,7 @@ import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { useAsync } from "@/hooks/useAsync";
 import { useSave } from "@/hooks/useSave";
 import { SaveButton } from "@/components/ui/ConfigModal";
-import { btnStyle, errorBoxStyle } from "@/lib/styles";
+import { btnStyle, errorBoxStyle, loadingBoxStyle } from "@/lib/styles";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -75,12 +75,7 @@ export function WebSearchConfigPanel() {
     }
   }, [data, keyInputs, reload, startSave, endSave, setError]);
 
-  if (loading)
-    return (
-      <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>
-        {t("common.loading")}
-      </div>
-    );
+  if (loading) return <div style={loadingBoxStyle}>{t("common.loading")}</div>;
   if (error) return <div style={errorBoxStyle}>{error}</div>;
   if (!data) return null;
 

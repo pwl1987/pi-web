@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
-import { btnStyle, errorBoxStyle } from "@/lib/styles";
+import { btnStyle, errorBoxStyle, loadingBoxStyle } from "@/lib/styles";
 
 interface TodoTask {
   id: number;
@@ -59,12 +59,7 @@ export function TodoPanel() {
     if (!runtime.agentRunning && sessionId) void reload();
   }, [runtime.agentRunning, sessionId, reload]);
 
-  if (loading)
-    return (
-      <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>
-        {t("common.loading")}
-      </div>
-    );
+  if (loading) return <div style={loadingBoxStyle}>{t("common.loading")}</div>;
   if (error) return <div style={errorBoxStyle}>{error}</div>;
 
   const inProgress = tasks.filter((t) => t.status === "in_progress");

@@ -72,3 +72,9 @@ export const errorBoxStylePre12: React.CSSProperties = {
   color: "#ef4444",
   whiteSpace: "pre-wrap",
 };
+
+export const loadingBoxStyle: React.CSSProperties = {
+  padding: 16,
+  fontSize: 12,
+  color: "var(--text-muted)",
+};

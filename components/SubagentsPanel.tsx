@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { btnStyle, cardStyle, errorBoxStyle } from "@/lib/styles";
+import { btnStyle, cardStyle, errorBoxStyle, loadingBoxStyle } from "@/lib/styles";
 
 interface AsyncStatus {
   runId?: string;
@@ -66,12 +66,7 @@ export function SubagentsPanel() {
     return () => clearInterval(interval);
   }, [reload]);
 
-  if (loading)
-    return (
-      <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>
-        {t("common.loading")}
-      </div>
-    );
+  if (loading) return <div style={loadingBoxStyle}>{t("common.loading")}</div>;
   if (error) return <div style={errorBoxStyle}>{error}</div>;
 
   return (
