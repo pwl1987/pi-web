@@ -253,9 +253,15 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
     setAdapterChecking(true);
     setAdapterError(null);
     try {
-      const res = await fetch(`/api/mcp-adapter?cwd=${encodeURIComponent(cwd)}`);
-      const d = (await res.json()) as AdapterStatus & { error?: string };
-      if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<AdapterStatus & { error?: string }>(
+        `/api/mcp-adapter?cwd=${encodeURIComponent(cwd)}`,
+        { method: "GET" },
+      );
+      if (!ok || d.error) throw new Error(d.error ?? `HTTP ${status}`);
       setAdapterStatus(d);
     } catch (e) {
       setAdapterError(e instanceof Error ? e.message : String(e));
@@ -297,9 +303,14 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
 
   const reload = useCallback(async () => {
     try {
-      const res = await fetch("/api/mcp-config");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = (await res.json()) as McpConfigData;
+      const {
+        ok,
+        status,
+        data: d,
+      } = await csrfFetchJson<McpConfigData>("/api/mcp-config", {
+        method: "GET",
+      });
+      if (!ok) throw new Error(`HTTP ${status}`);
       setData(d);
       setError(null);
     } catch (e) {
