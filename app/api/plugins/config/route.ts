@@ -53,12 +53,10 @@ function writeAll(all: Record<string, Record<string, unknown>>): void {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const source = searchParams.get("source");
-  if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+  if (!source) return errorResponse("source required", 400);
 
   const descriptor = getPluginConfigDescriptor(source);
-  if (!descriptor) {
-    return NextResponse.json({ error: `No config descriptor for ${source}` }, { status: 404 });
-  }
+  if (!descriptor) return errorResponse(`No config descriptor for ${source}`, 404);
 
   const all = readAll();
   const merged = applyDefaults(descriptor, all[source.trim()]);
@@ -74,12 +72,10 @@ export async function PUT(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const source = searchParams.get("source");
-    if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+    if (!source) return errorResponse("source required", 400);
 
     const descriptor = getPluginConfigDescriptor(source);
-    if (!descriptor) {
-      return NextResponse.json({ error: `No config descriptor for ${source}` }, { status: 404 });
-    }
+    if (!descriptor) return errorResponse(`No config descriptor for ${source}`, 404);
 
     const body = (await req.json()) as { values?: Record<string, unknown> };
     const incoming = body.values ?? {};

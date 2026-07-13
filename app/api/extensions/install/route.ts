@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { installLocalExtension } from "@/lib/extensions/discovery";
 import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,15 +14,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { path?: string };
     const sourcePath = body.path?.trim();
-    if (!sourcePath) {
-      return NextResponse.json({ error: "path is required" }, { status: 400 });
-    }
+    if (!sourcePath) return errorResponse("path is required", 400);
     const result = installLocalExtension(sourcePath);
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
-    );
+    return errorResponse(error instanceof Error ? error.message : String(error), 500);
   }
 }
