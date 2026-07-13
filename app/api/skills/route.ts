@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd");
-  if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
+  if (!cwd) return errorResponse("cwd required", 400);
 
   try {
     const loader = new DefaultResourceLoader({ cwd, agentDir: getAgentDir() });
@@ -36,7 +36,7 @@ export async function PATCH(req: Request) {
   try {
     const body = (await req.json()) as { filePath: string; disableModelInvocation: boolean };
     const { filePath, disableModelInvocation } = body;
-    if (!filePath) return NextResponse.json({ error: "filePath required" }, { status: 400 });
+    if (!filePath) return errorResponse("filePath required", 400);
 
     // Prevent path traversal: only allow files within allowed roots
     const resolved = resolve(filePath);
@@ -44,12 +44,9 @@ export async function PATCH(req: Request) {
     if (!isFilePathAllowed(resolved, allowedRoots)) {
       // Also allow files under the agent dir itself (for user-scoped skills)
       const agentDir = resolve(getAgentDir());
-      if (!resolved.startsWith(agentDir)) {
-        return NextResponse.json({ error: "forbidden" }, { status: 403 });
-      }
+      if (!resolved.startsWith(agentDir)) return errorResponse("forbidden", 403);
     }
-    if (!existsSync(resolved))
-      return NextResponse.json({ error: "file not found" }, { status: 404 });
+    if (!existsSync(resolved)) return errorResponse("file not found", 404);
 
     const content = readFileSync(resolved, "utf8");
     const key = "disable-model-invocation";

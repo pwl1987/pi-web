@@ -18,12 +18,8 @@ export async function POST(req: Request) {
     const body = (await req.json()) as { cwd?: string; [key: string]: unknown };
     const { cwd, ...command } = body;
 
-    if (!cwd || typeof cwd !== "string") {
-      return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-    }
-    if (!existsSync(cwd)) {
-      return NextResponse.json({ error: `Directory does not exist: ${cwd}` }, { status: 400 });
-    }
+    if (!cwd || typeof cwd !== "string") return errorResponse("cwd is required", 400);
+    if (!existsSync(cwd)) return errorResponse(`Directory does not exist: ${cwd}`, 400);
 
     // Use a one-time key so startRpcSession's lock doesn't conflict with real session ids
     const { provider, modelId, toolNames, thinkingLevel, ...promptCommand } = command as {
@@ -60,10 +56,7 @@ export async function POST(req: Request) {
     // Without this, a client could spread arbitrary fields into the body and
     // invoke any wrapper command type (e.g. reload) bypassing the [id] gate.
     if (typeof promptCommand.type !== "string" || !isAllowedAgentCommand(promptCommand.type)) {
-      return NextResponse.json(
-        { error: `unknown command: ${promptCommand.type ?? ""}` },
-        { status: 400 },
-      );
+      return errorResponse(`unknown command: ${promptCommand.type ?? ""}`, 400);
     }
 
     const result = await session.send(promptCommand);

@@ -37,23 +37,15 @@ export async function GET(req: NextRequest) {
   const level = req.nextUrl.searchParams.get("level");
   const cwd = req.nextUrl.searchParams.get("cwd") ?? undefined;
 
-  if (!FILE_NAMES[file]) {
-    return NextResponse.json(
-      { error: "file must be 'agents', 'system', or 'append'" },
-      { status: 400 },
-    );
-  }
-  if (level !== "user" && level !== "project") {
-    return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
-  }
+  if (!FILE_NAMES[file]) return errorResponse("file must be 'agents', 'system', or 'append'", 400);
+  if (level !== "user" && level !== "project")
+    return errorResponse("level must be 'user' or 'project'", 400);
   // For project-level reads, validate cwd is within allowed roots — otherwise
   // an attacker could read AGENTS.md/SYSTEM.md/APPEND_SYSTEM.md from any path.
   if (level === "project" && cwd) {
     const resolvedCwd = resolve(cwd);
     const allowedRoots = await getAllowedFileRoots();
-    if (!isFilePathAllowed(resolvedCwd, allowedRoots)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!isFilePathAllowed(resolvedCwd, allowedRoots)) return errorResponse("forbidden", 403);
   }
   try {
     const filePath = resolvePath(file, level, cwd);
@@ -81,27 +73,18 @@ export async function PUT(req: NextRequest) {
       content?: string;
     };
     const file = (body.file ?? "agents") as PromptFile;
-    if (!FILE_NAMES[file]) {
-      return NextResponse.json(
-        { error: "file must be 'agents', 'system', or 'append'" },
-        { status: 400 },
-      );
-    }
-    if (body.level !== "user" && body.level !== "project") {
-      return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
-    }
+    if (!FILE_NAMES[file])
+      return errorResponse("file must be 'agents', 'system', or 'append'", 400);
+    if (body.level !== "user" && body.level !== "project")
+      return errorResponse("level must be 'user' or 'project'", 400);
     // Limit content size
     const content = body.content ?? "";
-    if (content.length > MAX_AGENTS_MD_SIZE) {
-      return NextResponse.json({ error: "content too large" }, { status: 413 });
-    }
+    if (content.length > MAX_AGENTS_MD_SIZE) return errorResponse("content too large", 413);
     // For project-level writes, validate cwd is within allowed roots
     if (body.level === "project" && body.cwd) {
       const resolvedCwd = resolve(body.cwd);
       const allowedRoots = await getAllowedFileRoots();
-      if (!isFilePathAllowed(resolvedCwd, allowedRoots)) {
-        return NextResponse.json({ error: "forbidden" }, { status: 403 });
-      }
+      if (!isFilePathAllowed(resolvedCwd, allowedRoots)) return errorResponse("forbidden", 403);
     }
     const filePath = resolvePath(file, body.level, body.cwd);
     ensureParentDir(filePath);
