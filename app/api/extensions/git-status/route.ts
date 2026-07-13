@@ -4,6 +4,7 @@ import { promisify } from "util";
 import { existsSync } from "fs";
 import { join } from "path";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { errorResponse } from "@/lib/api-utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
       staged,
       untracked,
     });
-  } catch {
-    return NextResponse.json({ error: "git command failed" }, { status: 500 });
+  } catch (e) {
+    return errorResponse(e);
   }
 }

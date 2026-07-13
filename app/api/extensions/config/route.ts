@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { setExtensionEnabled } from "@/lib/extensions/discovery";
 import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
     setExtensionEnabled(body.id, body.enabled);
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+  } catch (e) {
+    return errorResponse(e);
   }
 }

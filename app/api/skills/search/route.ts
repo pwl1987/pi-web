@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import type { SkillSearchResult } from "@/lib/api-types";
 import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +117,6 @@ export async function POST(req: Request) {
     const raw = (err.stdout ?? "") + (err.stderr ?? "");
     const results = raw ? parseSearchOutput(raw) : [];
     if (results.length > 0) return NextResponse.json({ results });
-    return NextResponse.json({ error: err.message ?? String(e) }, { status: 500 });
+    return errorResponse(err.message ?? e);
   }
 }

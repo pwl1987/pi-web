@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText } from "@/lib/api-shared";
 import { getPiAdapter } from "@/lib/pi";
+import { errorResponse } from "@/lib/api-utils";
 
 const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple } = getPiAdapter();
 
@@ -112,7 +113,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ optimized });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,6 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     const err = e as { stdout?: string; stderr?: string; message?: string };
     const output = ((err.stdout ?? "") + (err.stderr ?? "")).replace(ANSI_RE, "");
-    return NextResponse.json({ error: output || (err.message ?? String(e)) }, { status: 500 });
+    return errorResponse(output || (err.message ?? e));
   }
 }

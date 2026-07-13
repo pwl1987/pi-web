@@ -4,6 +4,7 @@ import { resolve } from "path";
 import { getPiAdapter } from "@/lib/pi";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
+import { errorResponse } from "@/lib/api-utils";
 
 const { DefaultResourceLoader, getAgentDir, parseFrontmatter } = getPiAdapter();
 
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
     const { skills, diagnostics } = loader.getSkills();
     return NextResponse.json({ skills, diagnostics });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return errorResponse(e);
   }
 }
 
@@ -72,6 +73,6 @@ export async function PATCH(req: Request) {
     writeFileSync(resolved, updated, "utf8");
     return NextResponse.json({ success: true });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return errorResponse(e);
   }
 }
