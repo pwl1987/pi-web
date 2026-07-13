@@ -26,12 +26,7 @@ export async function POST(req: NextRequest) {
     };
     const content = body.content ?? "";
     const fileType = body.file ?? "agents";
-    if (!content.trim()) {
-      return NextResponse.json(
-        { error: "Content is empty — nothing to optimize." },
-        { status: 400 },
-      );
-    }
+    if (!content.trim()) return errorResponse("Content is empty — nothing to optimize.", 400);
 
     // Read the user's default model + provider from settings.
     const agentDir = getAgentDir();
@@ -40,30 +35,18 @@ export async function POST(req: NextRequest) {
     const defaultProvider = mgr.getDefaultProvider();
     const defaultModel = mgr.getDefaultModel();
     if (!defaultProvider || !defaultModel) {
-      return NextResponse.json(
-        { error: "No default model configured. Set one in Settings." },
-        { status: 400 },
-      );
+      return errorResponse("No default model configured. Set one in Settings.", 400);
     }
 
     // Resolve model + API key from the real models.json (not a temp copy).
     const modelsPath = `${agentDir}/models.json`;
     const registry = ModelRegistry.create(AuthStorage.create(), modelsPath);
     const model = registry.find(defaultProvider, defaultModel);
-    if (!model) {
-      return NextResponse.json(
-        { error: `Model not found: ${defaultProvider}/${defaultModel}` },
-        { status: 400 },
-      );
-    }
+    if (!model) return errorResponse(`Model not found: ${defaultProvider}/${defaultModel}`, 400);
 
     const auth = await registry.getApiKeyAndHeaders(model);
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: 400 });
-    }
-    if (!auth.apiKey) {
-      return NextResponse.json({ error: `No API key for "${defaultProvider}"` }, { status: 400 });
-    }
+    if (!auth.ok) return errorResponse(auth.error, 400);
+    if (!auth.apiKey) return errorResponse(`No API key for "${defaultProvider}"`, 400);
 
     const customInstruction = body.instruction?.trim();
     const promptContext =
@@ -107,9 +90,7 @@ export async function POST(req: NextRequest) {
     );
 
     const optimized = getAssistantText(message);
-    if (!optimized.trim()) {
-      return NextResponse.json({ error: "AI returned empty content." }, { status: 500 });
-    }
+    if (!optimized.trim()) return errorResponse("AI returned empty content.", 500);
 
     return NextResponse.json({ optimized });
   } catch (error) {

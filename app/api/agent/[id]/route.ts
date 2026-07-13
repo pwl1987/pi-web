@@ -17,9 +17,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const body = (await req.json()) as { type: string; [key: string]: unknown };
 
-    if (!ALLOWED_AGENT_COMMANDS.has(body.type)) {
-      return NextResponse.json({ error: `unknown command: ${body.type}` }, { status: 400 });
-    }
+    if (!ALLOWED_AGENT_COMMANDS.has(body.type))
+      return errorResponse(`unknown command: ${body.type}`, 400);
 
     // Fast path: already-running session
     const existing = getRpcSession(id);
@@ -29,9 +28,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
     const cwd = getPiAdapter().SessionManager.open(filePath).getHeader()?.cwd ?? process.cwd();
 

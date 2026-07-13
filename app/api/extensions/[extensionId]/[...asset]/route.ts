@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { resolveExtensionAsset } from "@/lib/extensions/discovery";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,7 @@ export async function GET(
   const assetPath = asset.join("/");
 
   const resolved = resolveExtensionAsset(extensionId, assetPath);
-  if (!resolved) {
-    return NextResponse.json({ error: "Asset not found" }, { status: 404 });
-  }
+  if (!resolved) return errorResponse("Asset not found", 404);
 
   const data = readFileSync(resolved.absPath);
   const mime = MIME[extname(resolved.absPath).toLowerCase()] ?? "application/octet-stream";

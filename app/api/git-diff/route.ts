@@ -39,15 +39,11 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const cwd = searchParams.get("cwd");
-    if (!cwd || !existsSync(cwd)) {
-      return NextResponse.json({ error: "Invalid cwd" }, { status: 400 });
-    }
+    if (!cwd || !existsSync(cwd)) return errorResponse("Invalid cwd", 400);
     // Restrict to allowed roots — without this, the endpoint could probe the git
     // state (branch, diff counts) of any directory on the host.
     const allowedRoots = await getAllowedFileRoots();
-    if (!isFilePathAllowed(cwd, allowedRoots)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    if (!isFilePathAllowed(cwd, allowedRoots)) return errorResponse("forbidden", 403);
 
     // Check it's a git repo.
     try {

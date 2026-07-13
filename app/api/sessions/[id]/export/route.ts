@@ -231,9 +231,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
     const tempDir = join(tmpdir(), "pi-web-export");
     mkdirSync(tempDir, { recursive: true });

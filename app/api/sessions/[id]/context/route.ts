@@ -9,9 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   try {
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
     const entries = getSessionEntries(filePath);
     const context = buildSessionContext(entries, leafId);

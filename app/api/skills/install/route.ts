@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       scope,
       cwd,
     } = (await req.json()) as { package?: string; scope?: string; cwd?: string };
-    if (!pkg?.trim()) return NextResponse.json({ error: "package required" }, { status: 400 });
+    if (!pkg?.trim()) return errorResponse("package required", 400);
 
     const isGlobal = scope !== "project";
     const args = ["skills", "add", pkg.trim(), "-y", "--agent", "pi"];
@@ -33,9 +33,7 @@ export async function POST(req: Request) {
 
     const output = (stdout + stderr).replace(ANSI_RE, "");
     const success = /Installation complete|Installed \d+ skill/.test(output);
-    if (!success) {
-      return NextResponse.json({ error: output.slice(-300) || "Install failed" }, { status: 500 });
-    }
+    if (!success) return errorResponse(output.slice(-300) || "Install failed", 500);
     return NextResponse.json({ success: true, output });
   } catch (e: unknown) {
     const err = e as { stdout?: string; stderr?: string; message?: string };

@@ -97,7 +97,7 @@ export async function POST(req: Request) {
 
   try {
     const { query, limit: rawLimit } = (await req.json()) as { query?: string; limit?: unknown };
-    if (!query?.trim()) return NextResponse.json({ error: "query required" }, { status: 400 });
+    if (!query?.trim()) return errorResponse("query required", 400);
     const limit = parseLimit(rawLimit);
 
     try {

@@ -117,9 +117,7 @@ export async function POST(req: NextRequest) {
       useContext?: boolean;
     };
     const prompt = body.prompt ?? "";
-    if (!prompt.trim()) {
-      return NextResponse.json({ error: "Prompt is empty — nothing to enhance." }, { status: 400 });
-    }
+    if (!prompt.trim()) return errorResponse("Prompt is empty — nothing to enhance.", 400);
 
     const agentDir = getAgentDir();
     const modelsPath = `${agentDir}/models.json`;
@@ -141,21 +139,12 @@ export async function POST(req: NextRequest) {
       }
     }
     if (!model) {
-      return NextResponse.json(
-        {
-          error: "No model available. Select a model or set a default in Settings.",
-        },
-        { status: 400 },
-      );
+      return errorResponse("No model available. Select a model or set a default in Settings.", 400);
     }
 
     const auth = await registry.getApiKeyAndHeaders(model);
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: 400 });
-    }
-    if (!auth.apiKey) {
-      return NextResponse.json({ error: `No API key for "${model.provider}"` }, { status: 400 });
-    }
+    if (!auth.ok) return errorResponse(auth.error, 400);
+    if (!auth.apiKey) return errorResponse(`No API key for "${model.provider}"`, 400);
 
     // When a project working directory is known, ground the enhanced prompt in
     // the real project context (tech stack, modules, paths) so the result is
@@ -202,12 +191,9 @@ export async function POST(req: NextRequest) {
 
     const enhanced = stripToolCallArtifacts(getAssistantText(message));
     if (!enhanced.trim()) {
-      return NextResponse.json(
-        {
-          error:
-            "The model returned only tool-call protocol instead of a prompt. Try a different model or rephrase.",
-        },
-        { status: 502 },
+      return errorResponse(
+        "The model returned only tool-call protocol instead of a prompt. Try a different model or rephrase.",
+        502,
       );
     }
 
