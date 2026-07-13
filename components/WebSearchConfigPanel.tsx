@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { useAsync } from "@/hooks/useAsync";
 import { SaveButton } from "@/components/ui/ConfigModal";
 import { btnStyle } from "@/lib/styles";
 
@@ -28,33 +29,25 @@ const PROVIDER_LABELS: Record<string, string> = {
 export function WebSearchConfigPanel() {
   const { t } = useI18n();
   const [data, setData] = useState<WebSearchData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const reload = useCallback(async () => {
-    try {
-      const { ok, status, data } = await csrfFetchJson<WebSearchData>("/api/web-search-config", {
-        method: "GET",
-      });
-      if (!ok) throw new Error(`HTTP ${status}`);
-      setData(data);
-      setKeyInputs({});
-      setShowKeys({});
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    const { ok, status, data } = await csrfFetchJson<WebSearchData>("/api/web-search-config", {
+      method: "GET",
+    });
+    if (!ok) throw new Error(`HTTP ${status}`);
+    setData(data);
+    setKeyInputs({});
+    setShowKeys({});
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void run(reload);
+  }, [reload, run]);
 
   const handleSave = useCallback(async () => {
     if (!data) return;

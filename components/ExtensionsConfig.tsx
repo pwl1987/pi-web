@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { useAsync } from "@/hooks/useAsync";
 
 interface ExtListItem {
   id: string;
@@ -23,27 +24,22 @@ interface Props {
 export function ExtensionsConfig({ onClose }: Props) {
   const { t } = useI18n();
   const [list, setList] = useState<ExtListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { loading, run } = useAsync(undefined, { initialLoading: true });
   const [showInstall, setShowInstall] = useState(false);
   const [installPath, setInstallPath] = useState("");
   const [installing, setInstalling] = useState(false);
   const [message, setMessage] = useState("");
 
   const reload = useCallback(async () => {
-    try {
-      const { data } = await csrfFetchJson<{ extensions?: ExtListItem[] }>("/api/extensions/list", {
-        method: "GET",
-      });
-      setList(data.extensions ?? []);
-    } catch {
-      /* ignore */
-    }
-    setLoading(false);
+    const { data } = await csrfFetchJson<{ extensions?: ExtListItem[] }>("/api/extensions/list", {
+      method: "GET",
+    });
+    setList(data.extensions ?? []);
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void run(reload);
+  }, [reload, run]);
 
   const toggleEnabled = async (id: string, current: boolean) => {
     // Optimistic update
