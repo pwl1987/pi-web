@@ -5,6 +5,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
 import { btnStyle, errorBoxStyle, loadingBoxStyle } from "@/lib/styles";
+import { EmptyState } from "./ui/EmptyState";
 
 interface TodoTask {
   id: number;
@@ -90,7 +91,7 @@ export function TodoPanel() {
       </div>
 
       {tasks.length === 0 ? (
-        <div style={{ color: "var(--text-dim)", padding: "8px 0" }}>{t("todo.empty")}</div>
+        <EmptyState padding="8px 0">{t("todo.empty")}</EmptyState>
       ) : (
         <>
           {/* In progress */}

@@ -6,6 +6,7 @@ import { useAsync } from "@/hooks/useAsync";
 import type { SkillSearchResult } from "@/lib/api-types";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { ConfigModal, ConfigListRow, ModalButton } from "@/components/ui/ConfigModal";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface Skill {
   name: string;
@@ -522,9 +523,9 @@ export function SkillsConfig({ cwd, onClose }: { cwd: string; onClose: () => voi
       ) : error ? (
         <div style={{ padding: "10px 8px", fontSize: 11, color: "#f87171" }}>{error}</div>
       ) : skills.length === 0 ? (
-        <div style={{ padding: "10px 8px", fontSize: 11, color: "var(--text-dim)" }}>
+        <EmptyState padding="10px 8px" fontSize={11}>
           {t("skills.noSkillsFound")}
-        </div>
+        </EmptyState>
       ) : (
         (() => {
           const groups: Array<{ label: string; skills: typeof skills }> = [];

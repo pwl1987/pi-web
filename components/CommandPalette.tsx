@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { ExtensionRuntimeContext, QualifiedAction } from "@/lib/extensions/types";
+import { EmptyState } from "./ui/EmptyState";
 
 interface Props {
   open: boolean;
@@ -117,16 +118,9 @@ export function CommandPalette({ open, onClose, actions, getDisabledReason, cont
         />
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: 4 }}>
           {filtered.length === 0 ? (
-            <div
-              style={{
-                padding: "16px",
-                color: "var(--text-dim)",
-                fontSize: 13,
-                textAlign: "center",
-              }}
-            >
+            <EmptyState padding="16px" fontSize={13} center>
               No commands found
-            </div>
+            </EmptyState>
           ) : (
             filtered.map((action, i) => {
               const disabledReason = getDisabledReason(action, context);

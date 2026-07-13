@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
+import { EmptyState } from "./ui/EmptyState";
 
 interface TodoTask {
   id: number;
@@ -233,17 +234,9 @@ export function TodoSidebar({
           {/* Body */}
           <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
             {!hasTasks ? (
-              <div
-                style={{
-                  padding: "24px 16px",
-                  fontSize: 12,
-                  color: "var(--text-dim)",
-                  textAlign: "center",
-                  lineHeight: 1.6,
-                }}
-              >
+              <EmptyState padding="24px 16px" fontSize={12} center lineHeight={1.6}>
                 {t("todo.empty")}
-              </div>
+              </EmptyState>
             ) : (
               <>
                 {inProgress.length > 0 && (
