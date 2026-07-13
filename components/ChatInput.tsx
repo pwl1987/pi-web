@@ -792,13 +792,16 @@ export const ChatInput = memo(
 
     const handleSend = useCallback(async () => {
       const msg = value.trim();
-      if (isStreaming) return;
       onAudioUnlock?.();
 
       // 计划模式：统一经由消息输入框触发与交互（无独立输入组件）。
       // - 尚无激活讨论 → 以输入内容作为需求发起多智能体讨论；
       // - 讨论处于「等待确认」→ 以输入内容作为反馈重新讨论；
       // - 其它进行中状态 → 不接受输入，避免打断编排。
+      //
+      // 流控解耦：plan 分支仅受 planBusy 控制，不受普通模式 isStreaming 影响。
+      // 用户消息只走 /api/plan/orchestrate|rediscuss 进入编排器后端，
+      // 在 PlanPanel 的 snapshot.messages 中呈现，不进普通会话 SSE 流（数据隔离）。
       if (planMode) {
         if (!msg || planBusy) return;
         if (orchestratorId && planStatus !== "awaiting_confirm") return;
@@ -832,6 +835,8 @@ export const ChatInput = memo(
         return;
       }
 
+      // 普通模式流控：isStreaming 守卫只作用于本分支，不影响 plan 分支。
+      if (isStreaming) return;
       if (!msg && !attachedImages.length) return;
       if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
         const result = await onBuiltinCommand(msg);
@@ -1267,7 +1272,9 @@ export const ChatInput = memo(
 
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          if (isStreaming && (onSteer || onFollowUp)) {
+          // 流控解耦：plan 模式始终走 handleSend（受 planBusy 控制），
+          // 普通模式流式输出时才走 steer/followUp 队列。与发送按钮三元判断保持一致。
+          if (isStreaming && !planMode && (onSteer || onFollowUp)) {
             // Default Enter sends as steer if available, else followup
             sendQueued(onSteer ? "steer" : "followup");
           } else {
@@ -1277,6 +1284,7 @@ export const ChatInput = memo(
       },
       [
         isStreaming,
+        planMode,
         onSteer,
         onFollowUp,
         slashMenuOpen,
@@ -2061,7 +2069,9 @@ export const ChatInput = memo(
                 }}
               />
 
-              {isStreaming ? (
+              {/* 流控解耦：plan 模式始终显示发送按钮（受 planBusy 控制），
+                  普通模式流式输出时才切换为 steer/followUp 队列按钮。 */}
+              {isStreaming && !planMode ? (
                 <div
                   style={{
                     display: "flex",

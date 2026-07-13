@@ -20,6 +20,9 @@ import {
   setOrchestratorId,
   setPlanStatus,
   setPlanConfig,
+  stashResumable,
+  resumeOrchestrator,
+  discardResumable,
   requestOpenEngine as setRequestOpenEngine,
   type PlanConfigSlice,
   type ControllerMode,
@@ -65,7 +68,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function PlanPanel() {
   const { t } = useI18n();
-  const { orchestratorId, planConfig } = usePlanMode();
+  const { orchestratorId, resumableOrchestratorId, planConfig } = usePlanMode();
   const [snapshot, setSnapshot] = useState<OrchestrationSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +214,9 @@ export function PlanPanel() {
         );
         if (!ok) throw new Error(data.error ?? "确认失败");
         // 讨论已交接给编程引擎，清空编排器状态以便下次以干净状态进入。
+        // 同时清空可恢复 id —— 成功结束的讨论不应再出现在恢复入口。
         setOrchestratorId(null);
+        discardResumable();
         setPlanStatus("idle");
         setPlanMode(false); // 关闭计划模式，回到普通聊天
         setRequestOpenEngine(true); // AppShell 打开引擎面板
@@ -224,14 +229,28 @@ export function PlanPanel() {
     [orchestratorId, busy],
   );
 
-  // 退出计划模式 → 回到普通聊天模式（状态保留在 store 中，可再次进入恢复）。
-  const exitPlan = useCallback(() => setPlanMode(false), []);
+  // 退出计划模式 → 回到普通聊天模式。若存在未完成讨论，把编排器 id 暂存到
+  // resumableOrchestratorId，再次进入时由引导界面显式选择「继续」或「新建」。
+  // stashResumable 无参：内部读 store.orchestratorId，消除闭包陈旧风险。
+  const exitPlan = useCallback(() => {
+    stashResumable();
+    setPlanMode(false);
+  }, []);
   // 新建讨论：清空当前编排器与状态，回到需求输入界面（状态由输入框统一录入）。
   const newDiscussion = useCallback(() => {
     setOrchestratorId(null);
+    discardResumable();
     setPlanStatus("idle");
     setSnapshot(null);
     setError(null);
+  }, []);
+  // 继续上次未完成的讨论：把暂存的编排器 id 移回 orchestratorId，触发 SSE 重连。
+  const resumeDiscussion = useCallback(() => {
+    resumeOrchestrator();
+  }, []);
+  // 放弃暂存的可恢复讨论，回到新建状态（引导界面「放弃并新建」入口）。
+  const discardResumableDiscussion = useCallback(() => {
+    discardResumable();
   }, []);
 
   // 计划模式下始终可见的头部工具条：标题 + 退出按钮，确保任何状态都能退回普通模式。
@@ -302,6 +321,54 @@ export function PlanPanel() {
             {t("plan.enterHint")}
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("plan.persisted")}</div>
+          {/* 可恢复讨论入口：退出计划模式时暂存的未完成编排器，让用户显式选择继续或放弃。 */}
+          {resumableOrchestratorId && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: 12,
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--bg-panel)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "var(--text)" }}>{t("plan.resumeHint")}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={resumeDiscussion}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--accent)",
+                    background: "var(--accent)",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("plan.resume")}
+                </button>
+                <button
+                  onClick={discardResumableDiscussion}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "none",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("plan.discardAndNew")}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

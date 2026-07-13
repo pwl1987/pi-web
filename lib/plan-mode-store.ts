@@ -28,6 +28,11 @@ export interface PlanModeSnapshot {
   planMode: boolean;
   /** 当前讨论编排器 id（null 表示尚未开始讨论） */
   orchestratorId: string | null;
+  /** 可恢复的编排器 id：用户退出计划模式时，未完成讨论的编排器 id 暂存于此。
+   *  再次进入计划模式时，PlanPanel 引导界面据此显示「继续上次讨论 / 新建讨论」入口。
+   *  与 orchestratorId 互斥：退出 → orchestratorId 清空、resumableOrchestratorId 置位；
+   *  恢复 → resumableOrchestratorId 移回 orchestratorId 并清空；新建 → 直接清空 resumableOrchestratorId。 */
+  resumableOrchestratorId: string | null;
   /** 讨论编排器的当前状态（idle/parsing/discussing/synthesizing/awaiting_confirm/executing/done/failed/cancelled）。
    *  供输入框判断「无激活讨论 → 发起」或「等待确认 → 反馈重议」。 */
   planStatus: string;
@@ -40,6 +45,7 @@ export interface PlanModeSnapshot {
 const EMPTY: PlanModeSnapshot = {
   planMode: false,
   orchestratorId: null,
+  resumableOrchestratorId: null,
   planStatus: "idle",
   requestOpenEngine: false,
   planConfig: { ...DEFAULT_PLAN_CONFIG },
@@ -92,6 +98,34 @@ export function setPlanMode(v: boolean): void {
 }
 export function setOrchestratorId(id: string | null): void {
   getPlanModeStore().update({ orchestratorId: id });
+}
+/**
+ * 退出计划模式时暂存当前编排器 id，使其可被恢复。
+ * 内部读取当前 orchestratorId（无参形式，消除调用方闭包陈旧风险），
+ * orchestratorId 清空（退出当前讨论的活跃态），resumableOrchestratorId 置位。
+ * 保留 planStatus 以便恢复后输入框判断交互方式。
+ */
+export function stashResumable(): void {
+  const store = getPlanModeStore();
+  const id = store.getState().orchestratorId;
+  store.update({
+    orchestratorId: null,
+    resumableOrchestratorId: id,
+  });
+}
+/**
+ * 恢复上次未完成的讨论：把暂存的编排器 id 移回 orchestratorId，触发 PlanPanel 的 SSE 重连。
+ * 同时清空 resumableOrchestratorId，避免重复恢复。
+ */
+export function resumeOrchestrator(): void {
+  const store = getPlanModeStore();
+  const id = store.getState().resumableOrchestratorId;
+  if (!id) return;
+  store.update({ orchestratorId: id, resumableOrchestratorId: null });
+}
+/** 放弃可恢复的讨论，清空暂存 id，回到干净的新建状态。 */
+export function discardResumable(): void {
+  getPlanModeStore().update({ resumableOrchestratorId: null });
 }
 export function setPlanStatus(status: string): void {
   getPlanModeStore().update({ planStatus: status });
