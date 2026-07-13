@@ -461,22 +461,26 @@ export function SkillsConfig({ cwd, onClose }: { cwd: string; onClose: () => voi
   const [saveError, setSaveError] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
 
-  const loadSkills = useCallback(() => {
+  const loadSkills = useCallback(async () => {
     setLoading(true);
     setError(null);
-    fetch(`/api/skills?cwd=${encodeURIComponent(cwd)}`)
-      .then((r) => r.json())
-      .then((d: { skills?: Skill[]; error?: string }) => {
-        if (d.error) {
-          setError(d.error);
-          return;
-        }
-        const list = d.skills ?? [];
-        setSkills(list);
-        if (list.length > 0 && !selected) setSelected(list[0].filePath);
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+    try {
+      const { data } = await csrfFetchJson<{ skills?: Skill[]; error?: string }>(
+        `/api/skills?cwd=${encodeURIComponent(cwd)}`,
+        { method: "GET" },
+      );
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      const list = data.skills ?? [];
+      setSkills(list);
+      if (list.length > 0 && !selected) setSelected(list[0].filePath);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
   }, [cwd, selected]);
 
   useEffect(() => {
