@@ -933,6 +933,16 @@ export const en = {
   "plan.consensus": "Consensus reached ({reason})",
   "plan.plans": "Recommendation Plans",
   "plan.confirmAndCode": "Confirm & Start Coding",
+  "plan.chooseMode": "Choose execution mode:",
+  "plan.modeEngine": "Autonomous Engine",
+  "plan.modeEngineShort": "Auto: code→build→test→verify",
+  "plan.modeEngineDesc":
+    "Enter the autonomous coding engine: automatically runs the subsequent coding, build, test, and verify loop. Prerequisites: comet CLI available or degraded, cwd has .comet.yaml. Risks: all five stages run automatically; fallback: pause or clear run records.",
+  "plan.modePlan": "Plan Only",
+  "plan.modePlanShort": "Produce a full plan, execute manually",
+  "plan.modePlanDesc":
+    "Produce only a complete development plan (feature breakdown, file list, interface contracts, key code samples, test & verification steps, rollback plan), saved as Markdown for manual execution. Does not start the engine.",
+  "plan.docSaved": "Plan saved: {path}",
   "plan.enterHint":
     "Describe your requirement in the input box below and send to start a multi-agent discussion",
   "plan.placeholderRequirement": "Describe your requirement, press send to start planning…",

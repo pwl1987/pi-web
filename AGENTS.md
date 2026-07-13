@@ -420,6 +420,7 @@ pi-web 把 [autoplan](https://github.com/lyming99/autoplan)（自动计划生成
 - **分层反腐端口**（复用 `lib/pi` 范式）：业务层只依赖 `UnifiedEnginePort`（`unified-engine-ports.ts`）；其下 `PlanGeneratorPort`(autoplan) / `WorkflowStateMachinePort`(comet) 两能力端口分别由 `autoplan-adapter.ts` / `comet-adapter.ts` 唯一导入对应 vendor；`unified-engine-adapter.ts` 组合两端口做融合编排。
 - **运行时**：`unified-engine-runtime.ts` 复用 `globalThis` 单例 + 10 分钟空闲销毁；以 comet 五阶段状态机为骨架，Build 阶段由引擎调 autoplan 拆任务并驱动执行，完成后触发 comet 守卫校验，通过则流转、失败则把守卫错误回灌 autoplan 重规划。
 - **降级**：当 comet CLI 不可用时，引擎退化为内存态并默认放行守卫，保证可演示；vendor 已被 `tsconfig.json` `exclude` 排除，宿主永不类型检查上游。
+- **人工决策分支**：进入自主编程引擎**不是默认行为**——Plan 讨论模式确认方案时，用户在「自主编程引擎模式」与「普通模式」间二选一；两种模式都先把方案完整落盘到 `docs/plans/<task-slug>.md`（`lib/plan-doc-store.ts`），只有引擎模式才会 `createChange` + `startRun`。详见下文「方案保存位置」。
 - 详见：`docs/VENDOR-INTEGRATION.md`（解耦/融合/更新机制）、`docs/vendor-autoplan.md`、`docs/vendor-comet.md`（源码级分析）。
 
 ## 文档索引（`docs/`）
@@ -436,6 +437,18 @@ pi-web 把 [autoplan](https://github.com/lyming99/autoplan)（自动计划生成
 | `VENDOR-INTEGRATION.md`               | autoplan/comet 解耦·融合·更新机制              |
 | `vendor-autoplan.md`                  | autoplan 源码级分析（纯 Node 核心 + Electron） |
 | `vendor-comet.md`                     | comet 源码级分析（.mjs CLI + YAML 状态机）     |
+| `plans/`                              | 方案存档目录（按 `<task-slug>.md` 命名）       |
+
+### 方案保存位置（Plan 讨论模式 · 确认产物）
+
+用户在 Plan 讨论模式确认方案时，「自主编程引擎」是**人工决策分支**而非默认进入：
+
+- **确认时二选一**（`components/PlanPanel.tsx` 底部操作栏）：
+  - **自主编程引擎模式**（`mode: "engine"`）：落盘方案 → `createChange` + `startRun` → 跳转引擎面板，自动执行 编码→构建→测试→验证 循环。
+  - **普通模式**（`mode: "plan"`）：仅产出完整开发方案、不启动引擎，用户人工确认后再执行。
+- **无论哪种模式**，最终方案都以 Markdown 完整保存到 `docs/plans/<task-slug>.md`（`lib/plan-doc-store.ts`，中文 slug 保留 CJK 字符；落盘位置由 cwd 向上解析仓库根）。
+- **模板含 11 节**：用户需求、确认方案、是否进入引擎（前置/风险/回退）、功能拆分、受影响文件清单、接口契约、依赖变更、关键代码示例、验收标准、测试与验证步骤、回滚方案。验证命令按目标项目 `package.json` scripts 动态探测。
+- 接缝：`app/api/plan/[id]/confirm/route.ts` 的 `mode` 分支。
 
 ---
 

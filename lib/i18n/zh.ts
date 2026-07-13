@@ -926,6 +926,16 @@ export const zh = {
   "plan.consensus": "已达成共识（{reason}）",
   "plan.plans": "推荐方案",
   "plan.confirmAndCode": "确认并开始编码",
+  "plan.chooseMode": "请选择执行模式：",
+  "plan.modeEngine": "自主编程引擎",
+  "plan.modeEngineShort": "自动 编码→构建→测试→验证",
+  "plan.modeEngineDesc":
+    "进入自主编程引擎：自动执行后续编码、构建、测试、验证循环。前置条件：comet CLI 可用或降级、cwd 存在 .comet.yaml。风险：五阶段全自动推进；回退：可暂停或清理运行记录。",
+  "plan.modePlan": "普通模式",
+  "plan.modePlanShort": "仅产出完整开发方案，人工执行",
+  "plan.modePlanDesc":
+    "仅产出完整开发方案（功能拆分、文件清单、接口契约、关键代码示例、测试与验证步骤、回滚方案），保存为 Markdown，由人工确认后再执行。不启动引擎。",
+  "plan.docSaved": "方案已保存：{path}",
   "plan.enterHint": "在下方输入框描述你的需求，发送即可发起多智能体讨论",
   "plan.placeholderRequirement": "描述你的需求，按发送开始计划讨论…",
   "plan.placeholderFeedback": "对当前方案提出修改意见，发送以重新讨论…",

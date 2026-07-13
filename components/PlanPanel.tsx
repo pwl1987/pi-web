@@ -93,6 +93,8 @@ export function PlanPanel() {
   const [snapshot, setSnapshot] = useState<OrchestrationSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 普通模式确认后展示方案文档落盘路径（引擎模式直接跳转引擎面板，无需此提示）。
+  const [docSavedPath, setDocSavedPath] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   // 跟踪当前编排器状态：终态后停止 SSE 重连与对账，避免 404 风暴。
   const statusRef = useRef<string>("idle");
@@ -237,6 +239,9 @@ export function PlanPanel() {
     let disposed = false;
     // 用闭包内 id 避免依赖数组引入 orchestratorId 后的竞态（cleanup 会处理切换）。
     const id = orchestratorId;
+    // 切换到新编排器时重置状态守卫：否则上一个讨论若已终态（statusRef="done"），
+    // connect() 的终态守卫会直接 return，导致新讨论永远无法建立 SSE 连接。
+    statusRef.current = "idle";
 
     const connect = () => {
       if (disposed) return;
@@ -333,23 +338,31 @@ export function PlanPanel() {
   );
 
   const confirmPlan = useCallback(
-    async (planId?: string) => {
+    async (planId: string | undefined, mode: "engine" | "plan") => {
       if (!orchestratorId || busy) return;
       setBusy(true);
       setError(null);
       try {
-        const { ok, data } = await csrfFetchJson<{ error?: string }>(
+        const { ok, data } = await csrfFetchJson<{ error?: string; docPath?: string | null }>(
           `/api/plan/${orchestratorId}/confirm`,
-          { method: "POST", body: { planId } },
+          { method: "POST", body: { planId, mode } },
         );
         if (!ok) throw new Error(data.error ?? "确认失败");
-        // 讨论已交接给编程引擎，清空编排器状态以便下次以干净状态进入。
+        // 讨论已确认，清空编排器状态以便下次以干净状态进入。
         // 同时清空可恢复 id —— 成功结束的讨论不应再出现在恢复入口。
         setOrchestratorId(null);
         discardResumable();
         setPlanStatus("idle");
         setPlanMode(false); // 关闭计划模式，回到普通聊天
-        setRequestOpenEngine(true); // AppShell 打开引擎面板
+        if (mode === "engine") {
+          // 引擎模式：AppShell 打开引擎面板，观察自主编程循环。
+          setRequestOpenEngine(true);
+        } else {
+          // 普通模式：不进引擎。方案文档已落盘，提示用户路径。
+          if (data.docPath) {
+            setDocSavedPath(data.docPath);
+          }
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -770,6 +783,39 @@ export function PlanPanel() {
             {error}
           </div>
         )}
+        {docSavedPath && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              fontSize: 12,
+              color: "var(--text)",
+              background: "var(--color-success-bg, rgba(34,197,94,0.12))",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "8px 10px",
+              marginBottom: 10,
+            }}
+          >
+            <span>{t("plan.docSaved", { path: docSavedPath })}</span>
+            <button
+              onClick={() => setDocSavedPath(null)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: 12,
+                padding: 0,
+              }}
+              aria-label="close"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* 讨论时间线 */}
         {!showPlans && (
@@ -964,24 +1010,70 @@ export function PlanPanel() {
         }}
       >
         {showPlans && s.status !== "done" && (
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button
-              onClick={() => confirmPlan(s.selectedPlanId)}
-              disabled={!s.selectedPlanId || busy}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div
               style={{
-                flex: 1,
-                padding: "9px 14px",
-                borderRadius: 9,
-                border: "none",
-                background: "var(--accent)",
-                color: "#fff",
-                fontWeight: 600,
-                cursor: s.selectedPlanId && !busy ? "pointer" : "not-allowed",
-                opacity: s.selectedPlanId && !busy ? 1 : 0.5,
+                fontSize: 12,
+                color: "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
-              {busy ? t("plan.executing") : t("plan.confirmAndCode")}
-            </button>
+              {t("plan.chooseMode")}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => confirmPlan(s.selectedPlanId, "engine")}
+                disabled={!s.selectedPlanId || busy}
+                title={t("plan.modeEngineDesc")}
+                style={{
+                  flex: 1,
+                  padding: "9px 12px",
+                  borderRadius: 9,
+                  border: "1px solid var(--accent)",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: s.selectedPlanId && !busy ? "pointer" : "not-allowed",
+                  opacity: s.selectedPlanId && !busy ? 1 : 0.5,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span>{busy ? t("plan.executing") : t("plan.modeEngine")}</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.9 }}>
+                  {t("plan.modeEngineShort")}
+                </span>
+              </button>
+              <button
+                onClick={() => confirmPlan(s.selectedPlanId, "plan")}
+                disabled={!s.selectedPlanId || busy}
+                title={t("plan.modePlanDesc")}
+                style={{
+                  flex: 1,
+                  padding: "9px 12px",
+                  borderRadius: 9,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-panel)",
+                  color: "var(--text)",
+                  fontWeight: 600,
+                  cursor: s.selectedPlanId && !busy ? "pointer" : "not-allowed",
+                  opacity: s.selectedPlanId && !busy ? 1 : 0.5,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span>{t("plan.modePlan")}</span>
+                <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                  {t("plan.modePlanShort")}
+                </span>
+              </button>
+            </div>
           </div>
         )}
 

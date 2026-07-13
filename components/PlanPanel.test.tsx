@@ -376,3 +376,435 @@ describe("plan-mode-store localStorage 持久化", () => {
     expect(store.getState().planMode).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PlanPanel SSE 对账 / 重连 / 终态守卫 行为测试
+// 覆盖修复 1（components/PlanPanel.tsx 的 SSE useEffect 防御机制）：
+//   - snapshot 首帧后渲染时间线（非骨架屏）
+//   - 细粒度事件触发 refresh 兜底全量拉取
+//   - done 事件直接更新快照并进入终态
+//   - 终态后 SSE 关闭不重连（避免 404 风暴）
+//   - 非终态 CLOSED 后 1s 手动重连
+//   - 15s 对账轮询触发 refresh
+// ---------------------------------------------------------------------------
+
+/** 可控的 EventSource 桩：支持 readyState、onerror、手动派发消息、CLOSED 触发重连检测。 */
+class ControllableES {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSED = 2;
+  onmessage: ((ev: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onopen: (() => void) | null = null;
+  readyState = ControllableES.OPEN;
+  url: string;
+  closed = false;
+  instances: ControllableES[];
+  constructor(url: string) {
+    this.url = url;
+    this.instances = getESInstances();
+    this.instances.push(this);
+  }
+  close() {
+    this.closed = true;
+    this.readyState = ControllableES.CLOSED;
+  }
+  /** 测试侧手动派发一条 SSE 消息。 */
+  emit(obj: unknown) {
+    this.onmessage?.({ data: JSON.stringify(obj) });
+  }
+  /** 测试侧触发 onerror，可选设置 readyState。 */
+  fail(readyState?: number) {
+    if (readyState !== undefined) this.readyState = readyState;
+    this.onerror?.();
+  }
+}
+
+/** 读取当前测试收集到的 EventSource 实例列表（用 unknown 二次断言规避 TS2352）。 */
+function getESInstances(): ControllableES[] {
+  return (globalThis as unknown as { __esInstances?: ControllableES[] }).__esInstances ?? [];
+}
+
+describe("PlanPanel SSE 对账与重连", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    getPlanModeStore().reset();
+    setPlanMode(true);
+    (globalThis as unknown as { __esInstances: ControllableES[] }).__esInstances = [];
+    vi.stubGlobal("EventSource", ControllableES);
+    vi.stubGlobal("EventSourceClosed", ControllableES.CLOSED);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+    getPlanModeStore().reset();
+    localStorage.clear();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** 构造一个最小可渲染的 OrchestrationSnapshot。 */
+  function makeSnapshot(overrides: Partial<Record<string, unknown>> = {}): unknown {
+    return {
+      id: "orc-sse",
+      status: "discussing",
+      requirement: "测试需求",
+      agents: [],
+      rounds: [],
+      messages: [],
+      plans: [],
+      tasks: [],
+      selectedPlanId: null,
+      convergence: { converged: false, reason: "none" },
+      control: undefined,
+      config: { maxRounds: 4 },
+      updatedAt: Date.now(),
+      ...overrides,
+    };
+  }
+
+  it("snapshot 首帧后渲染讨论时间线（不再是骨架屏）", async () => {
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    const { container } = render(<PlanPanel />);
+    // 首帧：snapshot 未到，显示骨架（skeleton class）
+    expect(container.querySelector(".skeleton")).toBeTruthy();
+
+    // SSE 首帧推送 snapshot
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    es.emit({ type: "snapshot", snapshot: makeSnapshot({ status: "discussing" }) });
+
+    // snapshot 到达后：骨架消失，状态条显示 discussing 文案，退出按钮可点
+    await vi.waitFor(() => {
+      expect(container.querySelector(".skeleton")).toBeNull();
+      expect(screen.getAllByText(/plan\.discussing/).length).toBeGreaterThan(0);
+      expect(container.querySelector('[title="plan.exit"]')).toBeTruthy();
+    });
+  });
+
+  it("细粒度事件（message）触发 refresh 兜底全量拉取", async () => {
+    const mockCsrf = await import("@/lib/csrf-fetch");
+    // snapshot 首帧 + 后续 GET /api/plan/[id] 返回 awaiting_confirm 快照（带 plans 渲染）
+    const freshSnapshot = makeSnapshot({
+      status: "awaiting_confirm",
+      requirement: "对账后的需求",
+      plans: [
+        {
+          id: "p1",
+          title: "方案A",
+          summary: "s",
+          confidence: 0.9,
+          pros: [],
+          cons: [],
+          scenarios: [],
+        },
+      ],
+    });
+    const fetchSpy = vi.mocked(mockCsrf.csrfFetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: freshSnapshot,
+    });
+
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    // 先推 snapshot 建立基线（discussing，无 plans）
+    es.emit({ type: "snapshot", snapshot: makeSnapshot({ status: "discussing" }) });
+
+    // 记录 refresh 前对 /api/plan/orc-sse 的 GET 调用数
+    const planGetCallsBefore = fetchSpy.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0] === "/api/plan/orc-sse",
+    ).length;
+
+    // 推一条细粒度 message 事件 → 应触发 refresh（GET /api/plan/orc-sse）
+    es.emit({ type: "message", message: { id: "m1" }, at: 1 });
+
+    // refresh 拉回 awaiting_confirm 快照，渲染方案卡「方案A」
+    await vi.waitFor(() => {
+      expect(screen.getByText("方案A")).toBeTruthy();
+      const planGetCallsAfter = fetchSpy.mock.calls.filter(
+        (c) => typeof c[0] === "string" && c[0] === "/api/plan/orc-sse",
+      ).length;
+      expect(planGetCallsAfter).toBeGreaterThan(planGetCallsBefore);
+    });
+  });
+
+  it("done 事件直接更新快照并标记终态", async () => {
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    es.emit({ type: "snapshot", snapshot: makeSnapshot({ status: "awaiting_confirm" }) });
+
+    // done 事件携带终态快照
+    es.emit({
+      type: "done",
+      snapshot: makeSnapshot({ status: "done" }),
+      at: 2,
+    });
+
+    // planStatus 应被同步为 done（store 层面可查）
+    await vi.waitFor(() => {
+      expect(getPlanModeStore().getState().planStatus).toBe("done");
+    });
+  });
+
+  it("终态后 SSE CLOSED 不重连（避免对已结束编排器触发 404）", async () => {
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    // 进入终态
+    es.emit({ type: "snapshot", snapshot: makeSnapshot({ status: "done" }) });
+    await vi.waitFor(() => {
+      expect(getPlanModeStore().getState().planStatus).toBe("done");
+    });
+
+    const instancesBefore = getESInstances().length;
+    // 模拟服务端关闭流 + onerror
+    es.fail(ControllableES.CLOSED);
+    // 快进超过重连延迟
+    vi.advanceTimersByTime(2000);
+
+    // 不应新建 EventSource（无重连）
+    const instancesAfter = getESInstances().length;
+    expect(instancesAfter).toBe(instancesBefore);
+  });
+
+  it("非终态 CLOSED 后 1 秒手动重连（新建 EventSource）", async () => {
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    // 非终态快照
+    es.emit({ type: "snapshot", snapshot: makeSnapshot({ status: "discussing" }) });
+
+    // 模拟流被关闭（非终态）
+    es.fail(ControllableES.CLOSED);
+    // 快进 1s+ 触发重连
+    vi.advanceTimersByTime(1100);
+
+    await vi.waitFor(() => {
+      // 应新建第二个 EventSource（重连）
+      expect(getESInstances()).toHaveLength(2);
+    });
+  });
+
+  it("15 秒对账轮询触发 refresh（兜底漏事件）", async () => {
+    const mockCsrf = await import("@/lib/csrf-fetch");
+    const refreshedSnapshot = makeSnapshot({ status: "discussing", requirement: "对账后的需求" });
+    const fetchSpy = vi.mocked(mockCsrf.csrfFetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: refreshedSnapshot,
+    });
+
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    es.emit({ type: "snapshot", snapshot: makeSnapshot({ status: "discussing" }) });
+
+    // 记录对账前的 GET 调用数
+    const callsBeforeReconcile = fetchSpy.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0] === "/api/plan/orc-sse",
+    ).length;
+
+    // 快进 16 秒触发对账轮询
+    vi.advanceTimersByTime(16_000);
+
+    await vi.waitFor(() => {
+      const callsAfter = fetchSpy.mock.calls.filter(
+        (c) => typeof c[0] === "string" && c[0] === "/api/plan/orc-sse",
+      ).length;
+      expect(callsAfter).toBeGreaterThan(callsBeforeReconcile);
+    });
+  });
+
+  it("A 终态后切换到 B，B 应能建立 SSE 连接（statusRef 必须重置）", async () => {
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-A");
+    const { rerender } = render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const esA = getESInstances()[0];
+    // A 进入终态
+    esA.emit({ type: "snapshot", snapshot: makeSnapshot({ id: "orc-A", status: "done" }) });
+    await vi.waitFor(() => {
+      expect(getPlanModeStore().getState().planStatus).toBe("done");
+    });
+
+    // 切换到讨论 B
+    setOrchestratorId("orc-B");
+    rerender(<PlanPanel />);
+
+    // B 应建立新的 SSE 连接（实例数 >= 2）
+    await vi.waitFor(() => {
+      expect(getESInstances().length).toBeGreaterThanOrEqual(2);
+    });
+  });
+});
+
+// —— 双模式确认：自主编程引擎 vs 普通模式 ——
+// 独立 describe 块（真实 timers），避免与 SSE 块的 fake timers 冲突。
+describe("PlanPanel 双模式确认（engine / plan）", () => {
+  beforeEach(async () => {
+    getPlanModeStore().reset();
+    setPlanMode(true);
+    (globalThis as unknown as { __esInstances: ControllableES[] }).__esInstances = [];
+    vi.stubGlobal("EventSource", ControllableES);
+    vi.stubGlobal("EventSourceClosed", ControllableES.CLOSED);
+    // 清理共享 csrfFetchJson mock 的调用记录与返回值，避免跨用例污染。
+    const mockCsrf = await import("@/lib/csrf-fetch");
+    vi.mocked(mockCsrf.csrfFetchJson).mockClear();
+    vi.mocked(mockCsrf.csrfFetchJson).mockResolvedValue({ ok: true, status: 200, data: {} });
+  });
+
+  afterEach(() => {
+    cleanup();
+    getPlanModeStore().reset();
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function makeAwaitingSnapshot(selectedPlanId = "p1"): unknown {
+    return {
+      id: "orc-sse",
+      status: "awaiting_confirm",
+      requirement: "测试需求",
+      agents: [],
+      rounds: [],
+      messages: [],
+      plans: [
+        {
+          id: "p1",
+          title: "方案A",
+          summary: "s",
+          confidence: 0.9,
+          pros: [],
+          cons: [],
+          scenarios: [],
+        },
+      ],
+      tasks: [],
+      selectedPlanId,
+      convergence: { converged: false, reason: "none" },
+      control: undefined,
+      config: { maxRounds: 4 },
+      updatedAt: Date.now(),
+    };
+  }
+
+  it("awaiting_confirm 选中方案后渲染「引擎 / 普通」两个模式按钮", async () => {
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    es.emit({ type: "snapshot", snapshot: makeAwaitingSnapshot("p1") });
+
+    await vi.waitFor(() => {
+      // i18n mock 返回键名，故按 plan.modeEngine / plan.modePlan 查找。
+      expect(screen.getByRole("button", { name: /plan\.modeEngine/ })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /plan\.modePlan/ })).toBeTruthy();
+    });
+  });
+
+  it("点击「普通模式」：confirm 带 mode=plan，不触发 requestOpenEngine", async () => {
+    const mockCsrf = await import("@/lib/csrf-fetch");
+    vi.mocked(mockCsrf.csrfFetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { ok: true, mode: "plan", docPath: "/tmp/proj/docs/plans/方案A.md" },
+    });
+
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    es.emit({ type: "snapshot", snapshot: makeAwaitingSnapshot("p1") });
+
+    const planBtn = await screen.findByRole("button", { name: /plan\.modePlan/ });
+    fireEvent.click(planBtn);
+
+    // confirm 调用应含 mode: "plan"
+    await vi.waitFor(() => {
+      const confirmCall = vi
+        .mocked(mockCsrf.csrfFetchJson)
+        .mock.calls.find((c) => typeof c[0] === "string" && c[0].endsWith("/confirm"));
+      if (!confirmCall) throw new Error("confirm 未被调用");
+      const body = confirmCall[1]?.body as Record<string, unknown> | undefined;
+      expect(body?.mode).toBe("plan");
+    });
+    // 普通模式不应打开引擎面板
+    expect(getPlanModeStore().getState().requestOpenEngine).toBe(false);
+  });
+
+  it("点击「引擎模式」：confirm 带 mode=engine 且触发 requestOpenEngine", async () => {
+    const mockCsrf = await import("@/lib/csrf-fetch");
+    vi.mocked(mockCsrf.csrfFetchJson).mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { ok: true, mode: "engine", runId: "r1", status: "running", docPath: "/tmp/p.md" },
+    });
+
+    const { render } = await import("@testing-library/react");
+    setOrchestratorId("orc-sse");
+    render(<PlanPanel />);
+
+    await vi.waitFor(() => {
+      expect(getESInstances()).toHaveLength(1);
+    });
+    const es = getESInstances()[0];
+    es.emit({ type: "snapshot", snapshot: makeAwaitingSnapshot("p1") });
+
+    const engineBtn = await screen.findByRole("button", { name: /plan\.modeEngine/ });
+    fireEvent.click(engineBtn);
+
+    await vi.waitFor(() => {
+      const confirmCall = vi
+        .mocked(mockCsrf.csrfFetchJson)
+        .mock.calls.find((c) => typeof c[0] === "string" && c[0].endsWith("/confirm"));
+      if (!confirmCall) throw new Error("confirm 未被调用");
+      const body = confirmCall[1]?.body as Record<string, unknown> | undefined;
+      expect(body?.mode).toBe("engine");
+      // 引擎模式应打开引擎面板
+      expect(getPlanModeStore().getState().requestOpenEngine).toBe(true);
+    });
+  });
+});
