@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useAsync } from "@/hooks/useAsync";
+import { useSave } from "@/hooks/useSave";
 import {
   PLUGIN_CONFIG_DESCRIPTORS,
   type PluginConfigDescriptor,
@@ -182,7 +183,7 @@ export function PluginConfigPage({
     PLUGIN_CONFIG_DESCRIPTORS[`npm:${source.replace(/^npm:/, "")}`];
 
   const [values, setValues] = useState<ConfigState | null>(null);
-  const [saving, setSaving] = useState(false);
+  const { saving, startSave, endSave } = useSave();
   const [message, setMessage] = useState<string | null>(null);
   const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
 
@@ -208,7 +209,7 @@ export function PluginConfigPage({
 
   const save = async () => {
     if (!values) return;
-    setSaving(true);
+    startSave();
     setError(null);
     setMessage(null);
     try {
@@ -218,10 +219,10 @@ export function PluginConfigPage({
       );
       if (!ok) throw new Error(data.error ?? `HTTP ${status}`);
       setMessage(t("plugins.configSaved"));
+      endSave(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
+      endSave(false);
     }
   };
 

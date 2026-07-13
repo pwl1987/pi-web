@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { useAsync } from "@/hooks/useAsync";
+import { useSave } from "@/hooks/useSave";
 import { ConfigListRow, ModalButton, SaveButton } from "@/components/ui/ConfigModal";
 // Color icons (have their own fill colors — no background needed)
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
@@ -1426,24 +1427,22 @@ function ApiKeyDetail({
   onRefresh: () => void;
 }) {
   const [apiKey, setApiKey] = useState("");
-  const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedOk, setSavedOk] = useState(false);
+  const { saving, savedOk, startSave, endSave } = useSave();
   const { t } = useI18n();
 
   // Reset state when provider changes
   useEffect(() => {
     setApiKey("");
     setError(null);
-    setSavedOk(false);
-  }, [provider.id]);
+    endSave(false);
+  }, [provider.id, endSave]);
 
   const handleSave = useCallback(async () => {
     if (!apiKey.trim()) return;
-    setSaving(true);
+    startSave();
     setError(null);
-    setSavedOk(false);
     try {
       const {
         ok,
@@ -1455,18 +1454,17 @@ function ApiKeyDetail({
       );
       if (!ok || d.error) {
         setError(d.error ?? `HTTP ${status}`);
+        endSave(false);
       } else {
         setApiKey("");
-        setSavedOk(true);
-        setTimeout(() => setSavedOk(false), 2000);
+        endSave(true);
         onRefresh();
       }
     } catch (e) {
       setError(String(e));
-    } finally {
-      setSaving(false);
+      endSave(false);
     }
-  }, [apiKey, provider.id, onRefresh]);
+  }, [apiKey, provider.id, onRefresh, startSave, endSave]);
 
   const handleRemove = useCallback(async () => {
     setRemoving(true);
@@ -1966,9 +1964,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
   const { loading, run } = useAsync(undefined, { initialLoading: true });
-  const [saving, setSaving] = useState(false);
+  const { saving, savedOk, startSave, endSave } = useSave();
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [savedOk, setSavedOk] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
@@ -2108,9 +2105,8 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
   }, []);
 
   const handleSave = useCallback(async () => {
-    setSaving(true);
+    startSave();
     setSaveError(null);
-    setSavedOk(false);
     try {
       const {
         ok,
@@ -2120,17 +2116,17 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
         method: "PUT",
         body: config,
       });
-      if (!ok || d.error) setSaveError(d.error ?? `HTTP ${status}`);
-      else {
-        setSavedOk(true);
-        setTimeout(() => setSavedOk(false), 2000);
+      if (!ok || d.error) {
+        setSaveError(d.error ?? `HTTP ${status}`);
+        endSave(false);
+      } else {
+        endSave(true);
       }
     } catch (e) {
       setSaveError(String(e));
-    } finally {
-      setSaving(false);
+      endSave(false);
     }
-  }, [config]);
+  }, [config, startSave, endSave]);
 
   const providers = Object.entries(config.providers ?? {});
   const activeOAuth = oauthProviders.filter((p) => p.loggedIn);
