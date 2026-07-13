@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { useAsync } from "@/hooks/useAsync";
 
 interface Props {
   cwd: string;
@@ -28,38 +29,29 @@ export function AgentsConfig({ cwd, onClose }: Props) {
   const [mode, setMode] = useState<Mode>("edit");
   const [content, setContent] = useState("");
   const [exists, setExists] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizedContent, setOptimizedContent] = useState("");
-  const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
 
   const loadFile = useCallback(async () => {
-    setLoading(true);
-    setError("");
     setDirty(false);
     setMode("edit");
-    try {
-      const params = new URLSearchParams({ file: fileType, level });
-      if (level === "project") params.set("cwd", cwd);
-      const { data } = await csrfFetchJson<{ content?: string; exists?: boolean }>(
-        `/api/agents-md?${params}`,
-        { method: "GET" },
-      );
-      setContent(data.content ?? "");
-      setExists(data.exists ?? false);
-    } catch {
-      setError("加载失败");
-    } finally {
-      setLoading(false);
-    }
+    const params = new URLSearchParams({ file: fileType, level });
+    if (level === "project") params.set("cwd", cwd);
+    const { data } = await csrfFetchJson<{ content?: string; exists?: boolean }>(
+      `/api/agents-md?${params}`,
+      { method: "GET" },
+    );
+    setContent(data.content ?? "");
+    setExists(data.exists ?? false);
   }, [fileType, level, cwd]);
 
   useEffect(() => {
-    void loadFile();
-  }, [loadFile]);
+    void run(loadFile);
+  }, [loadFile, run]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
