@@ -6,6 +6,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useAudio } from "@/hooks/useAudio";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { SectionHeader, Row, ToggleRow } from "@/components/ui/FormControls";
+import { useSave } from "@/hooks/useSave";
 
 interface PiSettings {
   defaultProvider: string | null;
@@ -87,8 +88,7 @@ export function SettingsPanel({
 
   const [piSettings, setPiSettings] = useState<PiSettings | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [savedFlash, setSavedFlash] = useState(false);
+  const { saving, savedOk: savedFlash, startSave, endSave } = useSave({ savedTimeoutMs: 1500 });
 
   // Load pi settings + model list on mount.
   useEffect(() => {
@@ -122,20 +122,21 @@ export function SettingsPanel({
     })();
   }, []);
 
-  const saveField = useCallback(async (field: string, value: unknown) => {
-    setSaving(true);
-    try {
-      await csrfFetchJson("/api/settings", {
-        method: "POST",
-        body: { [field]: value },
-      });
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 1500);
-    } catch {
-      /* ignore */
-    }
-    setSaving(false);
-  }, []);
+  const saveField = useCallback(
+    async (field: string, value: unknown) => {
+      startSave();
+      try {
+        await csrfFetchJson("/api/settings", {
+          method: "POST",
+          body: { [field]: value },
+        });
+        endSave(true);
+      } catch {
+        endSave(false);
+      }
+    },
+    [startSave, endSave],
+  );
 
   const updatePi = (field: keyof PiSettings, value: unknown) => {
     setPiSettings((prev) => (prev ? { ...prev, [field]: value } : prev));

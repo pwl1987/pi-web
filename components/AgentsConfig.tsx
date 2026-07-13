@@ -5,6 +5,7 @@ import { MarkdownBody } from "./MarkdownBody";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { useAsync } from "@/hooks/useAsync";
+import { useSave } from "@/hooks/useSave";
 
 interface Props {
   cwd: string;
@@ -30,8 +31,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
   const [content, setContent] = useState("");
   const [exists, setExists] = useState(true);
   const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
-  const [saving, setSaving] = useState(false);
-  const [savedFlash, setSavedFlash] = useState(false);
+  const { saving, savedOk: savedFlash, startSave, endSave } = useSave({ savedTimeoutMs: 1500 });
   const [optimizing, setOptimizing] = useState(false);
   const [optimizedContent, setOptimizedContent] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -54,7 +54,7 @@ export function AgentsConfig({ cwd, onClose }: Props) {
   }, [loadFile, run]);
 
   const handleSave = useCallback(async () => {
-    setSaving(true);
+    startSave();
     setError("");
     try {
       const r = await csrfFetchJson("/api/agents-md", {
@@ -72,13 +72,12 @@ export function AgentsConfig({ cwd, onClose }: Props) {
       }
       setExists(true);
       setDirty(false);
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 1500);
+      endSave(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      endSave(false);
     }
-    setSaving(false);
-  }, [fileType, level, cwd, content]);
+  }, [fileType, level, cwd, content, startSave, endSave]);
 
   const handleOptimize = useCallback(async () => {
     setOptimizing(true);
