@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { SaveButton } from "@/components/ui/ConfigModal";
+import { btnStyle } from "@/lib/styles";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -221,15 +222,6 @@ export function WebSearchConfigPanel() {
   );
 }
 
-const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "5px 12px",
-  fontSize: 11,
-  color: "var(--text)",
-  cursor: "pointer",
-};
 const inputStyle: React.CSSProperties = {
   flex: 1,
   padding: "5px 8px",

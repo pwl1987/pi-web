@@ -1,0 +1,41 @@
+export const btnStyle: React.CSSProperties = {
+  background: "var(--bg-hover)",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "5px 12px",
+  fontSize: 11,
+  color: "var(--text)",
+  cursor: "pointer",
+};
+
+export const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "5px 8px",
+  fontSize: 11,
+  fontFamily: "var(--font-mono)",
+  background: "var(--bg)",
+  border: "1px solid var(--border)",
+  borderRadius: 5,
+  color: "var(--text)",
+  boxSizing: "border-box",
+};
+
+export const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  fontFamily: "inherit",
+};
+
+export const cardStyle: React.CSSProperties = {
+  background: "var(--bg-panel)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: 10,
+};
+
+export const statusBannerStyle: React.CSSProperties = {
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: 10,
+  marginBottom: 12,
+  fontSize: 12,
+};

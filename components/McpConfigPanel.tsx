@@ -6,6 +6,7 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { BUILTIN_MCP_TEMPLATES, type McpServerEntry, type McpTemplate } from "@/lib/mcp-templates";
 import { EnvProvisionButton } from "@/components/EnvProvisionButton";
+import { btnStyle, cardStyle, statusBannerStyle } from "@/lib/styles";
 
 interface McpServerInfo {
   name: string;
@@ -1127,13 +1128,6 @@ function TemplateRow({
   );
 }
 
-const statusBannerStyle: React.CSSProperties = {
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 10,
-  marginBottom: 12,
-  fontSize: 12,
-};
 const readyPillStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -1154,21 +1148,6 @@ const readyDotStyle: React.CSSProperties = {
   borderRadius: "50%",
   background: "#16a34a",
   boxShadow: "0 0 0 3px rgba(16,163,74,0.18)",
-};
-const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "5px 12px",
-  fontSize: 11,
-  color: "var(--text)",
-  cursor: "pointer",
-};
-const cardStyle: React.CSSProperties = {
-  background: "var(--bg-panel)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 10,
 };
 const inputStyle: React.CSSProperties = {
   width: "100%",
