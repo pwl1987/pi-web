@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useAsync } from "@/hooks/useAsync";
 import type { SkillSearchResult } from "@/lib/api-types";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { ConfigModal, ConfigListRow, ModalButton } from "@/components/ui/ConfigModal";
@@ -454,38 +455,28 @@ function AddSkillPanel({ cwd, onInstalled }: { cwd: string; onInstalled: () => v
 export function SkillsConfig({ cwd, onClose }: { cwd: string; onClose: () => void }) {
   const { t } = useI18n();
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, run } = useAsync(undefined, { initialLoading: true });
   const [selected, setSelected] = useState<string | null>(null);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
 
   const loadSkills = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await csrfFetchJson<{ skills?: Skill[]; error?: string }>(
-        `/api/skills?cwd=${encodeURIComponent(cwd)}`,
-        { method: "GET" },
-      );
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
-      const list = data.skills ?? [];
-      setSkills(list);
-      if (list.length > 0 && !selected) setSelected(list[0].filePath);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
+    const { data } = await csrfFetchJson<{ skills?: Skill[]; error?: string }>(
+      `/api/skills?cwd=${encodeURIComponent(cwd)}`,
+      { method: "GET" },
+    );
+    if (data.error) {
+      throw new Error(data.error);
     }
+    const list = data.skills ?? [];
+    setSkills(list);
+    if (list.length > 0 && !selected) setSelected(list[0].filePath);
   }, [cwd, selected]);
 
   useEffect(() => {
-    loadSkills();
-  }, [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+    void run(loadSkills);
+  }, [cwd, run]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = useCallback(async (skill: Skill) => {
     const next = !skill.disableModelInvocation;

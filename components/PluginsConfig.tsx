@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { useAsync } from "@/hooks/useAsync";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
 import { PluginConfigPage } from "@/components/PluginConfigPage";
 import { ALL_PLUGINS } from "@/lib/recommended-plugins";
@@ -716,8 +717,7 @@ export function PluginsConfig({
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [data, setData] = useState<PluginsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, run } = useAsync(undefined, { initialLoading: true });
   const [selected, setSelected] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
   const [configuring, setConfiguring] = useState<PluginPackageInfo | null>(null);
@@ -758,34 +758,26 @@ export function PluginsConfig({
   }, [packages]);
 
   const loadPlugins = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const {
-        ok,
-        status,
-        data: next,
-      } = await csrfFetchJson<PluginsResponse & { error?: string }>(
-        `/api/plugins?cwd=${encodeURIComponent(cwd)}`,
-        { method: "GET" },
-      );
-      if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
-      setData(next);
-      setAddMode((current) => next.packages.length === 0 || current);
-      setSelected((current) => {
-        if (current && next.packages.some((pkg) => packageKey(pkg) === current)) return current;
-        return next.packages[0] ? packageKey(next.packages[0]) : null;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
+    const {
+      ok,
+      status,
+      data: next,
+    } = await csrfFetchJson<PluginsResponse & { error?: string }>(
+      `/api/plugins?cwd=${encodeURIComponent(cwd)}`,
+      { method: "GET" },
+    );
+    if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
+    setData(next);
+    setAddMode((current) => next.packages.length === 0 || current);
+    setSelected((current) => {
+      if (current && next.packages.some((pkg) => packageKey(pkg) === current)) return current;
+      return next.packages[0] ? packageKey(next.packages[0]) : null;
+    });
   }, [cwd]);
 
   useEffect(() => {
-    void loadPlugins();
-  }, [loadPlugins]);
+    void run(loadPlugins);
+  }, [loadPlugins, run]);
 
   const runAction = useCallback(
     async (action: PluginAction, pkg: PluginPackageInfo) => {
