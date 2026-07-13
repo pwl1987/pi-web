@@ -112,9 +112,36 @@ function localizeSandboxLines(lines: string[] | undefined): string[] {
   });
 }
 
+// --- select 值反向映射 ------------------------------------------------------
+// @gotgenes/pi-permission-system 的权限弹窗用 ui.select() 呈现固定英文选项
+// （"Yes"/"No"/...），并用严格相等 === 比对回传值判定 allow/deny。i18n 汉化了
+// 显示文本（"Yes"→"是"）就破坏了 === 比对，导致插件总落入默认 deny 分支，
+// 输出 "User denied tool '...'"。这里按 request id 维护"中文显示值 → 英文原值"
+// 的反向映射：localizeSelectRequest 汉化时登记，respondToExtensionUi 回传时还原。
+const selectValueMaps = new Map<string, Map<string, string>>();
+
+/** 登记 select 请求的中文显示值 → 英文原值映射（仅在有汉化时调用）。 */
+export function registerSelectValueMap(id: string, displayToOriginal: Map<string, string>): void {
+  selectValueMaps.set(id, displayToOriginal);
+}
+
+/** 把 select 响应的中文显示值还原成插件期待的英文原值。
+ *  无映射（非 permission select，或未汉化）原样返回。消费即清，防泄漏。 */
+export function resolveSelectValue(id: string, displayValue: string): string {
+  const map = selectValueMaps.get(id);
+  if (!map) return displayValue;
+  const original = map.get(displayValue);
+  selectValueMaps.delete(id);
+  return original ?? displayValue;
+}
+
 // --- @gotgenes/pi-permission-system chrome -----------------------------------
 const PERMISSION_TRANSLATIONS: Readonly<Record<string, string>> = {
   "Permission Required": "需要权限",
+  "Permission Required (Subagent)": "需要权限（子智能体）",
+  "Apply this session grant to:": "将此会话授权应用于：",
+  "Share why this request was denied (optional).": "分享拒绝此请求的原因（可选）。",
+  "Reason shown back to the agent": "将展示给智能体的原因",
   "Allow this read?": "允许此读取操作？",
   Yes: "是",
   "Yes, for this session": "是，仅本次会话",
@@ -134,11 +161,48 @@ function localizePermissionConfirm(request: ExtensionUiRequest): ExtensionUiRequ
 }
 
 // --- select / input / editor dialog chrome -----------------------------------
+// PERMISSION_TRANSLATIONS 按 key 长度降序预排序：长短语优先匹配，避免短前缀抢先。
+// 例如 "Yes" 会先于 "Yes" 把 "Yes, for this session" 替换成 "是, for this session"，
+// 导致长短语 key 不再 includes。降序后 "Yes, for this session" 先匹配完整短语。
+const PERMISSION_ENTRIES_SORTED = Object.entries(PERMISSION_TRANSLATIONS).sort(
+  (a, b) => b[0].length - a[0].length,
+);
+
+/** 把单条文本按 permission 短语（长优先）+ 通用词顺序汉化。 */
+function applyPermissionThenCommon(text: string): string {
+  let out = text;
+  for (const [en, zh] of PERMISSION_ENTRIES_SORTED) {
+    if (out.includes(en)) out = out.split(en).join(zh);
+  }
+  return applyCommonTranslations(out);
+}
+
 function localizeSelectRequest(request: ExtensionUiRequest): ExtensionUiRequest {
   if (request.method !== "select") return request;
-  const title = applyCommonTranslations(request.title);
-  const options = request.options.map(applyCommonTranslations);
+  // permission-system 的 select（title 含 "Permission"）用 permission 专有短语 +
+  // 通用词汉化；其余 select 仅用通用词。permission 短语须先于通用词应用，否则
+  // "Yes, for this session" 会被 COMMON 的 "Yes"→"是" 拆成 "是, for this session"。
+  const isPermission = request.title.includes("Permission");
+  const title = isPermission
+    ? applyPermissionThenCommon(request.title)
+    : applyCommonTranslations(request.title);
+  const translate = isPermission ? applyPermissionThenCommon : applyCommonTranslations;
+  // 汉化 options 时建立"中文显示值 → 英文原值"反向映射。
+  // permission-system 的 select 用 === 比对英文常量，回传汉化值会误判 deny；
+  // 登记后由 resolveSelectValue 在响应回传时还原英文原值。
+  const displayToOriginal = new Map<string, string>();
+  const options = request.options.map((original) => {
+    const display = translate(original);
+    if (display !== original) displayToOriginal.set(display, original);
+    return display;
+  });
+  if (displayToOriginal.size > 0) registerSelectValueMap(request.id, displayToOriginal);
   return { ...request, title, options };
+}
+
+/** 仅供测试：清空 select 值映射（避免用例间串扰）。 */
+export function _clearSelectValueMapsForTest(): void {
+  selectValueMaps.clear();
 }
 
 function localizeInputRequest(request: ExtensionUiRequest): ExtensionUiRequest {

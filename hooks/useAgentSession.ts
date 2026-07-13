@@ -13,7 +13,7 @@ import type {
   SessionTreeNode,
 } from "@/lib/types";
 import { normalizeToolCalls } from "@/lib/normalize";
-import { localizeExtensionUiRequest } from "@/lib/plugin-ui-i18n";
+import { localizeExtensionUiRequest, resolveSelectValue } from "@/lib/plugin-ui-i18n";
 import type { ContextUsage } from "@/lib/pi-types";
 import {
   streamReducer,
@@ -627,11 +627,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const sid = sessionIdRef.current;
       setExtensionDialog((current) => (current?.id === request.id ? null : current));
       if (!sid) return;
+      // select 响应：把汉化显示值还原成插件期待的英文原值。
+      // permission-system 的 select 用 === 比对英文常量，汉化值会误判 deny。
+      const payload =
+        "value" in response ? { value: resolveSelectValue(request.id, response.value) } : response;
       try {
         await sendAgentCommand(sid, {
           type: "extension_ui_response",
           id: request.id,
-          ...response,
+          ...payload,
         });
       } catch (e) {
         console.error("Failed to send extension UI response:", e);
