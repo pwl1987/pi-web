@@ -1821,16 +1821,225 @@ $ npm run test:node
 
 ---
 
-## 五、下一会话起点
+## 五、新的重构待办队列
 
-**API 路由错误处理迁移已全部完成！**
+### 扫描结果总结
 
-所有 API 路由现在都使用 `errorResponse` 统一处理错误响应。
+经过全面扫描，发现以下潜在的重复模式和重构机会：
 
-下一会话应进入 **新的重构阶段**：
+#### 已确认的共享基础（无需重复创建）
 
-1. 扫描其他潜在的重复模式（如空状态、确认对话框等）
-2. 检查 lib/ 目录中其他可抽取的共享工具函数
-3. 检查 hooks/ 目录中其他可抽取的共享逻辑
-4. 检查 components/ 目录中其他可抽取的共享组件
-5. 建立新的待办队列
+| 文件                             | 类型        | 用途                                                                                    |
+| -------------------------------- | ----------- | --------------------------------------------------------------------------------------- |
+| `lib/api-utils.ts`               | 工具函数    | API 响应标准化（errorResponse, jsonOk）— 已完成全部迁移                                 |
+| `lib/styles.ts`                  | 样式对象    | 共享 CSS 样式（btnStyle, inputStyle, errorBoxStyle, loadingBoxStyle）— 已完成大部分迁移 |
+| `lib/parse.ts`                   | 工具函数    | 共享解析逻辑（parseArgs, parseEnv, parseHeaders, parseIntSafe）— 已完成                 |
+| `components/ui/ConfigModal.tsx`  | UI 组件     | 配置模态框基础组件（SaveButton）— 已完成                                                |
+| `components/ui/FormControls.tsx` | UI 组件     | 表单控件组件（SectionHeader, Row, ToggleRow）— 已完成                                   |
+| `hooks/useAsync.ts`              | 自定义 hook | 异步状态管理（loading/error/run）— 已完成全部迁移                                       |
+| `hooks/useSave.ts`               | 自定义 hook | 保存状态管理（saving/savedOk/startSave/endSave）— 已完成全部迁移                        |
+
+#### 待办队列（按优先级排序）
+
+| 优先级 | 任务                                                                                                  | 风险 | 预期收益              | 状态    |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---- | --------------------- | ------- |
+| 1      | **确认对话框组件**：SessionItem.tsx 中有删除确认逻辑，可抽取为 ConfirmDialog 组件                     | 低   | 消除 ~50 行重复逻辑   | pending |
+| 2      | **空状态组件**：多个组件（TodoPanel, SkillsConfig, PinnedDirsList, CommandPalette）有相似的空状态渲染 | 低   | 消除 ~30-50 行重复    | pending |
+| 3      | **按钮样式抽取**：SessionItem.tsx 和其他组件中有大量内联按钮样式，可抽取到 lib/styles.ts              | 低   | 消除 ~100+ 行重复样式 | pending |
+| 4      | **hooks/useSave.ts 增强**：当前仅支持 saving/savedOk，可增强支持 saving/savedOk/saveError 完整状态    | 中   | 提高复用性            | pending |
+| 5      | **hooks/useAsync.ts 增强**：可增强支持自动重试、缓存等功能                                            | 中   | 提高复用性            | pending |
+| 6      | **lib/styles.ts 扩展**：添加更多共享样式（如 hover 状态、transition 效果）                            | 低   | 消除更多重复样式      | pending |
+| 7      | **组件样式迁移**：继续迁移剩余组件到 lib/styles.ts                                                    | 低   | 消除 ~20-30 行重复    | pending |
+| 8      | **图标组件抽取**：SessionItem.tsx 和其他组件中有大量内联 SVG 图标，可抽取为 Icons 组件                | 中   | 消除 ~200+ 行重复     | pending |
+
+### 重构 #32（已完成 2026-07-13，commit 651350d）：ConfirmDialog 组件抽取
+
+- **目标**：将 SessionItem.tsx 中的删除确认逻辑抽取为可复用的 ConfirmDialog 组件
+- **复用基础**：无（需新建）
+- **改动文件**：
+  - 新建 `components/ui/ConfirmDialog.tsx`（可复用的确认对话框组件）
+  - 迁移 `components/SessionItem.tsx` 的确认逻辑到 ConfirmDialog
+- **消除重复**：约 44 行重复按钮样式代码
+- **commit**：`651350d`
+
+#### 行为等价证明
+
+- ✅ SessionItem 删除确认 UI 完全一致（按钮样式、颜色、布局）
+- ✅ 确认和取消事件处理逻辑完全一致
+- ✅ 删除图标完全一致
+
+#### 验证证据
+
+```
+$ npx tsc --noEmit
+---EXIT: 0---
+
+$ npx eslint components/ui/ConfirmDialog.tsx components/SessionItem.tsx
+---EXIT: 0---
+
+$ npx prettier --check components/ui/ConfirmDialog.tsx components/SessionItem.tsx
+Code style issues found → fixed with --write
+---EXIT: 0 (after fix)---
+
+$ npm run test:node
+ℹ tests 235  ℹ pass 235  ℹ fail 0
+---EXIT: 0---
+```
+
+### 更新后的待办队列
+
+| 优先级 | 任务                                                                                                  | 风险 | 预期收益              | 状态      |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---- | --------------------- | --------- |
+| 1      | **确认对话框组件**：SessionItem.tsx 中有删除确认逻辑，可抽取为 ConfirmDialog 组件                     | 低   | 消除 ~50 行重复逻辑   | ✅ 已完成 |
+| 2      | **空状态组件**：多个组件（TodoPanel, SkillsConfig, PinnedDirsList, CommandPalette）有相似的空状态渲染 | 低   | 消除 ~30-50 行重复    | pending   |
+| 3      | **按钮样式抽取**：SessionItem.tsx 和其他组件中有大量内联按钮样式，可抽取到 lib/styles.ts              | 低   | 消除 ~100+ 行重复样式 | pending   |
+| 4      | **hooks/useSave.ts 增强**：当前仅支持 saving/savedOk，可增强支持 saving/savedOk/saveError 完整状态    | 中   | 提高复用性            | pending   |
+| 5      | **hooks/useAsync.ts 增强**：可增强支持自动重试、缓存等功能                                            | 中   | 提高复用性            | pending   |
+| 6      | **lib/styles.ts 扩展**：添加更多共享样式（如 hover 状态、transition 效果）                            | 低   | 消除更多重复样式      | pending   |
+| 7      | **组件样式迁移**：继续迁移剩余组件到 lib/styles.ts                                                    | 低   | 消除 ~20-30 行重复    | pending   |
+| 8      | **图标组件抽取**：SessionItem.tsx 和其他组件中有大量内联 SVG 图标，可抽取为 Icons 组件                | 中   | 消除 ~200+ 行重复     | pending   |
+
+### 重构 #33（已完成 2026-07-13，commit 3cb14c6）：EmptyState 组件抽取
+
+- **目标**：将多个组件中的空状态渲染逻辑抽取为可复用的 EmptyState 组件
+- **复用基础**：无（需新建）
+- **改动文件**：
+  - 新建 `components/ui/EmptyState.tsx`（可复用的空状态组件）
+  - 迁移 `components/TodoPanel.tsx` 的空状态到 EmptyState
+  - 迁移 `components/SkillsConfig.tsx` 的空状态到 EmptyState
+  - 迁移 `components/TodoSidebar.tsx` 的空状态到 EmptyState
+  - 迁移 `components/CommandPalette.tsx` 的空状态到 EmptyState
+- **消除重复**：约 22 行重复样式代码
+- **commit**：`3cb14c6`
+
+#### 行为等价证明
+
+- ✅ TodoPanel 空状态样式完全一致（padding: "8px 0", color: "var(--text-dim)"）
+- ✅ SkillsConfig 空状态样式完全一致（padding: "10px 8px", fontSize: 11, color: "var(--text-dim)"）
+- ✅ TodoSidebar 空状态样式完全一致（padding: "24px 16px", fontSize: 12, textAlign: "center", lineHeight: 1.6, color: "var(--text-dim)"）
+- ✅ CommandPalette 空状态样式完全一致（padding: "16px", fontSize: 13, textAlign: "center", color: "var(--text-dim)"）
+
+#### 验证证据
+
+```
+$ npx tsc --noEmit
+---EXIT: 0---
+
+$ npx eslint components/ui/EmptyState.tsx components/TodoPanel.tsx components/SkillsConfig.tsx components/TodoSidebar.tsx components/CommandPalette.tsx
+---EXIT: 0---
+
+$ npx prettier --check components/ui/EmptyState.tsx ...
+Code style issues found → fixed with --write
+---EXIT: 0 (after fix)---
+
+$ npm run test:node
+ℹ tests 235  ℹ pass 235  ℹ fail 0
+---EXIT: 0---
+```
+
+### 更新后的待办队列
+
+| 优先级 | 任务                                                                                                  | 风险 | 预期收益              | 状态      |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---- | --------------------- | --------- |
+| 1      | **确认对话框组件**：SessionItem.tsx 中有删除确认逻辑，可抽取为 ConfirmDialog 组件                     | 低   | 消除 ~50 行重复逻辑   | ✅ 已完成 |
+| 2      | **空状态组件**：多个组件（TodoPanel, SkillsConfig, PinnedDirsList, CommandPalette）有相似的空状态渲染 | 低   | 消除 ~30-50 行重复    | ✅ 已完成 |
+| 3      | **按钮样式抽取**：SessionItem.tsx 和其他组件中有大量内联按钮样式，可抽取到 lib/styles.ts              | 低   | 消除 ~100+ 行重复样式 | pending   |
+| 4      | **hooks/useSave.ts 增强**：当前仅支持 saving/savedOk，可增强支持 saving/savedOk/saveError 完整状态    | 中   | 提高复用性            | pending   |
+| 5      | **hooks/useAsync.ts 增强**：可增强支持自动重试、缓存等功能                                            | 中   | 提高复用性            | pending   |
+| 6      | **lib/styles.ts 扩展**：添加更多共享样式（如 hover 状态、transition 效果）                            | 低   | 消除更多重复样式      | pending   |
+| 7      | **组件样式迁移**：继续迁移剩余组件到 lib/styles.ts                                                    | 低   | 消除 ~20-30 行重复    | pending   |
+| 8      | **图标组件抽取**：SessionItem.tsx 和其他组件中有大量内联 SVG 图标，可抽取为 Icons 组件                | 中   | 消除 ~200+ 行重复     | pending   |
+
+### 重构 #34（已完成 2026-07-13，commit 622292f）：按钮样式抽取到 lib/styles.ts
+
+- **目标**：将 SessionItem.tsx 和其他组件中的大量内联按钮样式抽取到 lib/styles.ts
+- **复用基础**：已存在 `lib/styles.ts`（包含 btnStyle）
+- **改动文件**：
+  - 扩展 `lib/styles.ts`，添加 6 种新的共享样式：
+    - `iconButtonStyle`: 32x32 图标按钮，带 hover transition
+    - `iconButtonStyleHover`: accent 色 hover 状态
+    - `iconButtonStyleHoverError`: error 色 hover 状态
+    - `iconButtonStyleDefault`: 默认状态，用于重置
+    - `collapseButtonStyle`: 20x20 折叠箭头按钮
+    - `smallInputStyle`: 带 accent 边框的小输入框
+  - 迁移 `components/SessionItem.tsx` 使用共享样式
+- **消除重复**：约 65 行重复按钮样式代码
+- **commit**：`622292f`
+
+#### 行为等价证明
+
+- ✅ 重命名按钮样式完全一致（32x32, bg-hover, border, borderRadius: 7, text-muted）
+- ✅ 删除按钮样式完全一致（同上）
+- ✅ hover 效果完全一致（重命名按钮 → accent 色，删除按钮 → error 色）
+- ✅ 折叠按钮样式完全一致（20x20, 无边框, text-dim）
+- ✅ 重命名输入框样式完全一致（flex:1, fontSize:12, accent border）
+
+#### 验证证据
+
+```
+$ npx tsc --noEmit
+---EXIT: 0---
+
+$ npx eslint lib/styles.ts components/SessionItem.tsx
+---EXIT: 0---
+
+$ npx prettier --check lib/styles.ts components/SessionItem.tsx
+All matched files use Prettier code style!
+---EXIT: 0---
+
+$ npm run test:node
+ℹ tests 235  ℹ pass 235  ℹ fail 0
+---EXIT: 0---
+```
+
+### 更新后的待办队列
+
+| 优先级 | 任务                                                                                                  | 风险 | 预期收益              | 状态      |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---- | --------------------- | --------- |
+| 1      | **确认对话框组件**：SessionItem.tsx 中有删除确认逻辑，可抽取为 ConfirmDialog 组件                     | 低   | 消除 ~50 行重复逻辑   | ✅ 已完成 |
+| 2      | **空状态组件**：多个组件（TodoPanel, SkillsConfig, PinnedDirsList, CommandPalette）有相似的空状态渲染 | 低   | 消除 ~30-50 行重复    | ✅ 已完成 |
+| 3      | **按钮样式抽取**：SessionItem.tsx 和其他组件中有大量内联按钮样式，可抽取到 lib/styles.ts              | 低   | 消除 ~100+ 行重复样式 | ✅ 已完成 |
+| 4      | **hooks/useSave.ts 增强**：当前仅支持 saving/savedOk，可增强支持 saving/savedOk/saveError 完整状态    | 中   | 提高复用性            | pending   |
+| 5      | **hooks/useAsync.ts 增强**：可增强支持自动重试、缓存等功能                                            | 中   | 提高复用性            | pending   |
+| 6      | **lib/styles.ts 扩展**：添加更多共享样式（如 hover 状态、transition 效果）                            | 低   | 消除更多重复样式      | pending   |
+| 7      | **组件样式迁移**：继续迁移剩余组件到 lib/styles.ts                                                    | 低   | 消除 ~20-30 行重复    | pending   |
+| 8      | **图标组件抽取**：SessionItem.tsx 和其他组件中有大量内联 SVG 图标，可抽取为 Icons 组件                | 中   | 消除 ~200+ 行重复     | pending   |
+
+### 推荐下一项重构
+
+**优先级 #4：hooks/useSave.ts 增强**
+
+- **目标**：增强 useSave hook，支持 saveError 状态
+- **复用基础**：已存在 `hooks/useSave.ts`
+- **预计改动**：
+  - 扩展 useSave hook，添加 saveError 状态和 setSaveError 方法
+  - 更新所有使用 useSave 的组件（AgentsConfig, SettingsPanel, PluginConfigPage, WebSearchConfigPanel, ModelsConfig, McpConfigPanel）
+- **风险**：中（涉及多个组件的状态管理）
+- **预期收益**：提高复用性，统一错误处理模式
+
+### 当前已完成的重构汇总（累计消除重复 ~1019+ 行）
+
+| 重构编号 | 主题                                                                 | 消除重复行数 |
+| -------- | -------------------------------------------------------------------- | ------------ |
+| #1-#10   | L1 层：Config 面板 fetch 迁移                                        | ~200+        |
+| #11      | L2 层：API 路由错误处理统一                                          | ~30          |
+| #12      | 共享样式抽取到 lib/styles.ts                                         | ~30          |
+| #13      | 迁移剩余组件样式                                                     | ~46          |
+| #14      | 解析工具函数抽取到 lib/parse.ts                                      | ~39          |
+| #15      | 表单控件组件抽取到 ui/FormControls.tsx                               | ~100         |
+| #16      | 异步工具 hook 抽取到 hooks/useAsync.ts                               | ~9           |
+| #17      | 迁移 PluginsConfig 和 SkillsConfig 到 useAsync                       | ~49          |
+| #18      | 迁移 WebSearchConfigPanel 和 ExtensionsConfig 到 useAsync            | ~30          |
+| #19      | 迁移 AgentsConfig 到 useAsync                                        | ~20          |
+| #20      | 迁移 ModelsConfig 和 McpConfigPanel 到 useAsync                      | ~25          |
+| #21      | 创建 useSave hook 并迁移 AgentsConfig 和 SettingsPanel               | ~23          |
+| #22      | 迁移 PluginConfigPage、WebSearchConfigPanel、ModelsConfig 到 useSave | ~34          |
+| #23      | 迁移 McpConfigPanel 到 useSave（最后一个组件）                       | ~5           |
+| #24      | 抽取共享错误样式并迁移组件                                           | ~17          |
+| #25      | 抽取共享加载样式并迁移组件                                           | ~28          |
+| #26      | 迁移 API 路由到 errorResponse（第 1 批）                             | ~26          |
+| #27      | 迁移 API 路由到 errorResponse（第 2 批）                             | ~29          |
+| #28      | 迁移 API 路由到 errorResponse（第 3 批）                             | ~27          |
+| #29      | 迁移 API 路由到 errorResponse（第 4 批）                             | ~24          |
+| #30      | 迁移 API 路由到 errorResponse（第 5 批）                             | ~44          |
+| #31      | 迁移 API 路由到 errorResponse（第 6 批 - 全部完成）                  | ~89          |

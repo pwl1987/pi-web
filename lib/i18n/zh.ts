@@ -961,6 +961,8 @@ export const zh = {
   "plan.log": "运行日志",
   "plan.history": "运行历史",
   "plan.persisted": "讨论已持久化，刷新页面可恢复",
+  "plan.historyUnfinished": "检测到 {count} 个未完成讨论（服务端持久化，点击即可恢复）",
+  "plan.continueThis": "继续该讨论",
   "plan.logLevel.debug": "调试",
   "plan.logLevel.info": "信息",
   "plan.logLevel.warn": "警告",

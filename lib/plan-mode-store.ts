@@ -51,10 +51,68 @@ const EMPTY: PlanModeSnapshot = {
   planConfig: { ...DEFAULT_PLAN_CONFIG },
 };
 
+// F5 刷新后浏览器 globalThis 清空，plan-mode-store 会回到 EMPTY，导致正在进行的
+// 讨论从 UI 消失（PlanPanel 不挂载 → 无法触发恢复）。把恢复所需的最小字段集镜像
+// 到 localStorage，刷新后在 store 首次构造时同步 hydrate，PlanPanel 的 SSE useEffect
+// 随即重连，服务端 ensureRehydrated() 从 JSONL 还原编排器，完整恢复链路打通。
+// requestOpenEngine 是瞬时信号（确认后消费即清）、planConfig 已有服务端持久化，不镜像。
+const PLAN_STORAGE_KEY = "pi-plan-mode";
+const PERSISTED_KEYS = [
+  "planMode",
+  "orchestratorId",
+  "resumableOrchestratorId",
+  "planStatus",
+] as const;
+
+/** 需要持久化的子集（仅恢复所需字段）。 */
+type PersistedPlanState = Pick<PlanModeSnapshot, (typeof PERSISTED_KEYS)[number]>;
+
+function loadPersistedState(): Partial<PersistedPlanState> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedPlanState>;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedState(snapshot: PlanModeSnapshot): void {
+  if (typeof window === "undefined") return;
+  try {
+    const subset: PersistedPlanState = {
+      planMode: snapshot.planMode,
+      orchestratorId: snapshot.orchestratorId,
+      resumableOrchestratorId: snapshot.resumableOrchestratorId,
+      planStatus: snapshot.planStatus,
+    };
+    window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(subset));
+  } catch {
+    /* 隐私模式 / 配额满：忽略，不影响内存态 */
+  }
+}
+
+function clearPersistedState(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(PLAN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 class PlanModeStore {
-  private snapshot: PlanModeSnapshot = EMPTY;
+  private snapshot: PlanModeSnapshot;
   private listeners = new Set<() => void>();
   private version = 0;
+
+  constructor() {
+    // 首次构造时从 localStorage 同步恢复持久化字段，保证客户端首帧即正确。
+    const persisted = loadPersistedState();
+    this.snapshot = persisted ? { ...EMPTY, ...persisted } : EMPTY;
+  }
 
   subscribe = (cb: () => void): (() => void) => {
     this.listeners.add(cb);
@@ -66,12 +124,17 @@ class PlanModeStore {
 
   update(patch: Partial<PlanModeSnapshot>): void {
     this.snapshot = { ...this.snapshot, ...patch };
+    // 若 patch 含任一持久化字段，写穿 localStorage（保证刷新可恢复）。
+    if (PERSISTED_KEYS.some((k) => k in patch)) {
+      savePersistedState(this.snapshot);
+    }
     this.version++;
     this.listeners.forEach((cb) => cb());
   }
 
   reset(): void {
     this.snapshot = EMPTY;
+    clearPersistedState();
     this.version++;
     this.listeners.forEach((cb) => cb());
   }

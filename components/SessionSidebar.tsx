@@ -117,6 +117,9 @@ export function SessionSidebar({
   // Once the SSE stream has delivered a frame it is the source of truth for
   // running state; late /api/sessions responses must not overwrite it.
   const sseAuthoritativeRef = useRef(false);
+  // 上一帧 SSE running 集合——成员变化时触发轻量列表刷新，让后台会话完成
+  // （从 running 消失）或新增运行即时反映到列表，不必等下一次 3 秒轮询。
+  const prevSseRunningRef = useRef<Set<string>>(new Set());
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Last computed /api/sessions signature — lets the background poll skip the
@@ -166,6 +169,12 @@ export function SessionSidebar({
     }
   }, []);
 
+  // 保存 loadSessions 的最新引用，供依赖 [] 的 SSE effect 回调内调用，
+  // 既避免把 loadSessions 加入 effect 依赖数组（会改变重连行为），
+  // 又避免闭包捕获到陈旧版本。loadSessions 由 useCallback([], …) 保持稳定。
+  const loadSessionsRef = useRef(loadSessions);
+  loadSessionsRef.current = loadSessions;
+
   const initialLoadDone = useRef(false);
   useEffect(() => {
     const isFirst = !initialLoadDone.current;
@@ -179,8 +188,10 @@ export function SessionSidebar({
   // unchanged polls a no-op, so the list never flickers. We also refetch when
   // the tab regains focus or becomes visible (e.g. another tab created a
   // session while this one was backgrounded).
+  // 3 秒间隔：签名去重保证无变化时是 no-op，3 秒更贴合「实时」体感，
+  // 让流式期间的 messageCount 变化与后台会话完成更快反映到列表。
   useEffect(() => {
-    const POLL_MS = 6000;
+    const POLL_MS = 3000;
     const tick = () => {
       void loadSessions(false);
     };
@@ -215,7 +226,17 @@ export function SessionSidebar({
         const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
         if (data.type === "running") {
           sseAuthoritativeRef.current = true;
-          setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+          const nextSet = new Set(data.runningSessionIds ?? []);
+          setRunningSessionIds(nextSet);
+          // 成员变化时立即触发轻量列表刷新（非 force，走签名去重不闪烁）：
+          // 后台会话完成（从 running 消失）或新会话开始运行时，messageCount /
+          // modified 等元数据应即时反映，不必等下一次 3 秒轮询。
+          const prev = prevSseRunningRef.current;
+          const changed = prev.size !== nextSet.size || [...nextSet].some((id) => !prev.has(id));
+          if (changed) {
+            void loadSessionsRef.current(false);
+          }
+          prevSseRunningRef.current = nextSet;
         }
         setSseConnected(true);
       } catch {

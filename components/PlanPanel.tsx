@@ -16,6 +16,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import {
   usePlanMode,
+  getPlanModeStore,
   setPlanMode,
   setOrchestratorId,
   setPlanStatus,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/plan-mode-store";
 import type { OrchestrationSnapshot, RecommendationPlan } from "@/lib/agent-orchestrator";
 import { PlanMarkdownBody } from "./PlanMarkdownBody";
+import { SkeletonLines } from "./Skeleton";
 
 const COLOR_DOT: Record<string, string> = {
   sky: "background:#0ea5e9",
@@ -67,6 +69,24 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "plan.cancelled",
 };
 
+/** 非终态：刷新/重启后应提供恢复入口的编排器状态 */
+const NON_TERMINAL_STATUSES = new Set([
+  "parsing",
+  "discussing",
+  "synthesizing",
+  "awaiting_confirm",
+  "awaiting_clarify",
+  "executing",
+]);
+
+/** 终态：到达后停止 SSE 重连与对账轮询，避免 404 风暴。 */
+const TERMINAL_STATUSES = new Set(["done", "failed", "cancelled"]);
+
+/** 对账轮询间隔，与 useAgentSession 的 AGENT_STATE_RECONCILE_MS 对齐。 */
+const PLAN_RECONCILE_MS = 15_000;
+/** SSE CLOSED 后手动重连的延迟（与 useAgentSession 一致）。 */
+const PLAN_RECONNECT_DELAY_MS = 1000;
+
 export function PlanPanel() {
   const { t } = useI18n();
   const { orchestratorId, resumableOrchestratorId, planConfig } = usePlanMode();
@@ -74,6 +94,12 @@ export function PlanPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  // 跟踪当前编排器状态：终态后停止 SSE 重连与对账，避免 404 风暴。
+  const statusRef = useRef<string>("idle");
+  // SSE CLOSED 后的手动重连定时器（EventSource 终态关闭后不会自动重连）。
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 对账轮询定时器 + 活跃编排器 id 快照（防闭包陈旧）。
+  const reconcileTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 配置区 / 角色模型 / 日志 / 历史 相关状态
   const [modelOptions, setModelOptions] = useState<
@@ -87,6 +113,8 @@ export function PlanPanel() {
   const [showLog, setShowLog] = useState(false);
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
+  // 持久化历史中处于非终态的编排（刷新/重启后恢复入口）
+  const [unfinishedHistory, setUnfinishedHistory] = useState<Array<Record<string, unknown>>>([]);
 
   // 加载可选模型、角色库、当前角色→模型映射（配置区与角色模型下拉）。
   useEffect(() => {
@@ -153,6 +181,34 @@ export function PlanPanel() {
     return () => clearInterval(timer);
   }, [showLog, orchestratorId, loadLog, loadHistory]);
 
+  // 引导界面挂载时自动拉取服务端持久化历史，把非终态的编排讨论展示为恢复入口。
+  // 解决刷新/重启后 plan-mode store 清零导致用户找不到之前进行中讨论的问题。
+  useEffect(() => {
+    if (orchestratorId) {
+      // 已有活跃编排器，不需要引导界面的历史卡片。
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: d } = await csrfFetchJson<{
+          orchestrations?: Array<Record<string, unknown>>;
+        }>("/api/plan/history");
+        if (cancelled) return;
+        const items = (d.orchestrations ?? [])
+          .filter((h) => NON_TERMINAL_STATUSES.has(String(h.status)))
+          // 排除当前 resumableOrchestratorId（二者是同一个讨论时避免重复卡片）
+          .filter((h) => String(h.id) !== getPlanModeStore().getState().resumableOrchestratorId);
+        setUnfinishedHistory(items);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orchestratorId]);
+
   const refresh = useCallback(async (id: string) => {
     try {
       const { ok, data: snap } = await csrfFetchJson<OrchestrationSnapshot>(`/api/plan/${id}`);
@@ -166,25 +222,98 @@ export function PlanPanel() {
   }, []);
 
   // SSE：连接事件流，按事件刷新快照并把状态同步到 store（供输入框判断交互方式）。
+  // 复刻 useAgentSession 的成熟防御机制：
+  //   - readyState===CLOSED 手动重连（EventSource 终态关闭后不自动重连）
+  //   - 15s 对账轮询兜底漏事件（静默流式期间断连后 agent_end 不重发）
+  //   - visibilitychange/online 触发即时对账
+  // 终态后停止所有重连与对账，避免对已结束编排器触发 404。
   useEffect(() => {
     if (!orchestratorId) {
       setSnapshot(null);
+      statusRef.current = "idle";
       return;
     }
-    const es = new EventSource(`/api/plan/${orchestratorId}/events`);
-    esRef.current = es;
-    es.onmessage = (ev) => {
-      try {
-        const e = JSON.parse(ev.data) as { type: string; snapshot?: OrchestrationSnapshot };
-        if (e.type === "snapshot" && e.snapshot) {
-          setSnapshot(e.snapshot);
-          setPlanStatus(e.snapshot.status);
-        } else if (orchestratorId) void refresh(orchestratorId);
-      } catch {
-        /* ignore malformed */
+
+    let disposed = false;
+    // 用闭包内 id 避免依赖数组引入 orchestratorId 后的竞态（cleanup 会处理切换）。
+    const id = orchestratorId;
+
+    const connect = () => {
+      if (disposed) return;
+      // 终态后不再重连。
+      if (TERMINAL_STATUSES.has(statusRef.current)) return;
+      // 关闭旧连接再建新连接，避免泄漏。
+      esRef.current?.close();
+      const es = new EventSource(`/api/plan/${id}/events`);
+      esRef.current = es;
+      es.onmessage = (ev) => {
+        try {
+          const e = JSON.parse(ev.data) as { type: string; snapshot?: OrchestrationSnapshot };
+          if (e.type === "snapshot" && e.snapshot) {
+            statusRef.current = e.snapshot.status;
+            setSnapshot(e.snapshot);
+            setPlanStatus(e.snapshot.status);
+          } else if (e.type === "done" && e.snapshot) {
+            // done 事件携带完整快照，直接更新避免再发一次 GET。
+            statusRef.current = e.snapshot.status;
+            setSnapshot(e.snapshot);
+            setPlanStatus(e.snapshot.status);
+          } else {
+            void refresh(id);
+          }
+        } catch {
+          /* ignore malformed */
+        }
+      };
+      es.onerror = () => {
+        // EventSource 在 CONNECTING 状态会自动重连；仅在 CLOSED（服务端关闭流）
+        // 时手动重连。终态后服务端会 close 流并可能在重连时返回 404，故终态不重连。
+        if (es.readyState === EventSource.CLOSED && !TERMINAL_STATUSES.has(statusRef.current)) {
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            if (!disposed && !TERMINAL_STATUSES.has(statusRef.current)) connect();
+          }, PLAN_RECONNECT_DELAY_MS);
+        }
+      };
+    };
+
+    connect();
+
+    // 15s 对账轮询：静默流式期间 SSE 可能断连且 agent_end 不重发，
+    // 定期 GET /api/plan/[id] 兜底拉取最新快照。refresh 内已 setSnapshot，幂等。
+    reconcileTimerRef.current = setInterval(() => {
+      if (!disposed && !TERMINAL_STATUSES.has(statusRef.current)) {
+        void refresh(id);
+      }
+    }, PLAN_RECONCILE_MS);
+
+    // 标签页重新可见 / 网络恢复时立即对账。
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !disposed) {
+        void refresh(id);
       }
     };
-    return () => es.close();
+    const onOnline = () => {
+      if (!disposed) void refresh(id);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      disposed = true;
+      esRef.current?.close();
+      esRef.current = null;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (reconcileTimerRef.current) {
+        clearInterval(reconcileTimerRef.current);
+        reconcileTimerRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
   }, [orchestratorId, refresh]);
 
   const selectPlan = useCallback(
@@ -370,17 +499,99 @@ export function PlanPanel() {
               </div>
             </div>
           )}
+          {/* 服务端持久化历史：刷新/重启后自动列出非终态编排讨论，提供恢复入口 */}
+          {unfinishedHistory.length > 0 && (
+            <>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--text)",
+                  marginTop: 8,
+                }}
+              >
+                {t("plan.historyUnfinished", { count: String(unfinishedHistory.length) })}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {unfinishedHistory.map((h) => (
+                  <div
+                    key={String(h.id)}
+                    style={{
+                      padding: 10,
+                      border: "1px solid var(--border)",
+                      borderRadius: 10,
+                      background: "var(--bg-panel)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--text)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {String(h.requirement || t("plan.requirement"))}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {t(STATUS_LABEL[String(h.status)] ?? String(h.status))} ·{" "}
+                        {t("plan.round", { round: String(h.roundCount ?? 0) })}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setOrchestratorId(String(h.id));
+                        discardResumable();
+                      }}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 7,
+                        border: "1px solid var(--accent)",
+                        background: "none",
+                        color: "var(--accent)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {t("plan.continueThis")}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   if (!snapshot) {
+    // orchestratorId 已设置但快照尚未到达（SSE 首帧前的网络延迟）。
+    // 用骨架屏替代纯文本，消除"卡死"假象。
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
         {modeHeader()}
-        <div style={{ padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
-          {t("plan.parsing")}
+        <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("plan.parsing")}</div>
+          <SkeletonLines lines={4} lineHeight={14} gap={10} />
+          <SkeletonLines lines={3} lineHeight={14} gap={10} lastLineWidth="45%" />
         </div>
       </div>
     );

@@ -969,6 +969,9 @@ export const en = {
   "plan.log": "Run log",
   "plan.history": "Run history",
   "plan.persisted": "Discussion is persisted — refresh to recover",
+  "plan.historyUnfinished":
+    "{count} unfinished discussion(s) found (server-persisted, click to recover)",
+  "plan.continueThis": "Continue this discussion",
   "plan.logLevel.debug": "Debug",
   "plan.logLevel.info": "Info",
   "plan.logLevel.warn": "Warn",
