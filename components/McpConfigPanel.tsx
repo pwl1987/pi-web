@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useAsync } from "@/hooks/useAsync";
+import { useSave } from "@/hooks/useSave";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { BUILTIN_MCP_TEMPLATES, type McpServerEntry, type McpTemplate } from "@/lib/mcp-templates";
@@ -199,7 +200,7 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
   const [draft, setDraft] = useState<ServerDraft>(emptyDraft);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
+  const { saving, startSave, endSave } = useSave();
   const [testing, setTesting] = useState(false);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
 
@@ -354,7 +355,7 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
       setDraftErrors(errs);
       return;
     }
-    setSaving(true);
+    startSave();
     setServerErrors([]);
     try {
       const servers: Record<string, McpServerEntry> = {};
@@ -371,18 +372,19 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
         const d = r.data as { errors?: McpFieldError[]; error?: string };
         if (d.errors) setServerErrors(d.errors);
         else setError(d.error ?? `HTTP ${r.status}`);
+        endSave(false);
         return;
       }
       closeForm();
       void reload();
       const savedName = draft.name.trim();
       setEnvRunTokens((prev) => ({ ...prev, [savedName]: (prev[savedName] ?? 0) + 1 }));
+      endSave(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
+      endSave(false);
     }
-  }, [draft, occupiedNames, editingName, data, closeForm, reload]);
+  }, [draft, occupiedNames, editingName, data, closeForm, reload, startSave, endSave]);
 
   const handleRemove = useCallback(
     async (name: string) => {
