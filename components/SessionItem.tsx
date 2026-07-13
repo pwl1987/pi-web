@@ -8,6 +8,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { RunningSessionIndicator, UnreadSessionIndicator } from "./StatusIndicators";
 import { formatRelativeTime } from "@/lib/session-utils";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
 
 export function SessionItem({
   session,
@@ -135,7 +136,6 @@ export function SessionItem({
       }}
     >
       {confirmDelete ? (
-        /* ── Delete confirmation: same height, two flat buttons ── */
         <>
           <div
             style={{
@@ -152,26 +152,13 @@ export function SessionItem({
               name: `${title.slice(0, 22)}${title.length > 22 ? "…" : ""}`,
             })}
           </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-            <button
-              onClick={handleDeleteConfirm}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 4,
-                height: 30,
-                padding: "0 11px",
-                background: "var(--color-error-border)",
-                border: "none",
-                borderRadius: 6,
-                color: "var(--bg)",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
+          <ConfirmDialog
+            isOpen={confirmDelete}
+            confirmText={t("sidebar.delete")}
+            cancelText={t("common.cancel")}
+            onConfirm={handleDeleteConfirm}
+            onCancel={handleDeleteCancel}
+            confirmIcon={
               <svg
                 width="12"
                 height="12"
@@ -187,29 +174,8 @@ export function SessionItem({
                 <path d="M10 11v6M14 11v6" />
                 <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
               </svg>
-              {t("sidebar.delete")}
-            </button>
-            <button
-              onClick={handleDeleteCancel}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: 30,
-                padding: "0 11px",
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t("common.cancel")}
-            </button>
-          </div>
+            }
+          />
         </>
       ) : renaming ? (
         /* ── Rename: input fills the same row ── */
