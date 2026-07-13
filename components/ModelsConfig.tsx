@@ -1973,39 +1973,49 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const loadOAuthProviders = useCallback(() => {
-    fetch("/api/auth/providers")
-      .then((r) => {
-        if (!r.ok) throw new Error(`Auth providers load failed: ${r.status}`);
-        return r.json();
-      })
-      .then((d: { providers: OAuthProvider[] }) => setOauthProviders(d.providers))
-      .catch((err) => console.error("Failed to load OAuth providers:", err));
+  const loadOAuthProviders = useCallback(async () => {
+    try {
+      const { ok, status, data } = await csrfFetchJson<{ providers: OAuthProvider[] }>(
+        "/api/auth/providers",
+        { method: "GET" },
+      );
+      if (!ok) throw new Error(`Auth providers load failed: ${status}`);
+      setOauthProviders(data.providers);
+    } catch (err) {
+      console.error("Failed to load OAuth providers:", err);
+    }
   }, []);
 
-  const loadApiKeyProviders = useCallback(() => {
-    fetch("/api/auth/all-providers")
-      .then((r) => {
-        if (!r.ok) throw new Error(`API key providers load failed: ${r.status}`);
-        return r.json();
-      })
-      .then((d: { providers: ApiKeyProvider[] }) => setApiKeyProviders(d.providers))
-      .catch((err) => console.error("Failed to load API key providers:", err));
+  const loadApiKeyProviders = useCallback(async () => {
+    try {
+      const { ok, status, data } = await csrfFetchJson<{ providers: ApiKeyProvider[] }>(
+        "/api/auth/all-providers",
+        { method: "GET" },
+      );
+      if (!ok) throw new Error(`API key providers load failed: ${status}`);
+      setApiKeyProviders(data.providers);
+    } catch (err) {
+      console.error("Failed to load API key providers:", err);
+    }
   }, []);
 
   useEffect(() => {
-    fetch("/api/models-config")
-      .then((r) => r.json())
-      .then((d: ModelsJson) => {
-        const normalized = d.providers ? d : { ...d, providers: {} };
+    const loadConfig = async () => {
+      try {
+        const { data } = await csrfFetchJson<ModelsJson>("/api/models-config", { method: "GET" });
+        const normalized = data.providers ? data : { ...data, providers: {} };
         setConfig(normalized);
         const keys = Object.keys(normalized.providers ?? {});
         if (keys.length > 0) setSelection({ type: "provider", name: keys[0] });
-      })
-      .catch(() => setConfig({ providers: {} }))
-      .finally(() => setLoading(false));
-    loadOAuthProviders();
-    loadApiKeyProviders();
+      } catch {
+        setConfig({ providers: {} });
+      } finally {
+        setLoading(false);
+      }
+    };
+    void loadConfig();
+    void loadOAuthProviders();
+    void loadApiKeyProviders();
   }, [loadOAuthProviders, loadApiKeyProviders]);
 
   const addCustomProvider = useCallback(() => {
