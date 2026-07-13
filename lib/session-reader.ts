@@ -48,6 +48,8 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
         const m = /^orchestrator:([\w-]+)$/.exec(p);
         return m ? m[1] : undefined;
       })(),
+      // 同源推断 isPlanMode：SessionItem 据此渲染固定 plan 角标，不依赖 name 前缀。
+      isPlanMode: /^orchestrator:[\w-]+$/.test(s.parentSessionPath ?? ""),
       projectRoot: project?.projectRoot ?? s.cwd,
       ...(project?.isWorktree && project.branch ? { worktreeBranch: project.branch } : {}),
     };

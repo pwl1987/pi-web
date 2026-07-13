@@ -822,39 +822,47 @@ export const ChatInput = memo(
               },
             );
             if (!ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));
-            setOrchestratorId(data.id);
-            // ponytail: 顺手建一个轻量 pi session 作为侧栏入口；失败不影响 plan 主流程
-            void (async () => {
+            const orchId = data.id as string;
+            // 同步建一个轻量 pi session 作为侧栏入口（await，消除竞态窗口）。
+            // 之前的 fire-and-forget 在用户切换会话时可能留下前端不可达的孤儿 orchestrator。
+            // 语义：orchestrator 创建成功即视为讨论开始；pi session（侧栏入口）失败是非阻塞的
+            // —— 后端讨论照常进行（PlanPanel SSE 用 orchId），仅侧栏缺入口。故不在失败时
+            // 回滚 orchestratorId，避免"显示失败但讨论其实在跑"的矛盾。
+            if (cwd) {
               try {
-                if (!cwd) return;
                 const { ok: newOk, data: newData } = await csrfFetchJson<{
                   sessionId?: string;
                 }>("/api/agent/new", {
                   method: "POST",
                   body: { cwd, type: "ensure_session" },
                 });
-                if (!newOk || !newData?.sessionId) return;
+                if (!newOk || !newData?.sessionId) {
+                  throw new Error("ensure_session returned no id");
+                }
                 const piId = newData.sessionId;
                 const title = `📋 计划讨论：${msg.slice(0, 40)}`;
                 await csrfFetchJson(`/api/agent/${encodeURIComponent(piId)}`, {
                   method: "POST",
                   body: { type: "set_session_name", name: title },
                 });
-                // ponytail: 同步写 parentSession marker `orchestrator:<orchId>`，
-                // 让 session-reader 解析为 orchestratorParentId，侧栏把该 session
-                // 挂到对应 orchestrator 节点下而非顶层显示。
+                // 同步写 parentSession marker `orchestrator:<orchId>`，让 session-reader
+                // 解析为 orchestratorParentId，侧栏把该 session 挂到对应 orchestrator 节点下。
                 await csrfFetchJson(`/api/agent/${encodeURIComponent(piId)}`, {
                   method: "POST",
                   body: {
                     type: "set_session_parent",
-                    parentSession: `orchestrator:${data.id}`,
+                    parentSession: `orchestrator:${orchId}`,
                   },
                 });
-                linkPlanSession(piId, { orchestratorId: data.id as string, cwd });
+                linkPlanSession(piId, { orchestratorId: orchId, cwd });
               } catch {
-                /* best-effort：失败不阻断 plan */
+                // 侧栏入口创建失败：非阻塞。后端讨论仍在进行，下面仍会 setOrchestratorId
+                // 让 PlanPanel 连上 SSE。用户可通过 history 视图或重新发起找回讨论。
               }
-            })();
+            }
+            // orchestrator 已确认创建（且 pi session 入口已尽力建好），现在暴露给 PlanPanel。
+            // 放在最后：确保竞态窗口内用户看到的 orchestratorId 一定是"入口已就绪"的状态。
+            setOrchestratorId(orchId);
           } else {
             const { ok } = await csrfFetchJson(`/api/plan/${orchestratorId}/rediscuss`, {
               method: "POST",

@@ -70,16 +70,19 @@ export function SessionItem({
     const name = renameValue.trim();
     setRenaming(false);
     if (name === (session.name ?? "")) return;
+    // plan 会话重命名保护：强制保留 📋 前缀，避免角标丢失导致无法识别为计划讨论。
+    // isPlanMode 是结构化标记（不依赖 name），但 📋 前缀是用户视觉线索，两者互补。
+    const finalName = session.isPlanMode && !name.startsWith("📋") ? `📋 ${name}` : name;
     try {
       await csrfFetchJson(`/api/sessions/${encodeURIComponent(session.id)}`, {
         method: "PATCH",
-        body: { name },
+        body: { name: finalName },
       });
       onRenamed?.();
     } catch {
       // ignore
     }
-  }, [renameValue, session.id, session.name, onRenamed]);
+  }, [renameValue, session.id, session.name, session.isPlanMode, onRenamed]);
 
   const handleDeleteClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -241,6 +244,34 @@ export function SessionItem({
                     : title
               }
             >
+              {/* plan 会话固定角标：结构化标记，不依赖 name 的 📋 前缀。
+                  重命名后仍可识别为计划讨论。accent 色与 plan 模式开关按钮呼应。 */}
+              {session.isPlanMode && (
+                <span
+                  title={t("plan.mode")}
+                  style={{
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    color: "var(--accent)",
+                  }}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="8" y="2" width="8" height="4" rx="1" />
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                    <path d="M9 12l2 2 4-4" />
+                  </svg>
+                </span>
+              )}
               {isRunning ? (
                 <RunningSessionIndicator />
               ) : isUnread ? (

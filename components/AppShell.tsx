@@ -39,10 +39,12 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
 import {
   usePlanMode,
+  getPlanModeStore,
   requestOpenEngine as setRequestOpenEngine,
   setPlanMode,
   setOrchestratorId,
   getPlanLink,
+  getPlanLinkByOrchId,
   unlinkPlanSession,
 } from "@/lib/plan-mode-store";
 import { useConstraints } from "@/lib/constraints/useConstraints";
@@ -391,12 +393,25 @@ export function AppShell() {
       setSelectedSession(session);
       setSystemPrompt(null);
       setInitialSessionRestored(true);
-      // ponytail: 选中 plan-mode 入口会话时自动恢复 PlanPanel SSE；通过反向查 link 表
-      // （避免遍历所有 session）。非 plan session 走原 ChatWindow 渲染路径。
+      // ponytail: 选中 plan-mode 入口会话时自动恢复 PlanPanel SSE。
+      // 两条命中路径：① 点击 pi session 子节点（id=piId）→ getPlanLink 直接命中；
+      // ② 点击顶层虚拟根（id=orchId）→ getPlanLink 必 miss，需 getPlanLinkByOrchId 反查。
+      // 未命中且当前处于 plan 模式时，清理 plan 状态，避免 PlanPanel 串台渲染普通会话。
       const planLink = getPlanLink(session.id);
       if (planLink) {
         setPlanMode(true);
         setOrchestratorId(planLink.orchestratorId);
+      } else {
+        const byOrch = getPlanLinkByOrchId(session.id);
+        if (byOrch) {
+          setPlanMode(true);
+          setOrchestratorId(byOrch.entry.orchestratorId);
+        } else if (getPlanModeStore().getState().planMode) {
+          // 切到普通会话：plan store 是 globalThis 单例（重挂载不重置），
+          // 必须显式清空，否则 ChatWindow 仍渲染 PlanPanel（用旧 orchestratorId 串台）。
+          setPlanMode(false);
+          setOrchestratorId(null);
+        }
       }
       // On mobile, collapse the overlay drawer so the chat is revealed after pick.
       if (isMobile && !isRestore) setSidebarOpen(false);

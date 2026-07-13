@@ -282,6 +282,10 @@ export interface SessionInfo {
    *  时由 session-reader 归一化到此处，SessionSidebar 据此把该 session 挂到对应
    *  orchestrator 虚拟根节点下而非显示为顶层条目。普通 fork session 该字段为 undefined。 */
   orchestratorParentId?: string;
+  /** 是否为计划模式（plan mode）会话。由 session-reader 根据 parentSession marker
+   *  `orchestrator:<orchId>` 推断（与 orchestratorParentId 同源）。SessionItem 据此
+   *  渲染固定的 plan 角标图标，不依赖 name 的 📋 前缀；重命名也不影响识别。 */
+  isPlanMode?: boolean;
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient
    *  SessionInfo objects before the first refresh. Fall back to cwd. */

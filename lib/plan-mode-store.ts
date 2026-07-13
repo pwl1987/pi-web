@@ -291,3 +291,17 @@ export function getPlanLink(piSessionId: string): PlanLinkEntry | undefined {
   if (!piSessionId) return undefined;
   return getPlanModeStore().getState().planSessionLinks[piSessionId];
 }
+
+/** 按 orchestratorId 反查 plan 链接（点击侧栏虚拟根时调用，虚拟根的 session.id = orchId）。
+ *  planSessionLinks 的 key 是 piSessionId，点击虚拟根时 getPlanLink(orchId) 必 miss，
+ *  需此反查把 orchId 映射回 { piSessionId, entry } 才能正确恢复 PlanPanel。 */
+export function getPlanLinkByOrchId(
+  orchId: string,
+): { piSessionId: string; entry: PlanLinkEntry } | undefined {
+  if (!orchId) return undefined;
+  const links = getPlanModeStore().getState().planSessionLinks;
+  for (const [piSessionId, entry] of Object.entries(links)) {
+    if (entry.orchestratorId === orchId) return { piSessionId, entry };
+  }
+  return undefined;
+}
