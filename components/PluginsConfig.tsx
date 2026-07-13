@@ -12,6 +12,7 @@ import { PLUGIN_CONFIG_DESCRIPTORS } from "@/lib/plugin-config-descriptors";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { EnvProvisionButton } from "@/components/EnvProvisionButton";
 import { ConfigListRow, ModalButton } from "@/components/ui/ConfigModal";
+import { errorBoxStylePre12 } from "@/lib/styles";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -456,9 +457,7 @@ function AddPluginPanel({
         </div>
       </div>
 
-      {actionError && (
-        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "pre-wrap" }}>{actionError}</div>
-      )}
+      {actionError && <div style={errorBoxStylePre12}>{actionError}</div>}
     </div>
   );
 }
@@ -696,9 +695,7 @@ function PackageDetail({
       </div>
 
       {actionMessage && <div style={{ fontSize: 12, color: "#16a34a" }}>{actionMessage}</div>}
-      {actionError && (
-        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "pre-wrap" }}>{actionError}</div>
-      )}
+      {actionError && <div style={errorBoxStylePre12}>{actionError}</div>}
     </div>
   );
 }

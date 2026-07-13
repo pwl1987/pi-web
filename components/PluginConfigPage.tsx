@@ -10,6 +10,7 @@ import {
   type PluginConfigField,
 } from "@/lib/plugin-config-descriptors";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { errorBoxStylePre } from "@/lib/styles";
 
 type ConfigValue = string | number | boolean | string[];
 type ConfigState = Record<string, ConfigValue>;
@@ -252,9 +253,7 @@ export function PluginConfigPage({
         <div style={{ fontSize: 13, color: "var(--text-dim)" }}>{t("plugins.loading")}</div>
       )}
 
-      {!loading && error && (
-        <div style={{ fontSize: 13, color: "#ef4444", whiteSpace: "pre-wrap" }}>{error}</div>
-      )}
+      {!loading && error && <div style={errorBoxStylePre}>{error}</div>}
 
       {!loading && values && (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>

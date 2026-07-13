@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTodoLiveRefresh } from "@/hooks/useTodoLiveRefresh";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
-import { btnStyle } from "@/lib/styles";
+import { btnStyle, errorBoxStyle } from "@/lib/styles";
 
 interface TodoTask {
   id: number;
@@ -65,7 +65,7 @@ export function TodoPanel() {
         {t("common.loading")}
       </div>
     );
-  if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
+  if (error) return <div style={errorBoxStyle}>{error}</div>;
 
   const inProgress = tasks.filter((t) => t.status === "in_progress");
   const pending = tasks.filter((t) => t.status === "pending");

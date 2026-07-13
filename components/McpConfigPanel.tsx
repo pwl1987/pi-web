@@ -8,7 +8,7 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { BUILTIN_MCP_TEMPLATES, type McpServerEntry, type McpTemplate } from "@/lib/mcp-templates";
 import { EnvProvisionButton } from "@/components/EnvProvisionButton";
-import { btnStyle, cardStyle, statusBannerStyle } from "@/lib/styles";
+import { btnStyle, cardStyle, statusBannerStyle, errorBoxStyle } from "@/lib/styles";
 import { parseArgs, parseEnv, parseHeaders, parseIntSafe } from "@/lib/parse";
 
 interface McpServerInfo {
@@ -512,7 +512,7 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
         {t("common.loading")}
       </div>
     );
-  if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
+  if (error) return <div style={errorBoxStyle}>{error}</div>;
 
   return (
     <div style={{ padding: 12, fontSize: 12, height: "100%" }}>

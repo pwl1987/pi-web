@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { btnStyle, cardStyle } from "@/lib/styles";
+import { btnStyle, cardStyle, errorBoxStyle } from "@/lib/styles";
 
 interface AsyncStatus {
   runId?: string;
@@ -72,7 +72,7 @@ export function SubagentsPanel() {
         {t("common.loading")}
       </div>
     );
-  if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
+  if (error) return <div style={errorBoxStyle}>{error}</div>;
 
   return (
     <div style={{ padding: 12, fontSize: 12, height: "100%", overflowY: "auto" }}>

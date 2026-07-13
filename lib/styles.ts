@@ -49,3 +49,26 @@ export const btnStyleMuted: React.CSSProperties = {
   color: "var(--text-muted)",
   cursor: "pointer",
 };
+
+export const errorTextStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#f87171",
+};
+
+export const errorBoxStyle: React.CSSProperties = {
+  padding: 16,
+  fontSize: 12,
+  color: "#f87171",
+};
+
+export const errorBoxStylePre: React.CSSProperties = {
+  fontSize: 13,
+  color: "#ef4444",
+  whiteSpace: "pre-wrap",
+};
+
+export const errorBoxStylePre12: React.CSSProperties = {
+  fontSize: 12,
+  color: "#ef4444",
+  whiteSpace: "pre-wrap",
+};
