@@ -36,23 +36,30 @@ export function AgentsConfig({ cwd, onClose }: Props) {
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
 
-  // Load file when type/level changes.
-  useEffect(() => {
+  const loadFile = useCallback(async () => {
     setLoading(true);
     setError("");
     setDirty(false);
     setMode("edit");
-    const params = new URLSearchParams({ file: fileType, level });
-    if (level === "project") params.set("cwd", cwd);
-    fetch(`/api/agents-md?${params}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setContent(d.content ?? "");
-        setExists(d.exists ?? false);
-      })
-      .catch(() => setError("加载失败"))
-      .finally(() => setLoading(false));
+    try {
+      const params = new URLSearchParams({ file: fileType, level });
+      if (level === "project") params.set("cwd", cwd);
+      const { data } = await csrfFetchJson<{ content?: string; exists?: boolean }>(
+        `/api/agents-md?${params}`,
+        { method: "GET" },
+      );
+      setContent(data.content ?? "");
+      setExists(data.exists ?? false);
+    } catch {
+      setError("加载失败");
+    } finally {
+      setLoading(false);
+    }
   }, [fileType, level, cwd]);
+
+  useEffect(() => {
+    void loadFile();
+  }, [loadFile]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
