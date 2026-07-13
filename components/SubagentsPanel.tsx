@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { btnStyle, cardStyle } from "@/lib/styles";
 
 interface AsyncStatus {
   runId?: string;
@@ -236,21 +237,6 @@ export function SubagentsPanel() {
   );
 }
 
-const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "5px 12px",
-  fontSize: 11,
-  color: "var(--text)",
-  cursor: "pointer",
-};
-const cardStyle: React.CSSProperties = {
-  background: "var(--bg-panel)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 10,
-};
 function badgeStyle(color: string): React.CSSProperties {
   return {
     fontSize: 10,

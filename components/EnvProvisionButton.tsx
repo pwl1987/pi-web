@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { btnStyle } from "@/lib/styles";
 import type {
   CapabilityEnv,
   DependencyCheck,
@@ -396,13 +397,3 @@ function DependencyLine({
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "5px 12px",
-  fontSize: 11,
-  color: "var(--text)",
-  cursor: "pointer",
-};

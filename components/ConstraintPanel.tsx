@@ -7,6 +7,7 @@
 import { useConstraints } from "@/lib/constraints/useConstraints";
 import { useI18n } from "@/hooks/useI18n";
 import type { ConstraintSeverity } from "@/lib/constraints/types";
+import { btnStyleMuted } from "@/lib/styles";
 
 const SEVERITY_LABEL: Record<ConstraintSeverity, string> = {
   error: "错误",
@@ -18,16 +19,6 @@ const SEVERITY_COLOR: Record<ConstraintSeverity, string> = {
   error: "var(--danger, #e5484d)",
   warn: "var(--warning, #f5a623)",
   info: "var(--text-muted)",
-};
-
-const btnStyle: React.CSSProperties = {
-  fontSize: 11,
-  padding: "4px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  background: "transparent",
-  color: "var(--text-muted)",
-  cursor: "pointer",
 };
 
 export function ConstraintPanel() {
@@ -47,7 +38,7 @@ export function ConstraintPanel() {
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>
           {t("constraints.title")}
         </div>
-        <button type="button" onClick={recheck} style={btnStyle}>
+        <button type="button" onClick={recheck} style={btnStyleMuted}>
           {t("constraints.recheck")}
         </button>
       </div>
