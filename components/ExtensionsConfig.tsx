@@ -31,9 +31,10 @@ export function ExtensionsConfig({ onClose }: Props) {
 
   const reload = useCallback(async () => {
     try {
-      const res = await fetch("/api/extensions/list");
-      const d = await res.json();
-      setList(d.extensions ?? []);
+      const { data } = await csrfFetchJson<{ extensions?: ExtListItem[] }>("/api/extensions/list", {
+        method: "GET",
+      });
+      setList(data.extensions ?? []);
     } catch {
       /* ignore */
     }
