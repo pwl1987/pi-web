@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useAsync } from "@/hooks/useAsync";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { BUILTIN_MCP_TEMPLATES, type McpServerEntry, type McpTemplate } from "@/lib/mcp-templates";
@@ -181,8 +182,7 @@ function validateDraft(
 export function McpConfigPanel({ cwd }: { cwd?: string }) {
   const { t } = useI18n();
   const [data, setData] = useState<McpConfigData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
 
   // npm:pi-mcp-adapter install status. When not installed, MCP functionality
   // is disabled and the user is offered an install action.
@@ -267,27 +267,20 @@ export function McpConfigPanel({ cwd }: { cwd?: string }) {
   }, [cwd]);
 
   const reload = useCallback(async () => {
-    try {
-      const {
-        ok,
-        status,
-        data: d,
-      } = await csrfFetchJson<McpConfigData>("/api/mcp-config", {
-        method: "GET",
-      });
-      if (!ok) throw new Error(`HTTP ${status}`);
-      setData(d);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    const {
+      ok,
+      status,
+      data: d,
+    } = await csrfFetchJson<McpConfigData>("/api/mcp-config", {
+      method: "GET",
+    });
+    if (!ok) throw new Error(`HTTP ${status}`);
+    setData(d);
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void run(reload);
+  }, [reload, run]);
 
   const occupiedNames = useMemo(() => (data?.servers ?? []).map((s) => s.name), [data]);
 

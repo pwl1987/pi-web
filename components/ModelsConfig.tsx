@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { useAsync } from "@/hooks/useAsync";
 import { ConfigListRow, ModalButton, SaveButton } from "@/components/ui/ConfigModal";
 // Color icons (have their own fill colors — no background needed)
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
@@ -1964,7 +1965,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
-  const [loading, setLoading] = useState(true);
+  const { loading, run } = useAsync(undefined, { initialLoading: true });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
@@ -2009,14 +2010,12 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
         if (keys.length > 0) setSelection({ type: "provider", name: keys[0] });
       } catch {
         setConfig({ providers: {} });
-      } finally {
-        setLoading(false);
       }
     };
-    void loadConfig();
+    void run(loadConfig);
     void loadOAuthProviders();
     void loadApiKeyProviders();
-  }, [loadOAuthProviders, loadApiKeyProviders]);
+  }, [loadOAuthProviders, loadApiKeyProviders, run]);
 
   const addCustomProvider = useCallback(() => {
     let finalName = "new-provider";
