@@ -761,9 +761,15 @@ export function PluginsConfig({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/plugins?cwd=${encodeURIComponent(cwd)}`);
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
+      const {
+        ok,
+        status,
+        data: next,
+      } = await csrfFetchJson<PluginsResponse & { error?: string }>(
+        `/api/plugins?cwd=${encodeURIComponent(cwd)}`,
+        { method: "GET" },
+      );
+      if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
       setData(next);
       setAddMode((current) => next.packages.length === 0 || current);
       setSelected((current) => {
