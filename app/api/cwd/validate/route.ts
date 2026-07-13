@@ -22,21 +22,17 @@ export async function POST(req: Request) {
     const body = (await req.json()) as { cwd?: unknown };
     const cwd = typeof body.cwd === "string" ? body.cwd.trim() : "";
 
-    if (!cwd) {
-      return NextResponse.json({ error: "Path is required" }, { status: 400 });
-    }
+    if (!cwd) return errorResponse("Path is required", 400);
 
     const normalizedCwd = normalizeCwd(cwd);
     let stat: Stats;
     try {
       stat = statSync(normalizedCwd);
     } catch {
-      return NextResponse.json({ error: `Directory does not exist: ${cwd}` }, { status: 400 });
+      return errorResponse(`Directory does not exist: ${cwd}`, 400);
     }
 
-    if (!stat.isDirectory()) {
-      return NextResponse.json({ error: `Path is not a directory: ${cwd}` }, { status: 400 });
-    }
+    if (!stat.isDirectory()) return errorResponse(`Path is not a directory: ${cwd}`, 400);
 
     allowFileRoot(normalizedCwd);
     return NextResponse.json({ success: true, cwd: normalizedCwd });

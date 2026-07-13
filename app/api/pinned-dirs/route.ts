@@ -33,18 +33,14 @@ export async function POST(req: Request) {
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
     const alias = typeof body.alias === "string" ? body.alias : undefined;
 
-    if (!rawPath) {
-      return NextResponse.json({ error: "Path is required" }, { status: 400 });
-    }
+    if (!rawPath) return errorResponse("Path is required", 400);
 
     const normalized = normalizeCwd(rawPath);
     try {
       const stat = statSync(normalized);
-      if (!stat.isDirectory()) {
-        return NextResponse.json({ error: `Path is not a directory: ${rawPath}` }, { status: 400 });
-      }
+      if (!stat.isDirectory()) return errorResponse(`Path is not a directory: ${rawPath}`, 400);
     } catch {
-      return NextResponse.json({ error: `Directory does not exist: ${rawPath}` }, { status: 400 });
+      return errorResponse(`Directory does not exist: ${rawPath}`, 400);
     }
 
     allowFileRoot(normalized);
@@ -65,9 +61,7 @@ export async function DELETE(req: Request) {
     const body = (await req.json()) as { path?: unknown };
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
 
-    if (!rawPath) {
-      return NextResponse.json({ error: "Path is required" }, { status: 400 });
-    }
+    if (!rawPath) return errorResponse("Path is required", 400);
 
     const normalized = normalizeCwd(rawPath);
     const removed = removePinnedDir(normalized);

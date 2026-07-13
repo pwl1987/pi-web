@@ -114,9 +114,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   try {
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
     const sm = SessionManager.open(filePath);
     const leafId = sm.getLeafId();
@@ -211,13 +209,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   try {
     const { name } = (await req.json()) as { name?: string };
-    if (typeof name !== "string") {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
-    }
+    if (typeof name !== "string") return errorResponse("name is required", 400);
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
     const sm = SessionManager.open(filePath);
     sm.appendSessionInfo(name.trim());
     return NextResponse.json({ ok: true });
@@ -234,9 +228,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const { id } = await params;
   try {
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
     // Read header before deleting to get parentSession path
     const firstLine = readFileSync(filePath, "utf8").split("\n")[0];
