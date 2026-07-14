@@ -35,6 +35,7 @@ export async function GET(req: Request) {
           // controller already closed
         }
       }, 30_000);
+      heartbeat.unref(); // 不阻止进程优雅退出
 
       const cleanup = () => {
         clearInterval(heartbeat);

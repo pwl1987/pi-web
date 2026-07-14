@@ -3,7 +3,7 @@
 // → { id, status }
 import { type NextRequest, NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import {
   createRoleAwareRunner,
   createMockRunner,
@@ -27,12 +27,13 @@ export async function POST(req: NextRequest) {
   if (csrf) return csrf;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       requirement?: unknown;
       cwd?: unknown;
       config?: Partial<OrchestratorConfig>;
       mock?: unknown;
-    };
+    }>(req);
+    if (parseError) return parseError;
     const requirement = typeof body.requirement === "string" ? body.requirement.trim() : "";
     if (!requirement) {
       return NextResponse.json({ error: "需求内容为空" }, { status: 400 });

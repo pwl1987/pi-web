@@ -4,7 +4,7 @@ import { resolve } from "path";
 import { getPiAdapter } from "@/lib/pi";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 const { DefaultResourceLoader, getAgentDir, parseFrontmatter } = getPiAdapter();
 
@@ -34,7 +34,11 @@ export async function PATCH(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { filePath: string; disableModelInvocation: boolean };
+    const [body, parseError] = await safeJsonBody<{
+      filePath: string;
+      disableModelInvocation: boolean;
+    }>(req);
+    if (parseError) return parseError;
     const { filePath, disableModelInvocation } = body;
     if (!filePath) return errorResponse("filePath required", 400);
 

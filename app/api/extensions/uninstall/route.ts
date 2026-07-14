@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { uninstallExtension, listExtensionsWithState } from "@/lib/extensions/discovery";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { id?: string };
+    const [body, parseError] = await safeJsonBody<{ id?: string }>(req);
+    if (parseError) return parseError;
     const id = body.id?.trim();
     if (!id) return errorResponse("id is required", 400);
 

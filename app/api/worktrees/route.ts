@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import { addWorktree, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
@@ -52,7 +52,8 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { cwd?: string; branch?: string };
+    const [body, parseError] = await safeJsonBody<{ cwd?: string; branch?: string }>(req);
+    if (parseError) return parseError;
     if (!body.cwd || typeof body.cwd !== "string") return errorResponse("cwd is required", 400);
     if (!body.branch || typeof body.branch !== "string")
       return errorResponse("branch is required", 400);
@@ -74,7 +75,10 @@ export async function DELETE(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { cwd?: string; path?: string; force?: boolean };
+    const [body, parseError] = await safeJsonBody<{ cwd?: string; path?: string; force?: boolean }>(
+      req,
+    );
+    if (parseError) return parseError;
     if (!body.cwd || typeof body.cwd !== "string") return errorResponse("cwd is required", 400);
     if (!body.path || typeof body.path !== "string") return errorResponse("path is required", 400);
     const denied = await checkCwdAllowed(body.cwd);

@@ -1,5 +1,6 @@
 import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
+import { safeJsonBody } from "@/lib/api-utils";
 
 const { AuthStorage } = getPiAdapter();
 
@@ -22,7 +23,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   if (csrfError) return csrfError;
 
   const { provider } = await params;
-  const { token, code } = (await req.json()) as { token?: string; code?: string };
+  const [body, parseError] = await safeJsonBody<{ token?: string; code?: string }>(req);
+  if (parseError) return parseError;
+  const { token, code } = body;
 
   if (!token || !code) {
     return Response.json({ error: "token and code required" }, { status: 400 });

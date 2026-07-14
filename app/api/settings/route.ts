@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse, jsonOk } from "@/lib/api-utils";
+import { errorResponse, jsonOk, safeJsonBody } from "@/lib/api-utils";
 import type { SdkSettingsManager } from "@/lib/pi";
 
 const { SettingsManager, getAgentDir } = getPiAdapter();
@@ -112,7 +112,8 @@ export async function POST(req: NextRequest) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as Record<string, unknown>;
+    const [body, parseError] = await safeJsonBody<Record<string, unknown>>(req);
+    if (parseError) return parseError;
     const mgr = await createManager();
 
     // Model defaults

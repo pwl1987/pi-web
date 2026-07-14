@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 const { DefaultPackageManager, getAgentDir, SettingsManager } = getPiAdapter();
 
@@ -75,7 +75,12 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { action?: string; cwd?: string; scope?: string };
+    const [body, parseError] = await safeJsonBody<{
+      action?: string;
+      cwd?: string;
+      scope?: string;
+    }>(req);
+    if (parseError) return parseError;
     if (!body.cwd) return errorResponse("cwd required", 400);
     if (body.action !== "install") return errorResponse(`Unsupported action: ${body.action}`, 400);
     const { packageManager } = buildManager(body.cwd);

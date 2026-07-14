@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { getPiAdapter } from "@/lib/pi";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple } = getPiAdapter();
 import { getAssistantText } from "@/lib/api-shared";
@@ -109,13 +109,14 @@ export async function POST(req: NextRequest) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       prompt?: string;
       provider?: string;
       modelId?: string;
       cwd?: string;
       useContext?: boolean;
-    };
+    }>(req);
+    if (parseError) return parseError;
     const prompt = body.prompt ?? "";
     if (!prompt.trim()) return errorResponse("Prompt is empty — nothing to enhance.", 400);
 

@@ -5,7 +5,7 @@
 // 无论哪种模式，方案都会完整保存到 docs/plans/<task-slug>.md（lib/plan-doc-store）。
 import { type NextRequest, NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { getOrchestrator } from "@/lib/agent-orchestrator";
 import {
   registerDefaultEngine,
@@ -23,10 +23,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const orch = getOrchestrator(id);
     if (!orch) return NextResponse.json({ error: "编排会话不存在" }, { status: 404 });
 
-    const body = (await req.json().catch(() => ({}))) as {
+    const [body, parseError] = await safeJsonBody<{
       planId?: unknown;
       mode?: unknown;
-    };
+    }>(req);
+    if (parseError) return parseError;
     const planId = typeof body.planId === "string" ? body.planId : undefined;
     // mode 缺省为 "engine"，保持对旧调用方的向后兼容。
     const mode: PlanDocMode = body.mode === "plan" ? "plan" : "engine";

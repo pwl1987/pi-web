@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "@/lib/config-file";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { applyDefaults, getPluginConfigDescriptor } from "@/lib/plugin-config-descriptors";
 
 export const dynamic = "force-dynamic";
@@ -77,7 +77,8 @@ export async function PUT(req: Request) {
     const descriptor = getPluginConfigDescriptor(source);
     if (!descriptor) return errorResponse(`No config descriptor for ${source}`, 404);
 
-    const body = (await req.json()) as { values?: Record<string, unknown> };
+    const [body, parseError] = await safeJsonBody<{ values?: Record<string, unknown> }>(req);
+    if (parseError) return parseError;
     const incoming = body.values ?? {};
     const knownKeys = new Set(descriptor.fields.map((f) => f.key));
 

@@ -75,7 +75,7 @@ export const MessageView = memo(function MessageView({
   if (message.role === "user") {
     return (
       <UserMessageView
-        message={message as UserMessage}
+        message={message}
         cwd={cwd}
         onOpenFile={onOpenFile}
         entryId={entryId}
@@ -90,7 +90,7 @@ export const MessageView = memo(function MessageView({
   if (message.role === "assistant") {
     return (
       <AssistantMessageView
-        message={message as AssistantMessage}
+        message={message}
         isStreaming={isStreaming}
         toolResults={toolResults}
         modelNames={modelNames}
@@ -106,12 +106,10 @@ export const MessageView = memo(function MessageView({
     return null;
   }
   if (message.role === "custom") {
-    if ((message as CustomMessage).customType === "compaction") {
-      return <CompactionMessageView message={message as CustomMessage} />;
+    if (message.customType === "compaction") {
+      return <CompactionMessageView message={message} />;
     }
-    return (
-      <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />
-    );
+    return <CustomMessageView message={message} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   return null;
 });

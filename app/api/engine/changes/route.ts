@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import {
   registerDefaultEngine,
   getUnifiedEngineAdapter,
@@ -13,7 +13,12 @@ export async function POST(req: Request) {
   if (csrf) return csrf;
 
   try {
-    const body = (await req.json()) as { title?: unknown; description?: unknown; cwd?: unknown };
+    const [body, parseError] = await safeJsonBody<{
+      title?: unknown;
+      description?: unknown;
+      cwd?: unknown;
+    }>(req);
+    if (parseError) return parseError;
     const title = typeof body.title === "string" ? body.title.trim() : "";
     const cwd = typeof body.cwd === "string" ? body.cwd.trim() : "";
     const description = typeof body.description === "string" ? body.description : undefined;

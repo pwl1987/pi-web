@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import type { SkillSearchResult } from "@/lib/api-types";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +96,9 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const { query, limit: rawLimit } = (await req.json()) as { query?: string; limit?: unknown };
+    const [body, parseError] = await safeJsonBody<{ query?: string; limit?: unknown }>(req);
+    if (parseError) return parseError;
+    const { query, limit: rawLimit } = body;
     if (!query?.trim()) return errorResponse("query required", 400);
     const limit = parseLimit(rawLimit);
 

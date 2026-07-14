@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { setExtensionEnabled } from "@/lib/extensions/discovery";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,8 @@ export async function POST(req: NextRequest) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { id?: string; enabled?: boolean };
+    const [body, parseError] = await safeJsonBody<{ id?: string; enabled?: boolean }>(req);
+    if (parseError) return parseError;
     if (typeof body.id !== "string" || typeof body.enabled !== "boolean") {
       return NextResponse.json(
         { error: "Expected { id: string, enabled: boolean }" },

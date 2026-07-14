@@ -44,6 +44,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           // controller already closed
         }
       }, 30_000);
+      heartbeat.unref(); // 不阻止进程优雅退出
 
       // Cleanup when client disconnects
       const cleanup = () => {

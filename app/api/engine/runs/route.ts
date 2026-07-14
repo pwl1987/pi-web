@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import {
   registerDefaultEngine,
   getUnifiedEngineAdapter,
@@ -24,7 +24,8 @@ export async function POST(req: Request) {
   if (csrf) return csrf;
 
   try {
-    const body = (await req.json()) as { runId?: unknown; action?: unknown };
+    const [body, parseError] = await safeJsonBody<{ runId?: unknown; action?: unknown }>(req);
+    if (parseError) return parseError;
     const runId = typeof body.runId === "string" ? body.runId : "";
     const action = typeof body.action === "string" ? body.action : "";
     if (!runId) return NextResponse.json({ error: "runId 必填" }, { status: 400 });

@@ -4,7 +4,7 @@ import { allowFileRoot } from "@/lib/file-access";
 import { startRpcSession } from "@/lib/rpc-manager";
 import { isAllowedAgentCommand } from "@/lib/allowed-commands";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 // POST /api/agent/new  body: { cwd: string; type: string; message?: string; ... }
 // Spawns a brand-new pi session. Most calls immediately send the first command;
@@ -15,7 +15,8 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { cwd?: string; [key: string]: unknown };
+    const [body, parseError] = await safeJsonBody<{ cwd?: string; [key: string]: unknown }>(req);
+    if (parseError) return parseError;
     const { cwd, ...command } = body;
 
     if (!cwd || typeof cwd !== "string") return errorResponse("cwd is required", 400);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,13 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const {
-      package: pkg,
-      scope,
-      cwd,
-    } = (await req.json()) as { package?: string; scope?: string; cwd?: string };
+    const [body, parseError] = await safeJsonBody<{
+      package?: string;
+      scope?: string;
+      cwd?: string;
+    }>(req);
+    if (parseError) return parseError;
+    const { package: pkg, scope, cwd } = body;
     if (!pkg?.trim()) return errorResponse("package required", 400);
 
     const isGlobal = scope !== "project";

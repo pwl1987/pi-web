@@ -2,7 +2,7 @@
 // 读取 / 保存计划模式的「角色 → 底层模型」映射。模型下拉选项复用 /api/models。
 import { type NextRequest, NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import {
   loadPlanModelConfig,
   savePlanModelConfig,
@@ -26,7 +26,8 @@ export async function PUT(req: NextRequest) {
   if (csrf) return csrf;
 
   try {
-    const body = (await req.json()) as { map?: unknown };
+    const [body, parseError] = await safeJsonBody<{ map?: unknown }>(req);
+    if (parseError) return parseError;
     if (!body || typeof body.map !== "object" || body.map === null) {
       return NextResponse.json({ error: "map 字段缺失或类型错误" }, { status: 400 });
     }

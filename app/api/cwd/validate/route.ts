@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { allowFileRoot } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 function normalizeCwd(cwd: string): string {
   if (cwd === "~") return homedir();
@@ -19,7 +19,8 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { cwd?: unknown };
+    const [body, parseError] = await safeJsonBody<{ cwd?: unknown }>(req);
+    if (parseError) return parseError;
     const cwd = typeof body.cwd === "string" ? body.cwd.trim() : "";
 
     if (!cwd) return errorResponse("Path is required", 400);

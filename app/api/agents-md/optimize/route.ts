@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText } from "@/lib/api-shared";
 import { getPiAdapter } from "@/lib/pi";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple } = getPiAdapter();
 
@@ -18,12 +18,13 @@ export async function POST(req: NextRequest) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       content?: string;
       file?: string;
       cwd?: string;
       instruction?: string;
-    };
+    }>(req);
+    if (parseError) return parseError;
     const content = body.content ?? "";
     const fileType = body.file ?? "agents";
     if (!content.trim()) return errorResponse("Content is empty — nothing to optimize.", 400);

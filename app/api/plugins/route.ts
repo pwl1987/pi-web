@@ -15,7 +15,7 @@ import type {
   PluginsResponse,
 } from "@/lib/api-types";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { patchPackageManagerForUninstall } from "@/lib/plugin-package-manager";
 import { isPinned } from "@/lib/recommended-plugins";
 
@@ -305,12 +305,13 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       action?: PluginAction;
       source?: string;
       scope?: PluginScope;
       cwd?: string;
-    };
+    }>(req);
+    if (parseError) return parseError;
     if (!body.cwd) return errorResponse("cwd required", 400);
     if (!body.action) return errorResponse("action required", 400);
 

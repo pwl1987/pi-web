@@ -6,7 +6,7 @@ import { getPiAdapter } from "@/lib/pi";
 
 const { getAgentDir } = getPiAdapter();
 import { ensureParentDir } from "@/lib/config-file";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
@@ -66,12 +66,13 @@ export async function PUT(req: NextRequest) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       file?: string;
       level?: string;
       cwd?: string;
       content?: string;
-    };
+    }>(req);
+    if (parseError) return parseError;
     const file = (body.file ?? "agents") as PromptFile;
     if (!FILE_NAMES[file])
       return errorResponse("file must be 'agents', 'system', or 'append'", 400);

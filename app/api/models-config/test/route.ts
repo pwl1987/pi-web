@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText, errorMessage } from "@/lib/api-shared";
+import { safeJsonBody } from "@/lib/api-utils";
 import { getPiAdapter } from "@/lib/pi";
 
 const { AuthStorage, ModelRegistry, completeSimple } = getPiAdapter();
@@ -23,11 +24,12 @@ export async function POST(req: Request) {
   let tempDir: string | undefined;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       providerName?: unknown;
       provider?: unknown;
       model?: unknown;
-    };
+    }>(req);
+    if (parseError) return parseError;
     const providerName = typeof body.providerName === "string" ? body.providerName.trim() : "";
     if (!providerName)
       return NextResponse.json({ ok: false, error: "providerName is required" }, { status: 400 });

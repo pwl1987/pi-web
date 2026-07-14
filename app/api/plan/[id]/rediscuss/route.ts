@@ -2,7 +2,7 @@
 // 交互确认闭环的「退回」出口：注入用户修改意见，重新讨论直至新共识。
 import { type NextRequest, NextResponse } from "next/server";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { getOrchestrator } from "@/lib/agent-orchestrator";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const orch = getOrchestrator(id);
     if (!orch) return NextResponse.json({ error: "编排会话不存在" }, { status: 404 });
-    const body = (await req.json()) as { feedback?: unknown };
+    const [body, parseError] = await safeJsonBody<{ feedback?: unknown }>(req);
+    if (parseError) return parseError;
     const feedback = typeof body.feedback === "string" ? body.feedback.trim() : "";
     if (!feedback) return NextResponse.json({ error: "缺少修改意见（feedback）" }, { status: 400 });
 

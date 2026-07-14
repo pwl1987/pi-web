@@ -3,7 +3,7 @@ import { resolveSessionPath, getSessionHeaderCached } from "@/lib/session-reader
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
 import { ALLOWED_AGENT_COMMANDS } from "@/lib/allowed-commands";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 // POST /api/agent/[id] - Send a command to an existing session
 
@@ -14,7 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
 
   try {
-    const body = (await req.json()) as { type: string; [key: string]: unknown };
+    const [body, parseError] = await safeJsonBody<{ type: string; [key: string]: unknown }>(req);
+    if (parseError) return parseError;
 
     if (!ALLOWED_AGENT_COMMANDS.has(body.type))
       return errorResponse(`unknown command: ${body.type}`, 400);

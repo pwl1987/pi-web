@@ -15,7 +15,7 @@ const { SessionManager } = getPiAdapter();
 import { getRpcSession } from "@/lib/rpc-manager";
 import { reparentSessionHeader } from "@/lib/session-reparent";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
 const MAX_PROJECTED_TREE_DEPTH = 200;
@@ -207,7 +207,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   try {
-    const { name } = (await req.json()) as { name?: string };
+    const [body, parseError] = await safeJsonBody<{ name?: string }>(req);
+    if (parseError) return parseError;
+    const { name } = body;
     if (typeof name !== "string") return errorResponse("name is required", 400);
     const filePath = await resolveSessionPath(id);
     if (!filePath) return errorResponse("Session not found", 404);

@@ -102,7 +102,16 @@ declare global {
 }
 
 function getPathCache(): Map<string, { path: string; expiresAt: number }> {
-  if (!globalThis.__piSessionPathCache) globalThis.__piSessionPathCache = new Map();
+  if (!globalThis.__piSessionPathCache) {
+    globalThis.__piSessionPathCache = new Map();
+    // 定期清理过期条目，防止长运行进程缓存只增不减
+    setInterval(() => {
+      const now = Date.now();
+      for (const [key, val] of globalThis.__piSessionPathCache || []) {
+        if (now >= val.expiresAt) globalThis.__piSessionPathCache?.delete(key);
+      }
+    }, 5 * 60_000).unref();
+  }
   return globalThis.__piSessionPathCache;
 }
 
@@ -183,7 +192,6 @@ export function getSessionHeaderCached(filePath: string): Record<string, unknown
  * 避免直接依赖 SDK 内部类型。
  */
 function snapshotFromManager(
-   
   sm: {
     getEntries(): any;
     getHeader(): any;

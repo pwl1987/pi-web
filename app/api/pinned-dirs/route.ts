@@ -5,7 +5,7 @@ import { homedir } from "os";
 import { allowFileRoot } from "@/lib/file-access";
 import { getPinnedDirs, addPinnedDir, removePinnedDir } from "@/lib/session-state-store";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 function normalizeCwd(cwd: string): string {
   if (cwd === "~") return homedir();
@@ -29,7 +29,8 @@ export async function POST(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { path?: unknown; alias?: unknown };
+    const [body, parseError] = await safeJsonBody<{ path?: unknown; alias?: unknown }>(req);
+    if (parseError) return parseError;
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
     const alias = typeof body.alias === "string" ? body.alias : undefined;
 
@@ -58,7 +59,8 @@ export async function DELETE(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as { path?: unknown };
+    const [body, parseError] = await safeJsonBody<{ path?: unknown }>(req);
+    if (parseError) return parseError;
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
 
     if (!rawPath) return errorResponse("Path is required", 400);

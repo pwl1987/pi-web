@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, memo } from "react";
 import type React from "react";
 import type { SessionInfo } from "@/lib/types";
 import type { WorkspaceLabelItem } from "@/lib/extensions/types";
@@ -18,7 +18,7 @@ import {
   smallInputStyle,
 } from "@/lib/styles";
 
-export function SessionItem({
+export const SessionItem = memo(function SessionItem({
   session,
   isSelected,
   isRunning,
@@ -468,4 +468,4 @@ export function SessionItem({
       )}
     </div>
   );
-}
+});

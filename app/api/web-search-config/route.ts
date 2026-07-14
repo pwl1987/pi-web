@@ -3,7 +3,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { readJsonFile, writeJsonFileAtomic, ensureParentDir } from "@/lib/config-file";
 import { validateCsrf } from "@/lib/csrf";
-import { errorResponse } from "@/lib/api-utils";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -72,13 +72,14 @@ export async function PUT(req: Request) {
   if (csrfError) return csrfError;
 
   try {
-    const body = (await req.json()) as {
+    const [body, parseError] = await safeJsonBody<{
       provider?: string;
       workflow?: string;
       curatorTimeoutSeconds?: number;
       webSearchEnabled?: boolean;
       apiKeys?: Record<string, string>;
-    };
+    }>(req);
+    if (parseError) return parseError;
 
     const existing = readJsonFile<WebSearchConfig>(configPath(), {});
     const updated: WebSearchConfig = { ...existing };
