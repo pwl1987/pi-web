@@ -14,6 +14,8 @@ import {
   statusBannerStyle,
   errorBoxStyle,
   loadingBoxStyle,
+  inputStyle,
+  selectStyle,
 } from "@/lib/styles";
 import { parseArgs, parseEnv, parseHeaders, parseIntSafe } from "@/lib/parse";
 
@@ -1109,37 +1111,8 @@ const readyDotStyle: React.CSSProperties = {
   background: "#16a34a",
   boxShadow: "0 0 0 3px rgba(16,163,74,0.18)",
 };
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
-  fontFamily: "var(--font-mono)",
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  color: "var(--text)",
-  boxSizing: "border-box",
-};
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  color: "var(--text)",
-  boxSizing: "border-box",
-};
 const textareaStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
-  fontFamily: "var(--font-mono)",
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  color: "var(--text)",
-  boxSizing: "border-box",
+  ...inputStyle,
   resize: "vertical",
 };
 const labelStyle: React.CSSProperties = {

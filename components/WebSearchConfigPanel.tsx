@@ -6,7 +6,7 @@ import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { useAsync } from "@/hooks/useAsync";
 import { useSave } from "@/hooks/useSave";
 import { SaveButton } from "@/components/ui/ConfigModal";
-import { btnStyle, errorBoxStyle, loadingBoxStyle } from "@/lib/styles";
+import { btnStyle, errorBoxStyle, loadingBoxStyle, inputStyle, selectStyle } from "@/lib/styles";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -168,7 +168,7 @@ export function WebSearchConfigPanel() {
                     placeholder={configured ? "••••••••" : t("webSearch.enterKey")}
                     value={keyInputs[key] ?? ""}
                     onChange={(e) => setKeyInputs({ ...keyInputs, [key]: e.target.value })}
-                    style={inputStyle}
+                    style={{ ...inputStyle, flex: 1 }}
                   />
                   <button
                     onClick={() => setShowKeys({ ...showKeys, [key]: !showKeys[key] })}
@@ -208,24 +208,6 @@ export function WebSearchConfigPanel() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  flex: 1,
-  padding: "5px 8px",
-  fontSize: 11,
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  color: "var(--text)",
-};
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "5px 8px",
-  fontSize: 11,
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  color: "var(--text)",
-};
 function badgeStyle(color: string): React.CSSProperties {
   return { fontSize: 10, fontWeight: 700, color };
 }

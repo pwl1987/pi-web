@@ -17,45 +17,31 @@ import type {
   QueuedMessages,
   SlashCommandInfo,
 } from "@/hooks/useAgentSession";
-import { clearDraft, getDraft, setDraft, type ChatDraftImage } from "@/lib/draft-store";
-import {
-  buildEntriesFromFiles,
-  buildAtInsertText,
-  extractAtQuery,
-  filterFileEntries,
-  type AtQueryMatch,
-  type FileIndexEntry,
-} from "@/lib/file-fuzzy";
-import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
-import { csrfFetchJson } from "@/lib/csrf-fetch";
-import {
-  usePlanMode,
-  setPlanMode,
-  setOrchestratorId,
-  linkPlanSession,
-} from "@/lib/plan-mode-store";
+import { usePlanMode, setPlanMode } from "@/lib/plan-mode-store";
 import type { ToolEntry } from "@/lib/tool-presets";
-import { applyPresetToTools } from "@/lib/tool-presets";
 import { formatTokenCount } from "@/lib/format-token-count";
 import { compareModelOptions, modelOptionCollator, type ModelOption } from "@/lib/model-utils";
-import {
-  imageToDraftImage,
-  draftImageToAttachedImage,
-  revokeImagePreview,
-} from "@/lib/image-utils";
 import { QueuedMessageRow } from "@/components/QueuedMessageRow";
-import { ToolChecklist } from "@/components/ToolChecklist";
 import {
   type SlashCommandPaletteItem,
   type SlashCommandSource,
   buildBuiltinSlashCommands,
   SLASH_SOURCES,
-  SLASH_SOURCE_GROUP_LABEL,
   SLASH_SOURCE_ORDER,
   slashMatchRank,
 } from "@/lib/slash-commands";
+import { SlashCommandPanel } from "./chat-input/SlashCommandPanel";
+import { AtFilePanel } from "./chat-input/AtFilePanel";
+import { ModelDropdownPanel } from "./chat-input/ModelDropdownPanel";
+import { ThinkingLevelDropdown } from "./chat-input/ThinkingLevelDropdown";
+import { ToolPresetDropdown } from "./chat-input/ToolPresetDropdown";
+import { useImageHandling } from "./chat-input/useImageHandling";
+import { useDraftPersistence } from "./chat-input/useDraftPersistence";
+import { useAtFileCompletion } from "./chat-input/useAtFileCompletion";
+import { usePlanModeSend } from "./chat-input/usePlanModeSend";
+import { usePromptEnhance } from "./chat-input/usePromptEnhance";
 
 // AttachedImage and ChatInputHandle live in @/lib/types (shared with
 // useAgentSession). Re-exported here for backward-compatible imports.
@@ -113,7 +99,6 @@ interface Props {
 import type { ChatInputHandle } from "@/lib/types";
 export type { ChatInputHandle };
 
-const TOOL_PRESETS = ["off", "default", "full"] as const;
 const TOOL_PRESET_MAP: Record<"off" | "default" | "full", "none" | "default" | "full"> = {
   off: "none",
   default: "default",
@@ -121,16 +106,7 @@ const TOOL_PRESET_MAP: Record<"off" | "default" | "full", "none" | "default" | "
 };
 const COMPOSITION_END_ENTER_GRACE_MS = 100;
 
-const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"] as const;
-const THINKING_LEVEL_DESC: Record<(typeof THINKING_LEVELS)[number], string> = {
-  auto: "thinking.auto",
-  off: "thinking.off",
-  minimal: "thinking.minimal",
-  low: "thinking.low",
-  medium: "thinking.medium",
-  high: "thinking.high",
-  xhigh: "thinking.xhigh",
-};
+// THINKING_LEVELS / THINKING_LEVEL_DESC imported from ./chat-input/ThinkingLevelDropdown
 
 export const ChatInput = memo(
   forwardRef<ChatInputHandle, Props>(function ChatInput(
@@ -177,10 +153,8 @@ export const ChatInput = memo(
     const isMobile = useIsMobile();
     const { t } = useI18n();
     const { planMode, orchestratorId, planStatus, planConfig } = usePlanMode();
-    // 计划模式下输入框复用的本地状态：提交中守卫与错误提示。
-    const [planBusy, setPlanBusy] = useState(false);
-    const [planError, setPlanError] = useState<string | null>(null);
-    const [value, setValue] = useState(() => (draftKey ? (getDraft(draftKey)?.value ?? "") : ""));
+
+    const [value, setValue] = useState("");
     const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
     const [modelDropdownRect, setModelDropdownRect] = useState<{
       top: number;
@@ -190,32 +164,41 @@ export const ChatInput = memo(
     const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
     const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
     const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
-    const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() =>
-      draftKey ? (getDraft(draftKey)?.images.map(draftImageToAttachedImage) ?? []) : [],
-    );
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashActiveIndex, setSlashActiveIndex] = useState(0);
-    const [atQuery, setAtQuery] = useState<AtQueryMatch | null>(null);
-    const [atMenuOpen, setAtMenuOpen] = useState(false);
-    const [atActiveIndex, setAtActiveIndex] = useState(0);
-    const [fileIndex, setFileIndex] = useState<{
-      cwd: string;
-      entries: FileIndexEntry[];
-      truncated: boolean;
-    } | null>(null);
-    const [fileIndexLoading, setFileIndexLoading] = useState(false);
-    const [atServerResult, setAtServerResult] = useState<{
-      cwd: string;
-      query: string;
-      matches: FileIndexEntry[];
-    } | null>(null);
+    const [stopConfirming, setStopConfirming] = useState(false);
 
-    // Smart prompt enhancement: loading guard, last error, and undo support so
-    // the user can revert to the original prompt after an enhancement.
-    const [enhancing, setEnhancing] = useState(false);
-    const [enhanceError, setEnhanceError] = useState("");
-    const [showUndo, setShowUndo] = useState(false);
-    const [originalBeforeEnhance, setOriginalBeforeEnhance] = useState("");
+    // ── 提取的 hooks ──
+    const { attachedImages, setAttachedImages, processImageFiles, removeImage, clearImages } =
+      useImageHandling(isStreaming);
+
+    const { clearCurrentDraft, persistCursor } = useDraftPersistence({
+      draftKey,
+      value,
+      attachedImages,
+      setValue,
+      setAttachedImages,
+    });
+
+    const {
+      atQuery,
+      setAtQuery,
+      atMenuOpen,
+      setAtMenuOpen,
+      atActiveIndex,
+      setAtActiveIndex,
+      atMatches,
+      atItemRefs,
+      fileIndex,
+      fileIndexLoading,
+      needsServerSearch,
+      serverResultInUse,
+      updateAtQuery,
+      applyAtCompletion,
+    } = useAtFileCompletion({ cwd, value, setValue });
+
+    const { enhancing, enhanceError, showUndo, handleEnhance, handleEnhanceUndo, cancelUndo } =
+      usePromptEnhance({ value, setValue, isStreaming, model, cwd });
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -228,19 +211,7 @@ export const ChatInput = memo(
     const lastCompositionEndAtRef = useRef(0);
     const slashCommandsRequestedRef = useRef(false);
     const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-    const atItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-    const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
-    const fileIndexFetchingRef = useRef<string | null>(null);
-    const draftKeyRef = useRef(draftKey);
-    const valueRef = useRef(value);
-    const attachedImagesRef = useRef(attachedImages);
-    // Guards the first draft-save so the very initial render (whose value was
-    // just hydrated from storage) doesn't re-write and clobber the saved caret.
-    const draftMountedRef = useRef(false);
-    const [stopConfirming, setStopConfirming] = useState(false);
     const stopConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    valueRef.current = value;
-    attachedImagesRef.current = attachedImages;
 
     // Cleanup stop-confirmation timeout on unmount
     useEffect(() => {
@@ -308,131 +279,15 @@ export const ChatInput = memo(
       },
     }));
 
-    const processImageFiles = useCallback(
-      async (files: File[]) => {
-        if (isStreaming) return;
-        const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-        if (!imageFiles.length) return;
-        const newImages = await Promise.all(
-          imageFiles.map(
-            (file) =>
-              new Promise<AttachedImage>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                  const result = reader.result as string;
-                  // result is "data:<mime>;base64,<data>"
-                  const base64 = result.split(",")[1];
-                  resolve({
-                    data: base64,
-                    mimeType: file.type,
-                    previewUrl: URL.createObjectURL(file),
-                  });
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-              }),
-          ),
-        );
-        setAttachedImages((prev) => [...prev, ...newImages]);
-      },
-      [isStreaming],
-    );
-
-    const removeImage = useCallback((index: number) => {
-      setAttachedImages((prev) => {
-        const next = [...prev];
-        const [removed] = next.splice(index, 1);
-        if (removed) revokeImagePreview(removed);
-        return next;
-      });
-    }, []);
-
-    const clearImages = useCallback(() => {
-      setAttachedImages((prev) => {
-        prev.forEach(revokeImagePreview);
-        return [];
-      });
-    }, []);
-
     const clearInput = useCallback(() => {
       setValue("");
       setAtQuery(null);
-      if (draftKey) clearDraft(draftKey);
-      if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
+      clearCurrentDraft();
       clearImages();
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
-    }, [clearImages, draftKey]);
-
-    useEffect(() => {
-      if (!draftKey || draftKeyRef.current !== draftKey) return;
-      // Skip the initial hydration render: its value came from storage, so
-      // re-writing it would clobber the persisted caret position. Subsequent
-      // runs persist real edits (including the live caret position).
-      if (!draftMountedRef.current) {
-        draftMountedRef.current = true;
-        return;
-      }
-      const ta = textareaRef.current;
-      setDraft(draftKey, {
-        value,
-        images: attachedImages.map(imageToDraftImage),
-        selectionStart: ta ? ta.selectionStart : null,
-        selectionEnd: ta ? ta.selectionEnd : null,
-      });
-    }, [attachedImages, draftKey, value]);
-
-    useEffect(() => {
-      if (!draftKey) return;
-      const ta = textareaRef.current;
-      if (!ta) return;
-      // Restore the caret to where the user left off whenever a draft is (re)
-      // loaded into the textarea — on the initial mount (after a refresh) and
-      // when the active session's draft changes. Run in rAF so the textarea
-      // already holds the restored value; the clamped range keeps it valid even
-      // if the stored selection is longer than the restored text.
-      const draft = getDraft(draftKey);
-      const raf = requestAnimationFrame(() => {
-        const len = ta.value.length;
-        const start = draft?.selectionStart ?? len;
-        const end = draft?.selectionEnd ?? len;
-        const s = Math.max(0, Math.min(start, len));
-        const e = Math.max(0, Math.min(end, len));
-        try {
-          ta.setSelectionRange(s, e);
-        } catch {
-          // Invalid range — the browser keeps a sane default caret.
-        }
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-      });
-      return () => cancelAnimationFrame(raf);
-    }, [draftKey]);
-
-    useEffect(() => {
-      const previousDraftKey = draftKeyRef.current;
-      if (previousDraftKey === draftKey) return;
-
-      if (previousDraftKey) {
-        const ta = textareaRef.current;
-        setDraft(previousDraftKey, {
-          value: valueRef.current,
-          images: attachedImagesRef.current.map(imageToDraftImage),
-          selectionStart: ta ? ta.selectionStart : null,
-          selectionEnd: ta ? ta.selectionEnd : null,
-        });
-      }
-
-      const draft = draftKey ? getDraft(draftKey) : null;
-      draftKeyRef.current = draftKey;
-      setValue(draft?.value ?? "");
-      setAtQuery(null);
-      setAttachedImages((prev) => {
-        prev.forEach(revokeImagePreview);
-        return draft?.images.map(draftImageToAttachedImage) ?? [];
-      });
-    }, [draftKey]);
+    }, [clearImages, clearCurrentDraft, setAtQuery]);
 
     useEffect(() => {
       const ta = textareaRef.current;
@@ -441,98 +296,32 @@ export const ChatInput = memo(
       if (value) ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
     }, [value]);
 
+    // 卸载时清理图片 blob URL
     useEffect(() => {
       return () => {
-        attachedImagesRef.current.forEach(revokeImagePreview);
+        clearImages();
       };
-    }, []);
+    }, [clearImages]);
+
+    const { planBusy, planError, sendPlanMessage } = usePlanModeSend({
+      cwd,
+      planConfig,
+      onClearInput: clearInput,
+      onCancelUndo: cancelUndo,
+      t,
+    });
 
     const handleSend = useCallback(async () => {
       const msg = value.trim();
       onAudioUnlock?.();
 
-      // 计划模式：统一经由消息输入框触发与交互（无独立输入组件）。
-      // - 尚无激活讨论 → 以输入内容作为需求发起多智能体讨论；
-      // - 讨论处于「等待确认」→ 以输入内容作为反馈重新讨论；
-      // - 其它进行中状态 → 不接受输入，避免打断编排。
-      //
-      // 流控解耦：plan 分支仅受 planBusy 控制，不受普通模式 isStreaming 影响。
-      // 用户消息只走 /api/plan/orchestrate|rediscuss 进入编排器后端，
-      // 在 PlanPanel 的 snapshot.messages 中呈现，不进普通会话 SSE 流（数据隔离）。
+      // 计划模式：委派给 usePlanModeSend
       if (planMode) {
-        if (!msg || planBusy) return;
-        if (orchestratorId && planStatus !== "awaiting_confirm") return;
-        setPlanBusy(true);
-        setPlanError(null);
-        try {
-          if (!orchestratorId) {
-            const { ok, data } = await csrfFetchJson<{ id?: string; error?: string }>(
-              "/api/plan/orchestrate",
-              {
-                method: "POST",
-                body: { requirement: msg, cwd: cwd ?? undefined, config: planConfig },
-              },
-            );
-            if (!ok || !data.id) throw new Error(data.error ?? t("plan.startFailed"));
-            const orchId = data.id as string;
-            // 同步建一个轻量 pi session 作为侧栏入口（await，消除竞态窗口）。
-            // 之前的 fire-and-forget 在用户切换会话时可能留下前端不可达的孤儿 orchestrator。
-            // 语义：orchestrator 创建成功即视为讨论开始；pi session（侧栏入口）失败是非阻塞的
-            // —— 后端讨论照常进行（PlanPanel SSE 用 orchId），仅侧栏缺入口。故不在失败时
-            // 回滚 orchestratorId，避免"显示失败但讨论其实在跑"的矛盾。
-            if (cwd) {
-              try {
-                const { ok: newOk, data: newData } = await csrfFetchJson<{
-                  sessionId?: string;
-                }>("/api/agent/new", {
-                  method: "POST",
-                  body: { cwd, type: "ensure_session" },
-                });
-                if (!newOk || !newData?.sessionId) {
-                  throw new Error("ensure_session returned no id");
-                }
-                const piId = newData.sessionId;
-                const title = `📋 计划讨论：${msg.slice(0, 40)}`;
-                await csrfFetchJson(`/api/agent/${encodeURIComponent(piId)}`, {
-                  method: "POST",
-                  body: { type: "set_session_name", name: title },
-                });
-                // 同步写 parentSession marker `orchestrator:<orchId>`，让 session-reader
-                // 解析为 orchestratorParentId，侧栏把该 session 挂到对应 orchestrator 节点下。
-                await csrfFetchJson(`/api/agent/${encodeURIComponent(piId)}`, {
-                  method: "POST",
-                  body: {
-                    type: "set_session_parent",
-                    parentSession: `orchestrator:${orchId}`,
-                  },
-                });
-                linkPlanSession(piId, { orchestratorId: orchId, cwd });
-              } catch {
-                // 侧栏入口创建失败：非阻塞。后端讨论仍在进行，下面仍会 setOrchestratorId
-                // 让 PlanPanel 连上 SSE。用户可通过 history 视图或重新发起找回讨论。
-              }
-            }
-            // orchestrator 已确认创建（且 pi session 入口已尽力建好），现在暴露给 PlanPanel。
-            // 放在最后：确保竞态窗口内用户看到的 orchestratorId 一定是"入口已就绪"的状态。
-            setOrchestratorId(orchId);
-          } else {
-            const { ok } = await csrfFetchJson(`/api/plan/${orchestratorId}/rediscuss`, {
-              method: "POST",
-              body: { feedback: msg },
-            });
-            if (!ok) throw new Error(t("plan.rediscussFailed"));
-          }
-          clearInput();
-          setShowUndo(false);
-        } catch (e) {
-          setPlanError(e instanceof Error ? e.message : String(e));
-        } finally {
-          setPlanBusy(false);
-        }
+        await sendPlanMessage(msg, orchestratorId, planStatus);
         return;
       }
 
-      // 普通模式流控：isStreaming 守卫只作用于本分支，不影响 plan 分支。
+      // 普通模式流控
       if (isStreaming) return;
       if (!msg && !attachedImages.length) return;
       if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
@@ -544,53 +333,21 @@ export const ChatInput = memo(
       }
       onSend(msg, attachedImages.length ? attachedImages : undefined);
       clearInput();
-      setShowUndo(false);
+      cancelUndo();
     }, [
       value,
       attachedImages,
       isStreaming,
       planMode,
-      orchestratorId,
       planStatus,
-      planBusy,
+      orchestratorId,
+      sendPlanMessage,
       onBuiltinCommand,
       onSend,
       clearInput,
+      cancelUndo,
       onAudioUnlock,
-      cwd,
-      t,
     ]);
-
-    const handleEnhance = useCallback(async () => {
-      // Guard: no empty prompt, no concurrent run, no streaming.
-      if (enhancing || isStreaming || !value.trim()) return;
-      setEnhanceError("");
-      setEnhancing(true);
-      setOriginalBeforeEnhance(value);
-      try {
-        const { ok, data: d } = await csrfFetchJson<{ error?: string; enhanced?: string }>(
-          "/api/agent/enhance",
-          {
-            method: "POST",
-            body: { prompt: value, provider: model?.provider, modelId: model?.modelId, cwd },
-          },
-        );
-        if (!ok) throw new Error(d.error ?? "Enhancement failed");
-        // Replace the input content with the enhanced prompt. setValue alone
-        // does not fire onChange, so showUndo is preserved until the user
-        // manually edits or sends.
-        setValue(d.enhanced ?? "");
-        setShowUndo(true);
-      } catch (e) {
-        setEnhanceError(e instanceof Error ? e.message : String(e));
-      }
-      setEnhancing(false);
-    }, [enhancing, isStreaming, value, model, cwd, setValue]);
-
-    const handleEnhanceUndo = useCallback(() => {
-      setValue(originalBeforeEnhance);
-      setShowUndo(false);
-    }, [originalBeforeEnhance, setValue]);
 
     const slashQuery =
       value.startsWith("/") && !/\s/.test(value.slice(1)) ? value.slice(1).toLowerCase() : null;
@@ -631,8 +388,8 @@ export const ChatInput = memo(
       filteredSlashCommands.forEach((command, index) => {
         groups.get(command.source)?.items.push({ command, index });
       });
-      return SLASH_SOURCES.map((source) => groups.get(source)!).filter(
-        (group) => group.items.length > 0,
+      return SLASH_SOURCES.map((source) => groups.get(source)).filter(
+        (group): group is NonNullable<typeof group> => group != null && group.items.length > 0,
       );
     }, [filteredSlashCommands]);
 
@@ -647,156 +404,7 @@ export const ChatInput = memo(
     const hasInputText = Boolean(value.trim());
     const canQueueStreamingMessage = hasInputText && attachedImages.length === 0;
 
-    // ── @ file autocomplete ──────────────────────────────────────────────────
-    // Recomputed from the text before the caret on every change/caret move.
-    // Disabled entirely when there is no cwd (new session without a directory).
-    const updateAtQuery = useCallback(
-      (text: string, cursor: number | null) => {
-        if (!cwd) {
-          setAtQuery(null);
-          return;
-        }
-        const pos = cursor ?? text.length;
-        setAtQuery(extractAtQuery(text.slice(0, pos)));
-      },
-      [cwd],
-    );
-
-    const atQueryText = atQuery?.query ?? null;
-    const atLocalMatches: FileIndexEntry[] = React.useMemo(
-      () =>
-        atQueryText !== null && fileIndex && fileIndex.cwd === cwd
-          ? filterFileEntries(fileIndex.entries, atQueryText)
-          : [],
-      [atQueryText, fileIndex, cwd],
-    );
-
-    // When the client index is truncated (repo larger than the index cap),
-    // local filtering cannot see deep files, so queries are also ranked
-    // server-side against the full listing. Local matches render immediately
-    // and are replaced when the (debounced) server result for the current
-    // query arrives; stale responses are ignored via the query/cwd tag.
-    const needsServerSearch = Boolean(atQueryText && fileIndex?.truncated && fileIndex.cwd === cwd);
-    useEffect(() => {
-      if (!needsServerSearch || !cwd || !atQueryText) return;
-      const fetchCwd = cwd;
-      const query = atQueryText;
-      const timer = setTimeout(() => {
-        fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}&q=${encodeURIComponent(query)}`)
-          .then((res) => {
-            if (!res.ok) throw new Error(`file search failed: ${res.status}`);
-            return res.json() as Promise<{ matches?: FileIndexEntry[] }>;
-          })
-          .then((data) => setAtServerResult({ cwd: fetchCwd, query, matches: data.matches ?? [] }))
-          .catch(() => {
-            // Keep showing local matches; the next keystroke retries.
-          });
-      }, 150);
-      return () => clearTimeout(timer);
-    }, [needsServerSearch, atQueryText, cwd]);
-
-    const serverResultInUse =
-      needsServerSearch &&
-      atServerResult !== null &&
-      atServerResult.cwd === cwd &&
-      atServerResult.query === atQueryText;
-    const atMatches: FileIndexEntry[] = serverResultInUse ? atServerResult.matches : atLocalMatches;
-
-    // Open/reset the menu whenever the @token appears or changes (mirrors the
-    // slash menu: Escape closes it, the next keystroke re-opens it).
-    const atTokenKey =
-      atQuery === null ? null : `${atQuery.start}:${atQuery.quoted ? 1 : 0}:${atQuery.query}`;
-    useEffect(() => {
-      if (atTokenKey === null) {
-        setAtMenuOpen(false);
-        setAtActiveIndex(0);
-        return;
-      }
-      setAtMenuOpen(true);
-      setAtActiveIndex(0);
-    }, [atTokenKey]);
-
-    // Fetch the file index when the menu opens. The server caches per cwd for
-    // ~10s, so re-opening refreshes cheaply; while typing nothing refetches.
-    const atTokenActive = atQuery !== null;
-    useEffect(() => {
-      if (!atTokenActive || !cwd) return;
-      const meta = fileIndexMetaRef.current;
-      if (meta && meta.cwd === cwd && Date.now() - meta.fetchedAt < 10_000) return;
-      if (fileIndexFetchingRef.current === cwd) return;
-      fileIndexFetchingRef.current = cwd;
-      const fetchCwd = cwd;
-      setFileIndexLoading(true);
-      fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}`)
-        .then((res) => {
-          if (!res.ok) throw new Error(`file index failed: ${res.status}`);
-          return res.json() as Promise<{ files?: string[]; truncated?: boolean }>;
-        })
-        .then((data) => {
-          setFileIndex({
-            cwd: fetchCwd,
-            entries: buildEntriesFromFiles(data.files ?? []),
-            truncated: !!data.truncated,
-          });
-          fileIndexMetaRef.current = { cwd: fetchCwd, fetchedAt: Date.now() };
-        })
-        .catch(() => {
-          // Leave any previous index in place; next open retries.
-          fileIndexMetaRef.current = null;
-        })
-        .finally(() => {
-          fileIndexFetchingRef.current = null;
-          setFileIndexLoading(false);
-        });
-    }, [atTokenActive, cwd]);
-
-    const applyAtCompletion = useCallback(
-      (entry: FileIndexEntry) => {
-        if (!atQuery) return;
-        const ta = textareaRef.current;
-        const cursor = ta?.selectionStart ?? value.length;
-        const before = value.slice(0, atQuery.start);
-        let after = value.slice(cursor);
-        // Completing inside a quoted token (@"my dir/… with the caret before the
-        // closing quote): the replacement carries its own closing quote, so drop
-        // the old one right after the caret (mirrors the TUI's applyCompletion).
-        if (atQuery.quoted && after.startsWith('"')) {
-          after = after.slice(1);
-        }
-        const insert = buildAtInsertText(entry.path, entry.isDir, atQuery.quoted);
-        const newValue = before + insert.text + after;
-        const newPos = before.length + insert.cursorOffset;
-        setValue(newValue);
-        // setValue alone does not fire onChange — re-derive the token here. Files
-        // end with a space (token closes, menu hides); directories end with "/"
-        // before the caret (token stays open for drill-down into the directory).
-        setAtQuery(extractAtQuery(newValue.slice(0, newPos)));
-        requestAnimationFrame(() => {
-          const el = textareaRef.current;
-          if (!el) return;
-          el.focus();
-          el.setSelectionRange(newPos, newPos);
-          el.style.height = "auto";
-          el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-        });
-      },
-      [atQuery, value],
-    );
-
-    useEffect(() => {
-      if (atActiveIndex >= atMatches.length) {
-        setAtActiveIndex(Math.max(0, atMatches.length - 1));
-      }
-    }, [atMatches.length, atActiveIndex]);
-
-    useEffect(() => {
-      atItemRefs.current.length = atMatches.length;
-    }, [atMatches.length]);
-
-    useEffect(() => {
-      if (!atMenuOpen) return;
-      atItemRefs.current[atActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }, [atActiveIndex, atMenuOpen]);
+    // @ file autocomplete 逻辑已提取至 useAtFileCompletion hook
 
     const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
       const nextValue = `/${command.name} `;
@@ -997,6 +605,8 @@ export const ChatInput = memo(
         atMatches,
         atActiveIndex,
         applyAtCompletion,
+        setAtActiveIndex,
+        setAtMenuOpen,
       ],
     );
 
@@ -1406,277 +1016,36 @@ export const ChatInput = memo(
 
           {/* Main input */}
           <div style={{ position: "relative" }}>
-            {slashMenuOpen && slashQuery !== null && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: "calc(100% + 8px)",
-                  zIndex: 120,
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
-                  overflow: "hidden",
-                  maxHeight: "min(56vh, 460px)",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid var(--border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    fontSize: 11,
-                    color: "var(--text-dim)",
-                  }}
-                >
-                  <span>
-                    {slashCommandsLoading
-                      ? t("input.loadingCommands")
-                      : t("input.slashCommandsCount", { label: slashCommandCountLabel })}
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>Tab / Enter</span>
-                </div>
-                <div
-                  style={{
-                    maxHeight: "calc(min(56vh, 460px) - 34px)",
-                    overflowY: "auto",
-                    padding: 10,
-                  }}
-                >
-                  {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
-                    <div style={{ padding: "2px 2px 4px", fontSize: 12, color: "var(--text-dim)" }}>
-                      {t("input.noSlashCommands")}
-                    </div>
-                  ) : (
-                    groupedSlashCommands.map((group) => (
-                      <section key={group.source} style={{ marginBottom: 12 }}>
-                        <div
-                          style={{
-                            position: "sticky",
-                            top: -10,
-                            zIndex: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 8,
-                            padding: "4px 0 6px",
-                            background: "var(--bg)",
-                            color: "var(--text-dim)",
-                            fontSize: 10,
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          <span>{t(SLASH_SOURCE_GROUP_LABEL[group.source])}</span>
-                          <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>
-                            {group.items.length}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                            gap: 8,
-                          }}
-                        >
-                          {group.items.map(({ command, index }) => {
-                            const active = index === slashActiveIndex;
-                            return (
-                              <button
-                                key={`${command.source}:${command.name}`}
-                                ref={(node) => {
-                                  slashItemRefs.current[index] = node;
-                                }}
-                                type="button"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  applySlashCommand(command);
-                                }}
-                                onMouseEnter={() => setSlashActiveIndex(index)}
-                                style={{
-                                  width: "100%",
-                                  minWidth: 0,
-                                  minHeight: 58,
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 4,
-                                  justifyContent: "center",
-                                  padding: "9px 10px",
-                                  border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                                  borderRadius: 7,
-                                  background: active ? "var(--bg-selected)" : "var(--bg-panel)",
-                                  color: "var(--text)",
-                                  cursor: "pointer",
-                                  textAlign: "left",
-                                  boxShadow: active
-                                    ? "0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent)"
-                                    : "none",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    fontSize: 13,
-                                    fontFamily: "var(--font-mono)",
-                                    overflowWrap: "anywhere",
-                                    wordBreak: "break-word",
-                                  }}
-                                >
-                                  /{command.name}
-                                </span>
-                                {command.description && (
-                                  <span
-                                    style={{
-                                      display: "-webkit-box",
-                                      WebkitBoxOrient: "vertical",
-                                      WebkitLineClamp: 2,
-                                      overflow: "hidden",
-                                      fontSize: 11,
-                                      lineHeight: 1.35,
-                                      color: "var(--text-dim)",
-                                    }}
-                                  >
-                                    {command.description}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    ))
-                  )}
-                </div>
-              </div>
+            {slashMenuOpen && (
+              <SlashCommandPanel
+                slashQuery={slashQuery}
+                groupedSlashCommands={groupedSlashCommands}
+                slashActiveIndex={slashActiveIndex}
+                slashItemRefs={slashItemRefs}
+                slashCommandsLoading={slashCommandsLoading}
+                slashCommandCountLabel={slashCommandCountLabel}
+                filteredCount={filteredSlashCommands.length}
+                applySlashCommand={applySlashCommand}
+                setSlashActiveIndex={setSlashActiveIndex}
+                t={t}
+              />
             )}
-            {atMenuOpen &&
-              atQuery !== null &&
-              (() => {
-                const indexLoading = fileIndexLoading && (!fileIndex || fileIndex.cwd !== cwd);
-                const matchCountLabel =
-                  atMatches.length === 1
-                    ? t("input.oneMatch")
-                    : t("input.countMatches", { count: atMatches.length });
-                // With a truncated index, local results are provisional — the
-                // debounced server search over the full listing replaces them.
-                const truncatedHint =
-                  fileIndex?.truncated && !serverResultInUse
-                    ? atQuery.query
-                      ? t("input.searchingAllFiles")
-                      : t("input.indexTruncated")
-                    : "";
-                return (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      bottom: "calc(100% + 8px)",
-                      zIndex: 120,
-                      background: "var(--bg)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
-                      overflow: "hidden",
-                      maxHeight: "min(48vh, 400px)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "8px 10px",
-                        borderBottom: "1px solid var(--border)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                      }}
-                    >
-                      <span>
-                        {indexLoading
-                          ? t("input.loadingFiles")
-                          : t("input.filesCount", { label: `${matchCountLabel}${truncatedHint}` })}
-                      </span>
-                      <span style={{ fontFamily: "var(--font-mono)" }}>Tab / Enter</span>
-                    </div>
-                    <div
-                      style={{
-                        maxHeight: "calc(min(48vh, 400px) - 34px)",
-                        overflowY: "auto",
-                        padding: 4,
-                      }}
-                    >
-                      {!indexLoading && atMatches.length === 0 ? (
-                        <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>
-                          {needsServerSearch && !serverResultInUse
-                            ? "Searching…"
-                            : "No matching files"}
-                        </div>
-                      ) : (
-                        atMatches.map((entry, index) => {
-                          const active = index === atActiveIndex;
-                          const name = entry.path.split("/").pop() ?? entry.path;
-                          const dirPrefix = entry.path.slice(0, entry.path.length - name.length);
-                          return (
-                            <button
-                              key={`${entry.isDir ? "d" : "f"}:${entry.path}`}
-                              ref={(node) => {
-                                atItemRefs.current[index] = node;
-                              }}
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                applyAtCompletion(entry);
-                              }}
-                              onMouseEnter={() => setAtActiveIndex(index)}
-                              style={{
-                                width: "100%",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "6px 8px",
-                                border: "none",
-                                borderRadius: 6,
-                                background: active ? "var(--bg-selected)" : "none",
-                                color: "var(--text)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                                fontSize: 12.5,
-                                fontFamily: "var(--font-mono)",
-                              }}
-                            >
-                              <span
-                                style={{ flexShrink: 0, display: "flex", alignItems: "center" }}
-                              >
-                                {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
-                              </span>
-                              <span
-                                style={{
-                                  minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {dirPrefix && (
-                                  <span style={{ color: "var(--text-dim)" }}>{dirPrefix}</span>
-                                )}
-                                {name}
-                                {entry.isDir && <span style={{ color: "var(--text-dim)" }}>/</span>}
-                              </span>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
+            {atMenuOpen && (
+              <AtFilePanel
+                atQuery={atQuery}
+                atMatches={atMatches}
+                atActiveIndex={atActiveIndex}
+                atItemRefs={atItemRefs}
+                fileIndexLoading={fileIndexLoading}
+                fileIndex={fileIndex}
+                cwd={cwd}
+                needsServerSearch={needsServerSearch}
+                serverResultInUse={serverResultInUse}
+                applyAtCompletion={applyAtCompletion}
+                setAtActiveIndex={setAtActiveIndex}
+                t={t}
+              />
+            )}
             <div
               style={
                 {
@@ -1710,21 +1079,12 @@ export const ChatInput = memo(
                   updateAtQuery(e.target.value, e.target.selectionStart);
                   // User started editing manually — the undo affordance no
                   // longer applies.
-                  if (showUndo) setShowUndo(false);
+                  if (showUndo) cancelUndo();
                 }}
                 onSelect={(e) => {
                   const el = e.currentTarget;
                   updateAtQuery(el.value, el.selectionStart);
-                  // Persist caret position on user selection so a refresh
-                  // restores the exact cursor location, not just the text.
-                  if (draftKey && draftKeyRef.current === draftKey) {
-                    setDraft(draftKey, {
-                      value: el.value,
-                      images: attachedImagesRef.current.map(imageToDraftImage),
-                      selectionStart: el.selectionStart,
-                      selectionEnd: el.selectionEnd,
-                    });
-                  }
+                  persistCursor();
                 }}
                 onKeyDown={handleKeyDown}
                 onCompositionStart={() => {
@@ -2253,119 +1613,18 @@ export const ChatInput = memo(
                       {currentName}
                     </span>
                   </button>
-                  {modelDropdownOpen &&
-                    modelDropdownRect &&
-                    (() => {
-                      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-                      const bottom = viewportHeight - modelDropdownRect.top + 6;
-                      const maxH = Math.max(
-                        120,
-                        Math.min(modelDropdownRect.top - 8, viewportHeight * 0.6),
-                      );
-                      // On mobile, pin to a small left margin and cap width to the
-                      // viewport so long model names never push the panel off-screen.
-                      const panelPos: React.CSSProperties = isMobile
-                        ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
-                        : {
-                            left: modelDropdownRect.left,
-                            width: "max-content",
-                            minWidth: modelDropdownRect.width,
-                          };
-                      return (
-                        <div
-                          ref={modelDropdownPanelRef}
-                          style={{
-                            position: "fixed",
-                            bottom,
-                            ...panelPos,
-                            zIndex: 500,
-                            background: "var(--bg)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 8,
-                            boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                            overflow: "hidden",
-                            maxHeight: maxH,
-                            overflowY: "auto",
-                          }}
-                        >
-                          {modelsByProvider.map((group, gi) => (
-                            <div key={group.provider}>
-                              {modelsByProvider.length > 1 && (
-                                <div
-                                  style={{
-                                    padding: "6px 12px 4px",
-                                    fontSize: 10,
-                                    fontWeight: 600,
-                                    color: "var(--text-dim)",
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.07em",
-                                    borderTop: gi > 0 ? "1px solid var(--border)" : "none",
-                                  }}
-                                >
-                                  {group.provider}
-                                </div>
-                              )}
-                              {group.options.map((opt) => {
-                                const isActive =
-                                  opt.modelId === model?.modelId &&
-                                  opt.provider === model?.provider;
-                                return (
-                                  <button
-                                    key={`${opt.provider}:${opt.modelId}`}
-                                    onClick={() => {
-                                      setModelDropdownOpen(false);
-                                      if (!isActive || isAutoModelSelection)
-                                        onModelChange(opt.provider, opt.modelId);
-                                    }}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 8,
-                                      width: "100%",
-                                      padding: "7px 12px",
-                                      background: isActive ? "var(--bg-selected)" : "none",
-                                      border: "none",
-                                      color: isActive ? "var(--text)" : "var(--text-muted)",
-                                      cursor: "pointer",
-                                      fontSize: 12,
-                                      textAlign: "left",
-                                      fontWeight: isActive ? 600 : 400,
-                                      whiteSpace: "nowrap",
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      if (!isActive)
-                                        e.currentTarget.style.background = "var(--bg-hover)";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (!isActive) e.currentTarget.style.background = "none";
-                                    }}
-                                  >
-                                    {isActive ? (
-                                      <svg
-                                        width="10"
-                                        height="10"
-                                        viewBox="0 0 10 10"
-                                        fill="none"
-                                        stroke="var(--accent)"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        style={{ flexShrink: 0 }}
-                                      >
-                                        <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                                      </svg>
-                                    ) : (
-                                      <span style={{ width: 10, flexShrink: 0 }} />
-                                    )}
-                                    {opt.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                  {modelDropdownOpen && modelDropdownRect && (
+                    <ModelDropdownPanel
+                      dropdownRect={modelDropdownRect}
+                      modelsByProvider={modelsByProvider}
+                      currentModel={model}
+                      isAutoModelSelection={isAutoModelSelection}
+                      isMobile={isMobile}
+                      onModelChange={onModelChange}
+                      onClose={() => setModelDropdownOpen(false)}
+                      panelRef={modelDropdownPanelRef}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -2455,306 +1714,34 @@ export const ChatInput = memo(
                 }}
               >
                 {!isStreaming && onThinkingLevelChange && (
-                  <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
-                    <button
-                      onClick={() => !isStreaming && setThinkingDropdownOpen((v) => !v)}
-                      disabled={isStreaming}
-                      title={t("input.changeReasoning", { level: thinkingDisplayLabel })}
-                      aria-label={t("input.changeReasoning", { level: thinkingDisplayLabel })}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 5,
-                        padding: isMobile ? "0 6px" : "8px 12px",
-                        width: isMobile ? "auto" : undefined,
-                        height: 32,
-                        background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
-                        border: "none",
-                        borderRadius: 9,
-                        color: "var(--text-muted)",
-                        cursor: isStreaming ? "not-allowed" : "pointer",
-                        fontSize: 12,
-                        opacity: isStreaming ? 0.5 : 1,
-                        transition: "background 0.12s, color 0.12s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (isStreaming) return;
-                        e.currentTarget.style.background = "var(--bg-hover)";
-                        e.currentTarget.style.color = "var(--text)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = thinkingDropdownOpen
-                          ? "var(--bg-hover)"
-                          : "none";
-                        e.currentTarget.style.color = "var(--text-muted)";
-                      }}
-                    >
-                      <svg
-                        width="11"
-                        height="11"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M9.5 2A5.5 5.5 0 0 0 4 7.5c0 1.7.78 3.21 2 4.21V14a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-2.29c1.22-1 2-2.51 2-4.21A5.5 5.5 0 0 0 9.5 2z" />
-                        <line x1="7" y1="18" x2="12" y2="18" />
-                        <line x1="8" y1="21" x2="11" y2="21" />
-                      </svg>
-                      {(!isMobile || controlsMenuOpen) && (
-                        <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>
-                      )}
-                    </button>
-                    {thinkingDropdownOpen && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: "calc(100% + 6px)",
-                          right: 0,
-                          zIndex: 100,
-                          background: "var(--bg)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 8,
-                          boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                          overflow: "hidden",
-                          minWidth: 180,
-                        }}
-                      >
-                        {THINKING_LEVELS.filter((lvl) => {
-                          if (!availableThinkingLevels) return true;
-                          if (lvl === "auto") return true;
-                          return availableThinkingLevels.includes(lvl);
-                        }).map((lvl) => {
-                          const isActive = (thinkingLevel ?? "auto") === lvl;
-                          const desc = t(THINKING_LEVEL_DESC[lvl]);
-                          const mappedVal =
-                            lvl !== "auto" && thinkingLevelMap ? thinkingLevelMap[lvl] : undefined;
-                          const displayLabel =
-                            mappedVal != null && mappedVal !== lvl ? mappedVal : lvl;
-                          const showOriginal = mappedVal != null && mappedVal !== lvl;
-                          return (
-                            <button
-                              key={lvl}
-                              onClick={() => {
-                                setThinkingDropdownOpen(false);
-                                if (!isActive) onThinkingLevelChange(lvl);
-                              }}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                width: "100%",
-                                padding: "7px 12px",
-                                background: isActive ? "var(--bg-selected)" : "none",
-                                border: "none",
-                                color: isActive ? "var(--text)" : "var(--text-muted)",
-                                cursor: "pointer",
-                                fontSize: 12,
-                                textAlign: "left",
-                                fontWeight: isActive ? 600 : 400,
-                                whiteSpace: "nowrap",
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isActive) e.currentTarget.style.background = "var(--bg-hover)";
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isActive) e.currentTarget.style.background = "none";
-                              }}
-                            >
-                              {isActive ? (
-                                <svg
-                                  width="10"
-                                  height="10"
-                                  viewBox="0 0 10 10"
-                                  fill="none"
-                                  stroke="var(--accent)"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  style={{ flexShrink: 0 }}
-                                >
-                                  <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                                </svg>
-                              ) : (
-                                <span style={{ width: 10, flexShrink: 0 }} />
-                              )}
-                              <span style={{ flex: 1 }}>
-                                {displayLabel}
-                                {showOriginal && (
-                                  <span
-                                    style={{
-                                      fontSize: 10,
-                                      color: "var(--text-dim)",
-                                      fontFamily: "var(--font-mono)",
-                                      marginLeft: 5,
-                                    }}
-                                  >
-                                    ({lvl})
-                                  </span>
-                                )}
-                              </span>
-                              <span
-                                style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}
-                              >
-                                {desc}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <ThinkingLevelDropdown
+                    thinkingLevel={thinkingLevel}
+                    dropdownOpen={thinkingDropdownOpen}
+                    thinkingDisplayLabel={thinkingDisplayLabel}
+                    availableThinkingLevels={availableThinkingLevels}
+                    thinkingLevelMap={thinkingLevelMap}
+                    isStreaming={isStreaming}
+                    controlsMenuOpen={controlsMenuOpen}
+                    onThinkingLevelChange={onThinkingLevelChange}
+                    onToggle={setThinkingDropdownOpen}
+                    dropdownRef={thinkingDropdownRef}
+                    t={t}
+                  />
                 )}
                 {!isStreaming && (onToolsChange || onToolPresetChange) && (
-                  <div ref={toolDropdownRef} style={{ position: "relative" }}>
-                    <button
-                      onClick={() => !isStreaming && setToolDropdownOpen((v) => !v)}
-                      disabled={isStreaming}
-                      title={toolsLabel}
-                      aria-label={toolsLabel}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 5,
-                        padding: isMobile ? "0 6px" : "8px 12px",
-                        width: isMobile ? "auto" : undefined,
-                        height: 32,
-                        background: toolDropdownOpen ? "var(--bg-hover)" : "none",
-                        border: "none",
-                        borderRadius: 9,
-                        color: "var(--text-muted)",
-                        cursor: isStreaming ? "not-allowed" : "pointer",
-                        fontSize: 12,
-                        opacity: isStreaming ? 0.5 : 1,
-                        transition: "background 0.12s, color 0.12s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (isStreaming) return;
-                        e.currentTarget.style.background = "var(--bg-hover)";
-                        e.currentTarget.style.color = "var(--text)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = toolDropdownOpen
-                          ? "var(--bg-hover)"
-                          : "none";
-                        e.currentTarget.style.color = "var(--text-muted)";
-                      }}
-                    >
-                      <svg
-                        width="11"
-                        height="11"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-                      </svg>
-                      {(!isMobile || controlsMenuOpen) && (
-                        <span style={{ whiteSpace: "nowrap" }}>{toolsLabel}</span>
-                      )}
-                    </button>
-                    {toolDropdownOpen && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: "calc(100% + 6px)",
-                          right: 0,
-                          zIndex: 100,
-                          background: "var(--bg)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 8,
-                          boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                          overflow: "hidden",
-                          minWidth: 200,
-                          maxWidth: 280,
-                        }}
-                      >
-                        {tools && onToolsChange ? (
-                          <ToolChecklist
-                            tools={tools}
-                            onChange={onToolsChange}
-                            onPresetApply={(names) => {
-                              onToolsChange(applyPresetToTools(tools, names));
-                            }}
-                            onClose={() => setToolDropdownOpen(false)}
-                          />
-                        ) : (
-                          TOOL_PRESETS.map((lvl) => {
-                            const preset = TOOL_PRESET_MAP[lvl];
-                            const isActive = (toolPreset ?? "default") === preset;
-                            const desc =
-                              lvl === "off"
-                                ? t("input.toolsNone")
-                                : lvl === "default"
-                                  ? t("input.toolsDefault")
-                                  : t("input.toolsFull");
-                            return (
-                              <button
-                                key={lvl}
-                                onClick={() => {
-                                  setToolDropdownOpen(false);
-                                  if (!isActive && onToolPresetChange) onToolPresetChange(preset);
-                                }}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  width: "100%",
-                                  padding: "7px 12px",
-                                  background: isActive ? "var(--bg-selected)" : "none",
-                                  border: "none",
-                                  color: isActive ? "var(--text)" : "var(--text-muted)",
-                                  cursor: "pointer",
-                                  fontSize: 12,
-                                  textAlign: "left",
-                                  fontWeight: isActive ? 600 : 400,
-                                  whiteSpace: "nowrap",
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!isActive)
-                                    e.currentTarget.style.background = "var(--bg-hover)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!isActive) e.currentTarget.style.background = "none";
-                                }}
-                              >
-                                {isActive ? (
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 10 10"
-                                    fill="none"
-                                    stroke="var(--accent)"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    style={{ flexShrink: 0 }}
-                                  >
-                                    <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                                  </svg>
-                                ) : (
-                                  <span style={{ width: 10, flexShrink: 0 }} />
-                                )}
-                                <span style={{ flex: 1 }}>{lvl}</span>
-                                <span
-                                  style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}
-                                >
-                                  {desc}
-                                </span>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <ToolPresetDropdown
+                    tools={tools}
+                    toolPreset={toolPreset}
+                    toolsLabel={toolsLabel}
+                    isStreaming={isStreaming}
+                    controlsMenuOpen={controlsMenuOpen}
+                    dropdownOpen={toolDropdownOpen}
+                    onToolsChange={onToolsChange}
+                    onToolPresetChange={onToolPresetChange}
+                    onToggle={setToolDropdownOpen}
+                    dropdownRef={toolDropdownRef}
+                    t={t}
+                  />
                 )}
 
                 {!isStreaming && onCompact && (

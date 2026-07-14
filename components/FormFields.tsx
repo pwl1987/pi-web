@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { inputStyle as baseInputStyle } from "@/lib/styles";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -12,16 +13,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export const inputStyle = {
-  padding: "6px 9px",
-  background: "var(--bg-panel)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  color: "var(--text)",
-  fontSize: 12,
+/** 表单输入统一样式 —— 来源 @/lib/styles，确保所有面板视觉一致。 */
+export const inputStyle: React.CSSProperties = {
+  ...baseInputStyle,
+  fontFamily: "inherit", // FormFields 默认继承页面字体（<TextInput mono> 可覆盖为等宽）
   outline: "none",
-  width: "100%",
-  boxSizing: "border-box" as const,
 };
 
 function TextInput({
