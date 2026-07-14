@@ -216,7 +216,9 @@ export function PlanPanel() {
 
   const refresh = useCallback(async (id: string) => {
     try {
-      const { ok, data: snap } = await csrfFetchJson<OrchestrationSnapshot>(`/api/plan/${id}`);
+      const { ok, data: snap } = await csrfFetchJson<OrchestrationSnapshot>(`/api/plan/${id}`, {
+        method: "GET",
+      });
       if (ok) {
         setSnapshot(snap);
         setPlanStatus(snap.status);

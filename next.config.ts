@@ -27,6 +27,59 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   reactStrictMode: true,
+  // 开发模式：忽略融合引擎的工作产物目录，避免「引擎写文件 → webpack 监听 → 全量
+  // HMR 重建 → 浏览器冻结」的死循环。引擎把 comet 状态机产物写在 cwd 下
+  // （openspec/changes/<change>/*.md 与根目录 .comet.yaml / .comet/），当用户以
+  // 本项目自身作为引擎 cwd 调试时，这些写入会被 webpack 监听捕获并触发 30s+ 重建，
+  // 使 dev UI 表现为「卡住」。生产构建不存在文件监听，故仅 dev 生效。
+  webpack: (config, { dev }) => {
+    // 抑制 autoplan-adapter 经 createRequire 运行时加载 vendored/autoplan 的
+    // "Critical dependency: the request of a dependency is an expression" 警告。
+    // 该 require 使用变量路径（modulePath），webpack 无法静态解析，但这是有意为之：
+    // 仅在 ENGINE_AUTOPLAN_VENDOR=1 时由 Node 的 createRequire 运行时解析，
+    // 正常情况下 vendored/autoplan 不存在、回退内存桩，webpack 无需（也不应）打包它。
+    // 抑制 autoplan-adapter 经 createRequire 运行时加载 vendored/autoplan 的良性警告。
+    // 注意：matcher 仅读取字符串属性（message/file/module.resource），绝不调用方法，
+    // 否则 matcher 抛错会让整条路由构建失败（500）。
+    const ignoreAutoPlanWarning = (warning: {
+      message?: string;
+      file?: string;
+      module?: { resource?: string } | undefined;
+    }): boolean => {
+      const msg = warning?.message ?? "";
+      if (!/the request of a dependency is an expression/.test(msg)) return false;
+      const loc = String(warning?.file ?? warning?.module?.resource ?? "");
+      return /autoplan-adapter/.test(loc);
+    };
+    config.ignoreWarnings = [
+      ...(Array.isArray(config.ignoreWarnings) ? config.ignoreWarnings : []),
+      ignoreAutoPlanWarning as (warning: unknown) => boolean,
+    ];
+    if (dev) {
+      // 融合引擎把 comet 状态机产物写在 cwd 下（openspec/changes/<change>/*.md
+      // 与根目录 .comet.yaml / .comet/）。当用户以本项目自身作为引擎 cwd 调试时，
+      // 这些写入被 webpack 文件监听捕获 → 触发 30s+ 全量 HMR 重建 → dev UI「卡住」。
+      // 开发模式忽略这些产物目录即可打断该循环。注意：webpack 5 的
+      // watchOptions.ignored 仅接受 glob 字符串（不接受 RegExp），故此处用 glob
+      // 覆盖 Next.js 默认的 node_modules/.next/.git 忽略（等价 glob）。生产无监听，不生效。
+      // 注意：Next.js 的 webpack config 合并会把默认 watchOptions.ignored（RegExp）
+      // 一并并入结果数组，而 webpack 5 的 watchOptions.ignored schema 仅接受字符串
+      // glob（数组元素不接受 RegExp），会导致 "ignored[0] should be a non-empty string"
+      // 校验失败。因此此处不 spread 默认 watchOptions，直接构建全新对象，确保其
+      // ignored 仅含字符串 glob，且等价覆盖 node_modules/.next/.git 的默认忽略。
+      config.watchOptions = {
+        ignored: [
+          "**/node_modules/**",
+          "**/.next/**",
+          "**/.git/**",
+          "**/openspec/changes/**",
+          "**/.comet.yaml",
+          "**/.comet/**",
+        ],
+      };
+    }
+    return config;
+  },
   // Optimize CSS: Tailwind v4 handles this automatically, but the explicit
   // config ensures Next.js applies its own CSS optimizations in prod builds.
   allowedDevOrigins: [

@@ -913,6 +913,12 @@ export const en = {
   "engine.logView": "Run log",
   "engine.persistedHint": "Run history is persisted and recoverable after restart",
   "engine.emptyLog": "No logs for this run",
+  "engine.connected": "Live connected",
+  "engine.disconnected": "Disconnected, reconnecting…",
+  "engine.failedBanner": "Run failed",
+  "engine.progress": "Task progress",
+  "engine.taskFailedReason": "Failure reason",
+  "engine.controlling": "Working…",
 
   // ----- Plan 讨论模式 / 多 Agent 协同 -----
   "plan.mode": "Plan Mode",

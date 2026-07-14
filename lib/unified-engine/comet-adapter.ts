@@ -46,11 +46,11 @@ export function createCometAdapter(): WorkflowStateMachinePort {
     },
     async prepareVerifyArtifacts(change, cwd) {
       // verify→archive 守卫检查两项：verification_report 文件存在 + branch_status=handled。
-      // 写英文报告文件（匹配 .comet.yaml 默认 language=en），再用 comet-state.mjs set
+      // 写中文报告文件（匹配项目配置 language=zh-CN），再用 comet-state.mjs set
       // 把路径写入 .comet.yaml 的 verification_report 字段、branch_status 设为 handled。
       const changeDir = join(cwd, "openspec", "changes", change);
       const reportPath = join(changeDir, "verification-report.md");
-      const reportContent = `# Verification Report\n\n## Summary\n\nAll build-phase tasks completed successfully. The change is ready for archival.\n\n## Checks\n\n- Tasks: all completed (tasks.md)\n- Proposal: documented (proposal.md)\n- Build: skipped (autoplan stub, no code changes)\n\n## Result\n\nPASS\n`;
+      const reportContent = `# 验证报告\n\n## 摘要\n\n所有构建阶段任务均已成功完成，变更已准备好进入归档。\n\n## 检查项\n\n- 任务清单：全部完成（tasks.md）\n- 提案文档：已记录（proposal.md）\n- 构建检查：跳过（autoplan 存根，无代码变更）\n\n## 结论\n\n验证通过\n`;
       writeFileSync(reportPath, reportContent, "utf8");
       // verification_report 字段须为相对项目根的路径（comet 的 existsSync 相对进程 cwd=项目根）。
       // 存 openspec/changes/<change>/verification-report.md，与 relativePath 校验兼容（非绝对、不含 ..）。

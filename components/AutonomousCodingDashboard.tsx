@@ -8,6 +8,7 @@ import { RequirementTree } from "./RequirementTree";
 import { Skeleton } from "./Skeleton";
 import { useI18n } from "@/hooks/useI18n";
 import { stripAnsi } from "@/lib/ansi";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
 import type { RunState } from "@/lib/unified-engine/unified-engine-types";
 
 /** 把引擎日志的 ISO 时间戳（UTC）转为本地时区 HH:MM:SS 显示。 */
@@ -71,6 +72,8 @@ export function AutonomousCodingDashboard() {
     cwd,
     title,
     loading,
+    controlling,
+    connected,
     error,
     setCwd,
     setTitle,
@@ -80,23 +83,36 @@ export function AutonomousCodingDashboard() {
   } = useUnifiedEngine();
   const selected = runs.find((r) => r.runId === selectedRunId) ?? null;
 
+  const isRunning = selected?.status === "running";
+  const isPaused = selected?.status === "paused";
+  const disableStart = !selected || isRunning || controlling || selected.status === "completed";
+  const disablePause = !selected || !isRunning || controlling;
+  const disableResume = !selected || !isPaused || controlling;
+
+  // 任务进度（已完成 / 总数）
+  const total = selected?.tasks.length ?? 0;
+  const done =
+    selected?.tasks.filter((t) => t.status === "completed" || t.status === "skipped").length ?? 0;
+  const progress = total > 0 ? Math.round((done / total) * 100) : 0;
+
   // 运行日志视图：按当前选中 run 过滤引擎日志（持久化，跨重启可追踪）。
   const [showEngineLog, setShowEngineLog] = useState(false);
   const [engineLogs, setEngineLogs] = useState<Array<Record<string, unknown>>>([]);
   useEffect(() => {
     if (!showEngineLog || !selectedRunId) return;
     let cancelled = false;
-    fetch(`/api/engine/log?scope=engine&limit=500`)
-      .then((r) => r.json())
-      .then((d) => {
-        const all = (d.logs ?? []) as Array<Record<string, unknown>>;
-        if (!cancelled)
-          setEngineLogs(
-            all.filter(
-              (l) =>
-                ((l.meta as Record<string, unknown> | undefined)?.runId ?? "") === selectedRunId,
-            ),
-          );
+    csrfFetchJson<{ logs: Array<Record<string, unknown>> }>(
+      `/api/engine/log?scope=engine&limit=500`,
+      { method: "GET" },
+    )
+      .then(({ data }) => {
+        if (cancelled) return;
+        const all = data.logs ?? [];
+        setEngineLogs(
+          all.filter(
+            (l) => ((l.meta as Record<string, unknown> | undefined)?.runId ?? "") === selectedRunId,
+          ),
+        );
       })
       .catch(() => {});
     return () => {
@@ -132,6 +148,31 @@ export function AutonomousCodingDashboard() {
         <button onClick={createChange} disabled={loading} style={dashboardBtnStyle}>
           {t("engine.create")}
         </button>
+        <span
+          title={connected ? t("engine.connected") : t("engine.disconnected")}
+          style={{
+            fontSize: 11,
+            padding: "3px 8px",
+            borderRadius: 6,
+            border: "1px solid var(--border)",
+            color: connected ? "#22C55E" : "#F59E0B",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            cursor: "default",
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: connected ? "#22C55E" : "#F59E0B",
+              animation: connected ? "none" : "enginePulse 1.4s ease-in-out infinite",
+            }}
+          />
+          {connected ? t("engine.connected") : t("engine.disconnected")}
+        </span>
         {error && <span style={{ color: "#EF4444", fontSize: 12 }}>{error}</span>}
       </div>
 
@@ -152,32 +193,105 @@ export function AutonomousCodingDashboard() {
                   flexWrap: "wrap",
                 }}
               >
-                <StageStepper current={selected.stage} />
+                <StageStepper current={selected.stage} running={isRunning} />
                 <StatusBadge status={selected.status} />
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   onClick={() => controlRun(selected.runId, "start")}
-                  style={dashboardBtnStyle}
+                  disabled={disableStart}
+                  style={{
+                    ...dashboardBtnStyle,
+                    opacity: disableStart ? 0.5 : 1,
+                    cursor: disableStart ? "not-allowed" : "pointer",
+                  }}
                 >
                   {t("engine.start")}
                 </button>
                 <button
                   onClick={() => controlRun(selected.runId, "pause")}
-                  style={dashboardBtnStyleGhost}
+                  disabled={disablePause}
+                  style={{
+                    ...dashboardBtnStyleGhost,
+                    opacity: disablePause ? 0.5 : 1,
+                    cursor: disablePause ? "not-allowed" : "pointer",
+                  }}
                 >
                   {t("engine.pause")}
                 </button>
                 <button
                   onClick={() => controlRun(selected.runId, "resume")}
-                  style={dashboardBtnStyleGhost}
+                  disabled={disableResume}
+                  style={{
+                    ...dashboardBtnStyleGhost,
+                    opacity: disableResume ? 0.5 : 1,
+                    cursor: disableResume ? "not-allowed" : "pointer",
+                  }}
                 >
                   {t("engine.resume")}
                 </button>
+                {controlling && (
+                  <span style={{ fontSize: 11, color: "var(--accent)" }}>
+                    {t("engine.controlling")}
+                  </span>
+                )}
                 <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
                   {selected.changeName}
                 </span>
               </div>
+
+              {selected.status === "failed" && (
+                <div
+                  style={{
+                    background: "color-mix(in srgb, #EF4444 14%, transparent)",
+                    border: "1px solid var(--color-error-soft)",
+                    color: "#EF4444",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {t("engine.failedBanner")}：{selected.title}
+                </div>
+              )}
+
+              {total > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 11,
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    <span>{t("engine.progress")}</span>
+                    <span>
+                      {done}/{total} · {progress}%
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      height: 6,
+                      borderRadius: 6,
+                      background: "var(--bg-hover)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${progress}%`,
+                        background: "linear-gradient(90deg, #3b82f6, #22c55e)",
+                        borderRadius: 6,
+                        transition: "width .3s ease",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div style={{ fontSize: 13, fontWeight: 600 }}>{t("engine.tasks")}</div>
               <div
                 style={{

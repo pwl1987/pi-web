@@ -27,6 +27,29 @@ const ALLOWED_SCRIPTS = new Set<string>([
   "comet-env.mjs",
 ]);
 
+/** change 名白名单：仅允许字母数字、连字符、下划线、点；长度受限。 */
+const CHANGE_NAME_RE = /^[a-zA-Z0-9._-]{1,64}$/;
+const MAX_ARG_LEN = 1024;
+
+/** 校验 comet change 名（杜绝任意目录写/路径穿越）。 */
+export function assertChangeName(change: string): void {
+  if (!CHANGE_NAME_RE.test(change)) {
+    throw new Error(`非法 comet change 名：${change}`);
+  }
+}
+
+/** 校验通用 CLI 参数：拒绝路径穿越、空字节、绝对路径、控制字符与超长。 */
+function assertCliArg(arg: string): void {
+  if (arg.length > MAX_ARG_LEN) throw new Error(`comet 参数过长：${arg.length}`);
+  if (arg.includes("..") || arg.includes("\0") || arg.startsWith("/") || arg.includes("\0")) {
+    throw new Error(`非法 comet 参数：${arg}`);
+  }
+  // 拒绝控制字符（除常见的空白外）
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(arg)) {
+    throw new Error(`非法 comet 参数（含控制字符）：${arg}`);
+  }
+}
+
 export interface CometCliResult {
   stdout: string;
   code: number;
@@ -44,12 +67,9 @@ export async function runCometScript(
   if (!cwd || !cwd.startsWith("/")) {
     throw new Error("comet 调用要求绝对路径 cwd");
   }
-  // 约束 argv：禁止空参、禁止包含路径穿越片段
-  for (const a of args) {
-    if (a.includes("..") || a.includes("\0")) {
-      throw new Error(`非法 comet 参数：${a}`);
-    }
-  }
+  // 约束 argv：change 名（args[1]）走白名单；其余参数拒绝路径穿越/空字节/绝对路径/控制字符。
+  if (args.length >= 2) assertChangeName(args[1]);
+  for (const a of args) assertCliArg(a);
   const scriptPath = join(COMET_SCRIPTS_DIR, script);
   try {
     // comet guard 的 build/verify 检查会跑 `npm run build` 验证项目可构建。
@@ -74,6 +94,7 @@ export async function runCometScript(
 
 /** 读取 comet change 的单个字段（comet-state.mjs get <change> <field>） */
 export async function cometGet(change: string, field: string, cwd: string): Promise<string> {
+  assertChangeName(change);
   const { stdout, code } = await runCometScript("comet-state.mjs", ["get", change, field], cwd);
   if (code !== 0) return "";
   return stdout.trim();

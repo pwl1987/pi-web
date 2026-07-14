@@ -13,12 +13,16 @@ const STATUS_COLOR: Record<TaskStatus, string> = {
 
 export function PlanTaskCard({ task }: { task: Task }) {
   const { t } = useI18n();
+  const failReason =
+    task.status === "failed"
+      ? (task.result ?? task.backtrace?.[task.backtrace.length - 1])
+      : undefined;
   return (
     <div
       style={{
         background: "color-mix(in srgb, var(--bg-panel) 80%, transparent)",
         backdropFilter: "blur(8px)",
-        border: "1px solid var(--border)",
+        border: `1px solid ${task.status === "failed" ? "var(--color-error-soft)" : "var(--border)"}`,
         borderRadius: 12,
         padding: "10px 12px",
         display: "flex",
@@ -41,10 +45,35 @@ export function PlanTaskCard({ task }: { task: Task }) {
           {t(`engine.task.${task.status}`)}
         </span>
       </div>
-      {task.result && (
+      {task.status === "running" && (
+        <div
+          style={{
+            height: 3,
+            borderRadius: 3,
+            background: "color-mix(in srgb, var(--accent) 30%, transparent)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: "40%",
+              background: "var(--accent)",
+              borderRadius: 3,
+              animation: "skeleton-shimmer 1.2s ease infinite",
+            }}
+          />
+        </div>
+      )}
+      {task.result && task.status !== "failed" && (
         <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>{task.result}</div>
       )}
-      {task.backtrace && task.backtrace.length > 0 && (
+      {failReason && (
+        <div style={{ fontSize: 12, color: "#EF4444", lineHeight: 1.5 }}>
+          {t("engine.taskFailedReason")}：{failReason}
+        </div>
+      )}
+      {task.backtrace && task.backtrace.length > 0 && task.status !== "failed" && (
         <div style={{ fontSize: 11, color: "var(--text-dim)", opacity: 0.8 }}>
           ↺ {task.backtrace[task.backtrace.length - 1]}
         </div>

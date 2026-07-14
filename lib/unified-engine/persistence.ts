@@ -9,7 +9,7 @@ import { getAgentDir } from "../config-file.ts";
 import type { RunState } from "./unified-engine-types.ts";
 
 const STORE_FILE = "pi-web-engine-runs.jsonl";
-const MAX_RECORDS = 100;
+export const MAX_RECORDS = 100;
 
 export interface StoredEngineRun {
   id: string;

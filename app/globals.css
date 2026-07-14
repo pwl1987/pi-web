@@ -779,6 +779,16 @@ span.linenumber {
   animation: skeleton-shimmer 1.4s ease infinite;
 }
 
+@keyframes enginePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none !important;

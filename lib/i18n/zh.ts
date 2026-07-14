@@ -906,6 +906,12 @@ export const zh = {
   "engine.logView": "运行日志",
   "engine.persistedHint": "运行历史已持久化，重启后可恢复",
   "engine.emptyLog": "该运行暂无日志",
+  "engine.connected": "实时已连接",
+  "engine.disconnected": "连接中断，重连中…",
+  "engine.failedBanner": "运行失败",
+  "engine.progress": "任务进度",
+  "engine.taskFailedReason": "失败原因",
+  "engine.controlling": "操作中…",
 
   // ----- Plan 讨论模式 / 多 Agent 协同 -----
   "plan.mode": "计划模式",

@@ -94,7 +94,11 @@ export function SettingsPanel({
   useEffect(() => {
     void (async () => {
       try {
-        const { ok, status, data: settings } = await csrfFetchJson<PiSettings>("/api/settings");
+        const {
+          ok,
+          status,
+          data: settings,
+        } = await csrfFetchJson<PiSettings>("/api/settings", { method: "GET" });
         if (!ok) throw new Error(`Settings load failed: ${status}`);
         setPiSettings(settings);
       } catch (err) {
@@ -107,7 +111,7 @@ export function SettingsPanel({
           data: d,
         } = await csrfFetchJson<{
           models?: Record<string, string[]>;
-        }>("/api/models");
+        }>("/api/models", { method: "GET" });
         if (!ok) throw new Error(`Models load failed: ${status}`);
         const list: ModelOption[] = [];
         for (const [provider, ids] of Object.entries(d.models ?? {})) {

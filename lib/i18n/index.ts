@@ -2,8 +2,8 @@
 //
 // Mirrors the pattern in hooks/useTheme.ts: a module-level listener set,
 // useSyncExternalStore for React binding, and localStorage persistence.
-// The layout preload script (app/layout.tsx) writes data-lang before first
-// paint so getSnapshot reads the correct locale with no FOUC.
+// The layout (app/layout.tsx) reads cookies on the server to stamp the correct
+// locale before first paint, eliminating FOUC.
 //
 // Keys are flat dotted strings ("namespace.subkey"). Variable interpolation
 // uses {name} placeholders: translate(locale, "a.key", { count: 3 }) replaces
@@ -43,12 +43,17 @@ function subscribe(cb: () => void): () => void {
   };
 }
 
-/** Persist a new locale, update <html>, and notify all subscribers. */
+/** Persist a new locale, update <html>, sync cookie for SSR, and notify all subscribers. */
 export function setLocale(next: Locale): void {
   try {
     localStorage.setItem(STORAGE_KEY, next);
   } catch {
     // ignore storage errors (private mode, quota, etc.)
+  }
+  try {
+    document.cookie = `pi-language=${next};path=/;max-age=31536000;SameSite=Lax`;
+  } catch {
+    // ignore cookie errors
   }
   const el = document.documentElement;
   el.setAttribute("data-lang", next);

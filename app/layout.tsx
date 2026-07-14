@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Noto_Sans_Mono } from "next/font/google";
+import { ThemeLangInit } from "@/components/ThemeLangInit";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -25,30 +27,30 @@ export const metadata: Metadata = {
   description: "Pi Coding Agent Web Interface",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const theme = cookieStore.get("pi-theme")?.value;
+  const lang = cookieStore.get("pi-language")?.value;
+  const isDark = theme === "dark";
+  const htmlLang = lang === "zh" ? "zh" : "en";
+
   return (
     <html
-      lang="en"
+      lang={htmlLang}
       translate="no"
-      className={`${notoSansMono.variable} notranslate`}
+      className={`${notoSansMono.variable} notranslate${isDark ? " dark" : ""}`}
+      {...(lang === "zh" ? { "data-lang": "zh" } : {})}
       suppressHydrationWarning
     >
       <head>
         <meta name="google" content="notranslate" />
-        {/* Preload theme + lang before first paint to eliminate FOUC.
-            Must be inline (blocking) so <html> classes are set before
-            the browser paints the first frame. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");if(t==="dark")document.documentElement.classList.add("dark");var l=localStorage.getItem("pi-language");if(l!=="en"){var d=document.documentElement;d.setAttribute("data-lang","zh");d.lang="zh"}}catch(e){}})();`,
-          }}
-        />
       </head>
       <body
         translate="no"
         className="notranslate"
         style={{ height: "100dvh", display: "flex", flexDirection: "column" }}
       >
+        <ThemeLangInit />
         {children}
       </body>
     </html>

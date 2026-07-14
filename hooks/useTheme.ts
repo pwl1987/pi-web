@@ -4,6 +4,26 @@ import { useCallback, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
+/** 将主题同时写入 cookie，使服务端 layout.tsx 能够在 SSR 阶段读到正确值 */
+function setThemeCookie(theme: Theme) {
+  try {
+    document.cookie = `pi-theme=${theme};path=/;max-age=31536000;SameSite=Lax`;
+  } catch {
+    // 忽略 cookie 写入错误（如隐私模式下可能受限）
+  }
+}
+
+export function syncThemeCookie() {
+  try {
+    const t = localStorage.getItem("pi-theme");
+    if (t === "dark" || t === "light") {
+      document.cookie = `pi-theme=${t};path=/;max-age=31536000;SameSite=Lax`;
+    }
+  } catch {
+    // ignore
+  }
+}
+
 const listeners = new Set<() => void>();
 
 function subscribe(cb: () => void): () => void {
@@ -41,6 +61,7 @@ export function useTheme() {
       } catch {
         // ignore storage errors (private mode, quota, etc.)
       }
+      setThemeCookie(next);
       listeners.forEach((cb) => cb());
     };
 
