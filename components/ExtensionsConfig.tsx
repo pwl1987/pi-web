@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { csrfFetchJson } from "@/lib/csrf-fetch";
 import { useAsync } from "@/hooks/useAsync";
+import { inputStyle } from "@/lib/styles";
 
 interface ExtListItem {
   id: string;
@@ -302,17 +303,7 @@ export function ExtensionsConfig({ onClose }: Props) {
                   value={installPath}
                   onChange={(e) => setInstallPath(e.target.value)}
                   placeholder="/path/to/extension"
-                  style={{
-                    flex: 1,
-                    padding: "5px 8px",
-                    fontSize: 12,
-                    borderRadius: 5,
-                    border: "1px solid var(--border)",
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    fontFamily: "var(--font-mono)",
-                    outline: "none",
-                  }}
+                  style={{ ...inputStyle, flex: 1, fontSize: 12 }}
                 />
                 <button
                   onClick={handleInstall}

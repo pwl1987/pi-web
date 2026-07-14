@@ -234,7 +234,7 @@ export function SettingsPanel({
                     defaultModel: modelId || null,
                   });
                 }}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="">—</option>
                 {models.map((m) => (
@@ -252,7 +252,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.defaultThinkingLevel}
                 onChange={(e) => updatePi("defaultThinkingLevel", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 {["auto", "off", "minimal", "low", "medium", "high", "xhigh"].map((l) => (
                   <option key={l} value={l}>
@@ -289,7 +289,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.steeringMode}
                 onChange={(e) => updatePi("steeringMode", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="all">all</option>
                 <option value="one-at-a-time">one-at-a-time</option>
@@ -301,7 +301,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.followUpMode}
                 onChange={(e) => updatePi("followUpMode", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="all">all</option>
                 <option value="one-at-a-time">one-at-a-time</option>
@@ -315,7 +315,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.transport}
                 onChange={(e) => updatePi("transport", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="auto">auto</option>
                 <option value="sse">sse</option>
@@ -332,7 +332,7 @@ export function SettingsPanel({
                 type="number"
                 value={piSettings.httpIdleTimeoutMs}
                 onChange={(e) => updatePi("httpIdleTimeoutMs", parseInt(e.target.value) || 0)}
-                style={inputStyle}
+                style={settingInputStyle}
               />
             </Row>
           )}
@@ -344,7 +344,7 @@ export function SettingsPanel({
                 type="text"
                 value={piSettings.shellPath}
                 onChange={(e) => updatePi("shellPath", e.target.value)}
-                style={inputStyle}
+                style={settingInputStyle}
                 placeholder="/bin/bash"
               />
             </Row>
@@ -355,7 +355,7 @@ export function SettingsPanel({
                 type="text"
                 value={piSettings.shellCommandPrefix}
                 onChange={(e) => updatePi("shellCommandPrefix", e.target.value)}
-                style={inputStyle}
+                style={settingInputStyle}
               />
             </Row>
           )}
@@ -365,7 +365,7 @@ export function SettingsPanel({
                 type="text"
                 value={(piSettings.npmCommand ?? []).join(" ")}
                 onChange={(e) => updatePi("npmCommand", e.target.value.split(" ").filter(Boolean))}
-                style={inputStyle}
+                style={settingInputStyle}
                 placeholder="npm"
               />
             </Row>
@@ -377,7 +377,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.defaultProjectTrust}
                 onChange={(e) => updatePi("defaultProjectTrust", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="ask">ask</option>
                 <option value="always">always</option>
@@ -540,7 +540,7 @@ export function SettingsPanel({
                 type="number"
                 value={piSettings.imageWidthCells}
                 onChange={(e) => updatePi("imageWidthCells", parseInt(e.target.value) || 0)}
-                style={inputStyle}
+                style={settingInputStyle}
               />
             </Row>
           )}
@@ -550,7 +550,7 @@ export function SettingsPanel({
                 type="number"
                 value={piSettings.editorPaddingX}
                 onChange={(e) => updatePi("editorPaddingX", parseInt(e.target.value) || 0)}
-                style={inputStyle}
+                style={settingInputStyle}
               />
             </Row>
           )}
@@ -560,7 +560,7 @@ export function SettingsPanel({
                 type="number"
                 value={piSettings.autocompleteMaxVisible}
                 onChange={(e) => updatePi("autocompleteMaxVisible", parseInt(e.target.value) || 0)}
-                style={inputStyle}
+                style={settingInputStyle}
               />
             </Row>
           )}
@@ -569,7 +569,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.doubleEscapeAction}
                 onChange={(e) => updatePi("doubleEscapeAction", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="fork">fork</option>
                 <option value="tree">tree</option>
@@ -582,7 +582,7 @@ export function SettingsPanel({
               <select
                 value={piSettings.treeFilterMode}
                 onChange={(e) => updatePi("treeFilterMode", e.target.value)}
-                style={selectStyle}
+                style={settingSelectStyle}
               >
                 <option value="default">default</option>
                 <option value="no-tools">no-tools</option>
@@ -749,7 +749,7 @@ export function SettingsPanel({
 // Sub-components
 // ============================================================================
 
-const selectStyle: React.CSSProperties = {
+const settingSelectStyle: React.CSSProperties = {
   padding: "3px 8px",
   fontSize: 12,
   borderRadius: 5,
@@ -761,8 +761,8 @@ const selectStyle: React.CSSProperties = {
   minWidth: 120,
 };
 
-const inputStyle: React.CSSProperties = {
-  ...selectStyle,
+const settingInputStyle: React.CSSProperties = {
+  ...settingSelectStyle,
   width: 160,
 };
 

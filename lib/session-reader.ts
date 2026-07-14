@@ -80,7 +80,7 @@ const PATH_CACHE_TTL_MS = 60_000;
 // readFileSync + JSONL 解析 + tree 构建，消除每次切 leaf / 刷新 / 并发
 // 请求都全量重读的开销。LRU 上限防止长进程内存只增不减。
 // ===========================================================================
-const CACHE_MAX = 200;
+const SESSION_CACHE_MAX = 200;
 
 interface CachedSessionSnapshot {
   mtimeMs: number;
@@ -165,7 +165,7 @@ export function openSessionCached(filePath: string): CachedSessionSnapshot {
 
   const snapshot = snapshotFromManager(getPiAdapter().SessionManager.open(filePath), mtimeMs);
   cache.set(filePath, snapshot);
-  if (cache.size > CACHE_MAX) {
+  if (cache.size > SESSION_CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }

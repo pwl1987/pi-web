@@ -81,6 +81,12 @@ const nextConfig: NextConfig = {
     });
 
     // Security headers
+    // CSP rationale: pi-web is a local-only tool bound to localhost:30141.
+    // Next.js App Router requires inline scripts for its bootstrap process
+    // (self.__next_r, RSC client nav, etc.). React dev mode additionally
+    // requires unsafe-eval for callstack reconstruction; React never uses
+    // eval() in production, so the production CSP omits it.
+    const scriptSrc = isProd ? "'self' 'unsafe-inline'" : "'self' 'unsafe-inline' 'unsafe-eval'";
     result.push({
       source: "/(.*)",
       headers: [
@@ -91,7 +97,7 @@ const nextConfig: NextConfig = {
           key: "Content-Security-Policy",
           value: [
             "default-src 'self'",
-            "script-src 'self'",
+            `script-src ${scriptSrc}`,
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob:",
             "font-src 'self' data:",

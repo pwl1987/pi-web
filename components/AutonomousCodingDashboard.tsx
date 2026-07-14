@@ -20,7 +20,7 @@ function formatLogTime(at: unknown): string {
     : d.toLocaleTimeString("zh-CN", { hour12: false });
 }
 
-const inputStyle: CSSProperties = {
+const dashboardInputStyle: CSSProperties = {
   background: "var(--bg)",
   border: "1px solid var(--border)",
   borderRadius: 8,
@@ -29,7 +29,7 @@ const inputStyle: CSSProperties = {
   fontSize: 13,
   minWidth: 160,
 };
-const btnStyle: CSSProperties = {
+const dashboardBtnStyle: CSSProperties = {
   background: "var(--accent)",
   color: "#fff",
   border: "none",
@@ -39,7 +39,7 @@ const btnStyle: CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
 };
-const btnStyleGhost: CSSProperties = {
+const dashboardBtnStyleGhost: CSSProperties = {
   background: "transparent",
   color: "var(--text)",
   border: "1px solid var(--border)",
@@ -121,15 +121,15 @@ export function AutonomousCodingDashboard() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("engine.newTitle")}
-          style={inputStyle}
+          style={dashboardInputStyle}
         />
         <input
           value={cwd}
           onChange={(e) => setCwd(e.target.value)}
           placeholder={t("engine.cwd")}
-          style={inputStyle}
+          style={dashboardInputStyle}
         />
-        <button onClick={createChange} disabled={loading} style={btnStyle}>
+        <button onClick={createChange} disabled={loading} style={dashboardBtnStyle}>
           {t("engine.create")}
         </button>
         {error && <span style={{ color: "#EF4444", fontSize: 12 }}>{error}</span>}
@@ -156,13 +156,22 @@ export function AutonomousCodingDashboard() {
                 <StatusBadge status={selected.status} />
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <button onClick={() => controlRun(selected.runId, "start")} style={btnStyle}>
+                <button
+                  onClick={() => controlRun(selected.runId, "start")}
+                  style={dashboardBtnStyle}
+                >
                   {t("engine.start")}
                 </button>
-                <button onClick={() => controlRun(selected.runId, "pause")} style={btnStyleGhost}>
+                <button
+                  onClick={() => controlRun(selected.runId, "pause")}
+                  style={dashboardBtnStyleGhost}
+                >
                   {t("engine.pause")}
                 </button>
-                <button onClick={() => controlRun(selected.runId, "resume")} style={btnStyleGhost}>
+                <button
+                  onClick={() => controlRun(selected.runId, "resume")}
+                  style={dashboardBtnStyleGhost}
+                >
                   {t("engine.resume")}
                 </button>
                 <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
