@@ -134,3 +134,29 @@ node --test                           # 全部通过（行为零变更）
 | 需要新的 SDK 符号     | 在 `PiSdkPort` 加一个具名属性（类引用或 `typeof` 函数），`SdkAdapter` 赋值    |
 
 **重要**：新增业务/路由代码严禁再次 `import` `@earendil-works/pi-*` 的**值**或访问裸命名空间；一律经 `getPiAdapter()` 的具名访问器。类型需要时用 `@/lib/pi` 再导出的 SDK 词汇（`SdkSettingsManager` 等），避免散落的直接 type 导入。
+
+---
+
+## 7. 配置元信息 SSoT — `lib/config-schema.ts`（方案 A 引入）
+
+为统一插件/扩展配置项的 UI 渲染、持久化、i18n 派生，新增 `lib/config-schema.ts` 作为唯一事实源。配套抽象层与 UI 子目录：
+
+| 模块                                                                                  | 职责                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/config-schema.ts`                                                                | 类型壳（`FieldDescriptor` discriminated union + `PluginSchema` + `SCHEMA_VERSION` + `getSchema` / `resolveGroup` / `isFieldValid` 守卫 + `allSchemas` re-export）                                                  |
+| `lib/all-schemas.ts`                                                                  | 33 个插件 / 81 字段的具体 schema 数据；从历史 `lib/plugin-config-descriptors.ts` 机械迁移（type 映射 `toggle→boolean / select→select / multiselect→string-list / text→string / number→number / list→string-list`） |
+| `lib/settings-storage-adapter.ts`                                                     | `SettingsStorageAdapter` 三接口契约 + `LocalStorageAdapter` 实现（localStorage 主存 + `storage` 事件 + `BroadcastChannel` 双通道）                                                                                 |
+| `hooks/useSettings.ts`                                                                | `useSyncExternalStore` 订阅 hook；已知字段写 `values`、未知字段写 `__unknown`；暴露 `getUnrecognizedFields()` D1 出口                                                                                              |
+| `components/Settings/{index,P1General,P1BuiltinPlugins,P2Advanced,controls/,fields/}` | UI 拆分子目录，P1.1/P1.2/P1.3 三档折叠（`group: 'common'/'advanced'/'experimental'`）                                                                                                                              |
+| `scripts/check-i18n-completeness.mjs`                                                 | 静态校验 schema 字段的 i18nKey 在 `lib/i18n/{en,zh}.ts` 中是否齐全；缺 `.label` 报错，缺 `.description/.placeholder/.errorMessage` 仅 warn                                                                         |
+| `app/api/settings/[pluginId]/route.ts`                                                | Route Handler stub（P1 仅返回 501；未来切换 `defaultAdapter = new RouteHandlerSettingsAdapter('/api/settings')` 一行零业务改动）                                                                                   |
+
+**契约要点**：
+
+- `PluginSettings = { enabled?, values, __unknown }` — 已知字段与未知字段严格隔离，UI 仅渲染已知字段；P1 阶段不为未知字段生成控件（吸收 D1 立场，规避复杂度）
+- 字段类型 discriminated union 在 `switch (field.type)` 内自动 narrow，无需 `as` 断言
+- `__unknown` 命名空间仅通过 hook 出口 `getUnrecognizedFields()` 暴露
+- `i18nKey` 命名：`settings.<pluginId>.fields.<field>.{label,description,placeholder,errorMessage,group}`
+- 持久化抽象允许未来切换服务端化而不动业务代码（依赖倒置：`hooks/useSettings.ts` 注入 `defaultAdapter`）
+
+**与 Pi SDK 的关系**：本模块完全不依赖 `@earendil-works/pi-*`，是纯前端设置面板的实现细节。`lib/plugin-config-descriptors.ts` 仍作为 per-plugin 配置描述符被 `PluginConfigPage.tsx` 直接消费；本模块与它是**互补**而非取代关系（前者驱动通用 Settings UI，后者驱动每插件独立 ConfigPage）。

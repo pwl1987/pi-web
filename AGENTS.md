@@ -115,7 +115,7 @@ pi-web/
 │       ├── sessions/ + sessions/[id]/{context,export}/
 │       ├── settings/, skills/{install,search}/, subagents/
 │       ├── task-list/, todos/, token-usage/[provider]/, web-search-config/
-├── components/                         # 46 个 .tsx + 4 测试 + 1 registry
+├── components/                         # 56 个 .tsx + 5 测试 + 1 registry（新增 Settings/ 子目录 11 文件 + useSettings.test.tsx）
 │   ├── AppShell.tsx ★                  # 顶层布局 + URL 状态 + 标签/面板编排
 │   ├── ChatWindow.tsx ★                # 聊天组合 + useAgentSession 容器
 │   ├── ChatInput.tsx, MessageView.tsx
@@ -133,8 +133,18 @@ pi-web/
 │   ├── TokenUsageIndicator.tsx, StatusIndicators.tsx
 │   ├── PinnedDirsList.tsx, PinCurrentDirButton.tsx, EnvProvisionButton.tsx
 │   ├── PluginConfigPage.tsx, PiAgentTitle.tsx
+│   ├── Settings/                        # 方案 A 拆分：schema-driven 设置面板
+│   │   ├── index.tsx                    # 三面板编排入口
+│   │   ├── P1General.tsx                # 通用设置（语言/主题/声音）
+│   │   ├── P1BuiltinPlugins.tsx         # 内置插件设置，含 P1.1/P1.2/P1.3 三档折叠
+│   │   ├── P2Advanced.tsx               # 高级设置（debug/feature flag）
+│   │   ├── FoldSection.tsx              # 折叠容器（details 原生实现）
+│   │   ├── controls/                    # 控件组件库
+│   │   │   ├── Switch.tsx, NumberInput.tsx, TextInput.tsx
+│   │   │   ├── Select.tsx, Textarea.tsx, StringList.tsx
+│   │   └── fields/FieldRenderer.tsx     # 按 FieldType 分发到对应控件
 │   └── *.test.tsx                      # vitest（jsdom）
-├── hooks/                              # 18 个业务 hook + 6 测试
+├── hooks/                              # 18 个业务 hook + 7 测试（新增 useSettings.test.tsx）
 │   ├── useAgentSession.ts ★            # 消息流、SSE、分支、fork、滚动、对账
 │   ├── useExtensions.ts                # UI 扩展加载
 │   ├── useI18n.ts, useTheme.ts         # 国际化 / 主题（useSyncExternalStore）
@@ -143,7 +153,7 @@ pi-web/
 │   ├── useMessageScroll.ts, useScrollToEntry.ts, useTaskKeyboardNav.ts
 │   ├── usePersistentState.ts, useScramble.ts, useTodoLiveRefresh.ts, useTokenUsage.ts
 │   └── *.test.tsx
-├── lib/                                # ~63 个服务端/共享模块 + 配套测试
+├── lib/                                # ~66 个服务端/共享模块 + 配套测试（新增 config-schema / all-schemas / settings-storage-adapter）
 │   ├── pi/                             # SDK 解耦层
 │   │   ├── pi.ts, pi-ports.ts          # PiSdkPort 接口
 │   │   ├── pi-sdk-adapter.ts           # 端口实现
@@ -164,6 +174,9 @@ pi-web/
 │   ├── i18n/                           # 零依赖 i18n
 │   ├── constraints/                    # 约束引擎
 │   ├── api-shared.ts, api-types.ts, api-utils.ts, csrf.ts, csrf-client.ts
+│   ├── config-schema.ts ★               # 方案 A：插件配置元信息 SSoT（discriminated union）
+│   ├── all-schemas.ts                   # 33 插件 / 81 字段具体 schema 数据
+│   ├── settings-storage-adapter.ts      # 持久化抽象（localStorage + BroadcastChannel）
 │   ├── config-file.ts, config-validators.ts
 │   ├── plugin-*, mcp-*, recommended-plugins.ts, npx.ts, patch.ts
 │   ├── pinned-dirs-bus.ts, prompt-enhance.ts
