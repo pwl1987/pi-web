@@ -20,6 +20,10 @@ export const DEFAULT_WORKFLOW: Workflow = "hotfix";
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
+/** LLM 补全函数签名（与 lib/agent-orchestrator/runner 的 LlmCompletion 同构）。
+ *  由组合根（unified-engine-adapter）注入 createPiLlmCompletion，适配器不感知 SDK。 */
+export type LlmCompletionFn = (systemPrompt: string, userMessage: string) => Promise<string>;
+
 export type RunStatus = "idle" | "running" | "paused" | "completed" | "failed";
 
 export interface RequirementInput {

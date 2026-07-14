@@ -1,13 +1,12 @@
 // autoplan-adapter.ts —— 唯一接入 vendor/autoplan 的适配层
-// 实现 PlanGeneratorPort。默认使用内存实现（与 autoplan 数据模型对齐）。
+// 实现 PlanGeneratorPort。默认走真实 LLM 适配器（组合根注入 pi 系统配置的 createPiLlmCompletion），
+// 仅在完全未注入 LLM 工厂（测试/极端场景）时回退内存桩；**生产路径不使用内存桩**。
 //
 // 关于真实 autoplan 模块（vendor/autoplan/src）的接入（B 阶段骨架）：
 // 必须通过「运行时」动态加载（createRequire(import.meta.url) + 变量路径），
 // 且加载表达式不能被 webpack 静态求值，否则 Next.js 构建会报
 // "server relative imports are not implemented yet"。
 // 见下方 ENGINE_AUTOPLAN_VENDOR 分支与 tryLoadVendorAutoPlan()。
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { createRequire } from "node:module";
 import type { PlanGeneratorPort } from "./plan-generator-ports";
 import type {
@@ -17,47 +16,14 @@ import type {
   TaskResult,
   RunContext,
   RequirementInput,
+  LlmCompletionFn,
 } from "./unified-engine-types";
 import { log } from "../engine-logger.ts";
+import { writeDeliverables } from "./autoplan-deliverables.ts";
+import { createLlmAutoPlanAdapter } from "./autoplan-llm-adapter.ts";
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-/**
- * 把 comet build 守卫要求的交付物写到 change 目录（<cwd>/openspec/changes/<changeName>/）。
- * 幂等：proposal.md / tasks.md 已存在则跳过对应文件。
- *
- * - proposal.md：取自 plan 描述（中文，匹配项目语言配置 zh-CN）
- * - tasks.md：同 plan 的全部任务，统一标记为 '- [x]'（守卫要求有完成标记、无未完成项）
- *
- * 守卫规则（vendor/comet comet-runtime.mjs:10380 tasksAllDone）：
- *   tasks.md 必须含 '- [x]'，且不能有未完成的 '- [ ]'。
- */
-async function writeDeliverables(
-  plans: Map<string, Plan>,
-  tasks: Map<string, Task>,
-  ctx: RunContext,
-  planId: string,
-): Promise<void> {
-  const changeDir = join(ctx.cwd, "openspec", "changes", ctx.changeName);
-  mkdirSync(changeDir, { recursive: true });
-
-  const proposalPath = join(changeDir, "proposal.md");
-  if (!existsSync(proposalPath)) {
-    const plan = plans.get(planId);
-    const content = `# 提案：${ctx.changeName}\n\n## 概述\n\n本次变更处理 autoplan 自动规划引擎生成的规范中所述的需求。\n\n## 执行计划\n\nautoplan 引擎已将工作拆分为若干任务，在构建阶段执行。任务明细见 tasks.md。\n\n## 涉及范围\n\n- 需求：${plan?.title ?? ctx.changeName}\n- 生成方式：pi-web 统一引擎（autoplan 适配器）\n`;
-    writeFileSync(proposalPath, content, "utf8");
-  }
-
-  const tasksPath = join(changeDir, "tasks.md");
-  if (!existsSync(tasksPath)) {
-    const planTasks = [...tasks.values()].filter((tk) => tk.planId === planId);
-    const lines = planTasks.length
-      ? planTasks.map((tk) => `- [x] ${tk.title}`).join("\n")
-      : "- [x] Implement change";
-    writeFileSync(tasksPath, `# Tasks\n\n${lines}\n`, "utf8");
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -110,16 +76,12 @@ function mapVendorToPlanGenerator(mod: unknown): PlanGeneratorPort {
   );
 }
 
-export function createAutoPlanAdapter(): PlanGeneratorPort {
-  // B 阶段开关：ENGINE_AUTOPLAN_VENDOR=1 时尝试接入真实 autoplan 引擎；
-  // 加载失败（vendored 缺后端/未实现）则回退到内存桩，保证引擎始终可演示。
-  const vendor = tryLoadVendorAutoPlan();
-  if (vendor) return vendor;
-
-  // 状态一律收敛到适配器实例（闭包）内，随适配器生命周期存在，
-  // 不再使用模块级全局 Map（修复只增不减的内存泄漏：Q1/P1）。
-  // 注意：requirement 的唯一真相源是 EngineRuntime（createChange 时写入并随 run 落盘），
-  // 此处仅生成并返回，不再额外缓存（避免双份来源）。
+/**
+ * 内存桩实现（确定性、无 LLM）：仅当组合根完全未注入 LLM 工厂时（如单测隔离）使用。
+ * 生产路径因组合根注入 createPiLlmCompletion，不会走到此分支。
+ * 状态收敛到实例闭包，避免模块级 Map 泄漏（Q1/P1）。
+ */
+function createMemoryAutoPlanAdapter(): PlanGeneratorPort {
   const plans = new Map<string, Plan>();
   const tasks = new Map<string, Task>();
 
@@ -188,15 +150,34 @@ export function createAutoPlanAdapter(): PlanGeneratorPort {
   };
 }
 
+/**
+ * 构造 autoplan 适配器，按优先级选择实现：
+ *   1) ENGINE_AUTOPLAN_VENDOR=1 且 vendored 后端可用 → 真实供应商适配器；
+ *   2) 注入了 createLlm → 真实 LLM 适配器（B 阶段「真实执行」，pi 系统配置模型）；
+ *   3) 否则 → 内存桩（仅当完全未注入 LLM，如单测隔离场景；生产路径不触发）。
+ *
+ * 真实 LLM 适配器不做内存桩兜底：无模型/调用失败则任务如实失败，连续失败达阈值熔断。
+ */
+export function createAutoPlanAdapter(
+  createLlm?: (cwd: string) => LlmCompletionFn | null,
+): PlanGeneratorPort {
+  const vendor = tryLoadVendorAutoPlan();
+  if (vendor) return vendor;
+  if (createLlm) return createLlmAutoPlanAdapter(createLlm);
+  return createMemoryAutoPlanAdapter();
+}
+
 let registered: PlanGeneratorPort | null = null;
 
 export function registerAutoPlanAdapter(
-  adapter: PlanGeneratorPort = createAutoPlanAdapter(),
+  adapter: PlanGeneratorPort = createMemoryAutoPlanAdapter(),
 ): void {
   registered = adapter;
 }
 
-export function getAutoPlanAdapter(): PlanGeneratorPort {
-  if (!registered) registered = createAutoPlanAdapter();
+export function getAutoPlanAdapter(
+  createLlm?: (cwd: string) => LlmCompletionFn | null,
+): PlanGeneratorPort {
+  if (!registered) registered = createAutoPlanAdapter(createLlm);
   return registered;
 }

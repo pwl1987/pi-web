@@ -111,6 +111,7 @@ export class EngineRuntime {
       // 空闲超时：先 flush 全部在途运行态到磁盘（磁盘仍在，可恢复），再清空内存释放资源。
       this.flushAll();
       this.runs.clear();
+      this.requirements.clear();
       this.listeners.clear();
       // 重置 rehydrate 标记，使后续访问可再次从磁盘重载历史（按需恢复）。
       this.rehydrated = false;

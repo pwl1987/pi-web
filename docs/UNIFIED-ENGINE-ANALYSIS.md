@@ -233,3 +233,76 @@ startRun     → status=running, emit, await runLoop(run)
 ## 8. 结论
 
 引擎架构设计合理（端口隔离、单例、SSE 推送），comet 侧融合成功。当前**最大阻碍是 `start/resume` 同步 `await` 长循环导致 HTTP 挂死**，以及内存泄漏、控制失效与安全校验缺失。A 阶段在不改变对外行为的前提下修复这些阻断并打磨 UI，即可让五阶段端到端稳定可演示；B 阶段再据动态加载骨架接入真实 autoplan 引擎。
+
+---
+
+## 9. 进度更新（2026-07-14 续）
+
+> 本章节修正 §0–§8 撰写时的「改造前」状态。自报告撰写后，A 阶段已由后续提交完成落地，
+> B 阶段「真实执行」已于 2026-07-15 完成（**默认走 pi 系统配置的 LLM，不再依赖内存桩**）。
+
+### 9.1 总体完成度
+
+| 阶段                                        | 规划项 | 完成度   | 说明                                                                                                                               |
+| ------------------------------------------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **A 阶段**（加固桩流程 + 打磨 UI）          | 7 大项 | **100%** | 全部落地（Q1 残留泄漏已修）                                                                                                        |
+| **B 阶段**（真实 autoplan 接入 + 真实执行） | 7 项   | **~95%** | 动态加载/失败回退/环境变量 ✅；真实 LLM 执行（多文件写盘+跑测试+回滚+熔断）✅；vendored Go 后端 🔲（不可补，以 JS LLM 重实现替代） |
+| **总计**（融合引擎可演示 + 可真实执行）     | —      | **~98%** | 架构、编排、安全、UI、真实执行全部就位；默认真实 LLM、无内存桩                                                                     |
+
+### 9.2 已完成模块清单（✅）
+
+**架构与编排（100%）**
+
+- 端口/适配器/门面/单例分层（`unified-engine-*.ts`）
+- `runLoop` 五阶段顺序编排 + change 目录自愈 + comet 守卫/推进安全降级
+- `start/resume` 异步化（P0：不再 `await` 整轮循环，进度经 SSE）
+- 重入保护 `runningIds`；`pause` 协同中断 + `resume` 断点续跑（Q5/Q6/P1）
+- 单 `requirements` 真相源（仅 runtime 持有，adapter 不缓存）（Q2）
+
+**安全（100%）**
+
+- `changes/route.ts` cwd 路径穿越防护（`assertSafeCwd` + `allowFileRoot`）（S1）
+- `title`/`description` 长度约束（S2）
+- `comet-cli.ts` change 名白名单 + argv 拒绝 `..`/空字节/绝对路径/控制字符（S3）
+- 写盘路径卫生：`autoplan-llm-adapter` 拒绝 `..`/绝对路径/空字节，落点必为 `resolve(cwd, rel)`（P2 安全）
+
+**前端（100%）**
+
+- `useUnifiedEngine` 改用 `csrfFetchJson`（Q8）、SSE `onerror→setTimeout` 重连（Q9）
+- `controlRun` 乐观更新 + 禁用态
+- `AutonomousCodingDashboard` 失败红色横幅 / 进度条 / 进行中禁用态 / 空·错·骨架态（Q10）
+
+**质量与持久化（100%）**
+
+- `autoplan-adapter` 模块级 Map → 实例闭包（Q1）；runtime 空闲超时清 `requirements`（Q1 残留，已修）
+- `persistence` jsonl 原子写 + `MAX_RECORDS` 上限裁剪（P2/P4）
+
+**B 阶段真实执行（100%，2026-07-15）**
+
+- 组合根 `unified-engine-adapter` 注入 `createPiLlmCompletion`（pi 系统配置模型），**默认走真实 LLM、无内存桩兜底**
+- `autoplan-llm-adapter.ts`：
+  - `generatePlan` 经 LLM 生成计划 spec（无模型/调用失败 → 如实抛错，不降级桩）
+  - `runTask` **多文件编辑**（兼容 `{edits:[...]}` / `{path,content}`）、严格路径校验后写盘
+  - **写盘后真实跑测试**（`npm test` 自动探测或 `ENGINE_AUTOPLAN_TEST_CMD`，受超时与 cwd 约束）
+  - **测试失败回滚**（还原被改文件、删除新建文件）
+  - **观察/熔断（P3）**：每 change 连续失败计数（`ENGINE_AUTOPLAN_MAX_FAILURES`，默认 3 次熔断）、
+    单运行文件数上限（`ENGINE_AUTOPLAN_MAX_FILES`，默认 50）、token 预算（`ENGINE_AUTOPLAN_TOKEN_BUDGET`，默认 200k）
+- `autoplan-adapter.ts`：`createAutoPlanAdapter` 优先级 = 供应商 → **LLM（默认）** → 内存桩（仅当完全无 LLM 注入）
+
+**单测（100%）**
+
+- `autoplan-llm-adapter.test.mjs`：9 用例覆盖生成/多文件写盘/无 LLM 抛错/路径穿越拒写/LLM 抛错失败/连续失败熔断/测试失败回滚/测试通过/文件数超限
+
+### 9.3 待开发模块清单（🔲，按优先级）
+
+| 优先级 | 模块                                         | 状态         | 设计                                                                              |
+| ------ | -------------------------------------------- | ------------ | --------------------------------------------------------------------------------- |
+| P3     | **vendored Go 后端补回**                     | 阻塞（外部） | `vendor/autoplan/backend/` 不在仓库；以 JS LLM 重实现循环驱动替代，文档已说明     |
+| P3     | **B 阶段接入点 `createAutoPlanPort` 标准化** | 骨架         | vendored 未导出；当前 `mapVendorToPlanGenerator` 抛明确错误，LLM 适配器走独立路径 |
+| P3     | **多轮 diff 细化（design/build 深化评审）**  | 部分         | 当前单轮 LLM 写文件；可加 design 阶段评审/多轮修正与语义化 diff 应用              |
+| P3     | **失败任务自动重试（task.retries 利用）**    | 待办         | runLoop 目前未消费 retries；可在 runTask 失败后触发 LLM 二次修正                  |
+
+> 真实执行现已**默认开启**：`npm run dev`（需已配置 pi 默认模型/API Key；未配置时 `runTask`/`generatePlan`
+> 如实失败并提示「未配置模型/API Key」，不再静默桩完成）。
+> 可选环境变量：`ENGINE_AUTOPLAN_RUN_TESTS=0` 关闭写盘后测试；`ENGINE_AUTOPLAN_TEST_CMD` 指定测试命令；
+> `ENGINE_AUTOPLAN_MAX_FAILURES` / `ENGINE_AUTOPLAN_MAX_FILES` / `ENGINE_AUTOPLAN_TOKEN_BUDGET` 调熔断阈值。
