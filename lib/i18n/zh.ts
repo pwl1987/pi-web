@@ -286,6 +286,7 @@ export const zh = {
   "mcp.probe.urlInvalid": "URL 无效",
   "mcp.probe.unreachable": "连接不可达",
   "mcp.probe.reachable": "连接可达",
+  "mcp.probe.blocked": "目标地址被禁止（内网/保留地址）",
   // CodeGraph 环境初始化
   "mcp.codegraph.init": "初始化图谱",
   "mcp.codegraph.initializing": "初始化中…",

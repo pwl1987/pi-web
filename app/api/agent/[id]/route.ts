@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { resolveSessionPath, getSessionHeaderCached } from "@/lib/session-reader";
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
-import { getPiAdapter } from "@/lib/pi";
 import { ALLOWED_AGENT_COMMANDS } from "@/lib/allowed-commands";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse } from "@/lib/api-utils";
@@ -30,7 +29,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const filePath = await resolveSessionPath(id);
     if (!filePath) return errorResponse("Session not found", 404);
 
-    const cwd = getPiAdapter().SessionManager.open(filePath).getHeader()?.cwd ?? process.cwd();
+    const cwd = (getSessionHeaderCached(filePath)?.cwd as string) ?? process.cwd();
 
     const { session } = await startRpcSession(id, filePath, cwd);
     const result = await session.send(body);

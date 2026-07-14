@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { validateCsrf } from "@/lib/csrf";
 import { safeJsonBody } from "@/lib/api-utils";
+import { isHostBlocked } from "@/lib/net-private";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,10 @@ async function probeUrl(url?: string): Promise<McpProbeResult> {
   } catch {
     return { reachable: false, detail: "mcp.probe.urlInvalid" };
   }
+  // SSRF 防护：拒绝指向内网/回环/链路本地/保留地址的主机。
+  if (await isHostBlocked(parsed.hostname)) {
+    return { reachable: false, detail: "mcp.probe.blocked" };
+  }
   const start = Date.now();
   try {
     const controller = new AbortController();
@@ -109,11 +114,11 @@ async function probeUrl(url?: string): Promise<McpProbeResult> {
     await fetch(parsed.toString(), {
       method: "GET",
       signal: controller.signal,
-      redirect: "follow",
+      redirect: "manual",
     });
     clearTimeout(timer);
     const latencyMs = Date.now() - start;
-    // Connection established => reachable, regardless of status code.
+    // 连接已建立（含 3xx）即视为可达；manual 不跟随重定向，阻断内网跳转侦察。
     return { reachable: true, detail: "mcp.probe.reachable", latencyMs };
   } catch {
     const latencyMs = Date.now() - start;

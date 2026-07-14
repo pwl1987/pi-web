@@ -286,6 +286,7 @@ export const en = {
   "mcp.probe.urlInvalid": "Invalid URL",
   "mcp.probe.unreachable": "Connection unreachable",
   "mcp.probe.reachable": "Connection reachable",
+  "mcp.probe.blocked": "Target address is blocked (internal/reserved address)",
   // CodeGraph environment init
   "mcp.codegraph.init": "Initialize graph",
   "mcp.codegraph.initializing": "Initializing…",

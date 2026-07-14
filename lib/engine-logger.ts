@@ -7,7 +7,7 @@
 
 import { appendFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { getAgentDir } from "./config-file.ts";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogScope = "orchestrator" | "engine";
@@ -39,11 +39,6 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 const SENSITIVE_KEY = /(api[_-]?key|secret|token|auth|password|authorization|cookie|session)/i;
-
-/** 解析 pi agent 目录（内联，避免引入 pi SDK 影响纯 Node 单测）。 */
-function getAgentDir(): string {
-  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-}
 
 function logFilePath(): string {
   return join(getAgentDir(), LOG_FILE);

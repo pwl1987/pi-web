@@ -5,16 +5,12 @@
 
 import { readFileSync, writeFileSync, existsSync, renameSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { getAgentDir } from "./config-file.ts";
 
 const CONFIG_FILE = "pi-web-plan-config.json";
 
 /** 角色 id → 模型标识（provider/model）。 */
 export type RoleModelMap = Record<string, string>;
-
-function getAgentDir(): string {
-  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-}
 
 function configFilePath(agentDir?: string): string {
   return join(agentDir || getAgentDir(), CONFIG_FILE);

@@ -7,7 +7,7 @@
 
 import { writeFileSync, readFileSync, existsSync, renameSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { getAgentDir } from "../config-file.ts";
 import type { OrchestrationSnapshot } from "./orchestrator-types.ts";
 
 const STORE_FILE = "pi-web-orchestrations.jsonl";
@@ -17,11 +17,6 @@ export interface StoredOrchestration {
   id: string;
   updatedAt: number;
   snapshot: unknown;
-}
-
-/** 解析 agentDir（与 session-state-store 一致，内联以避免引入 SDK 依赖）。 */
-function getAgentDir(): string {
-  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
 }
 
 function storeFilePath(): string {

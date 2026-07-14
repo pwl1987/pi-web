@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { readFileSync, writeFileSync, renameSync } from "fs";
 import { getPiAdapter } from "./pi";
 import { createDefaultExtensionTheme } from "./extension-theme";
-import { cacheSessionPath, resolveSessionPath } from "./session-reader";
+import { cacheSessionPath, resolveSessionPath, getSessionHeaderCached } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
 import { getRegistry, getLocks, notifyRunningChange } from "./session-registry";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
@@ -1141,7 +1141,7 @@ export async function restoreActiveSessions(): Promise<void> {
     try {
       const filePath = await resolveSessionPath(entry.sessionId);
       if (!filePath) continue; // session deleted from disk — skip
-      const cwd = getPiAdapter().SessionManager.open(filePath).getHeader()?.cwd;
+      const cwd = getSessionHeaderCached(filePath)?.cwd as string;
       if (!cwd) continue;
       // toolNames=undefined lets the SDK restore the saved tool set from .jsonl;
       // we re-apply toolsDisabled separately via setForceEmptySystemPrompt.

@@ -5,7 +5,7 @@
 
 import { writeFileSync, readFileSync, existsSync, renameSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { getAgentDir } from "../config-file.ts";
 import type { RunState } from "./unified-engine-types.ts";
 
 const STORE_FILE = "pi-web-engine-runs.jsonl";
@@ -15,11 +15,6 @@ export interface StoredEngineRun {
   id: string;
   updatedAt: number;
   run: RunState;
-}
-
-/** 解析 agentDir（与 session-state-store / 编排持久化一致，内联避免引入 SDK 依赖）。 */
-function getAgentDir(): string {
-  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
 }
 
 function storeFilePath(): string {

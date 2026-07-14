@@ -5,8 +5,10 @@ import { getPiAdapter } from "@/lib/pi";
 import {
   resolveSessionPath,
   invalidateSessionPathCache,
+  invalidateSessionDataCache,
   buildSessionContext,
   listAllSessions,
+  openSessionCached,
 } from "@/lib/session-reader";
 
 const { SessionManager } = getPiAdapter();
@@ -116,16 +118,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const filePath = await resolveSessionPath(id);
     if (!filePath) return errorResponse("Session not found", 404);
 
-    const sm = SessionManager.open(filePath);
-    const leafId = sm.getLeafId();
-    const tree = projectTreeForResponse(sm.getTree());
-    const context = buildSessionContext(
-      sm.getEntries() as Parameters<typeof buildSessionContext>[0],
-      leafId,
-    );
+    const snap = openSessionCached(filePath);
+    const tree = projectTreeForResponse(snap.tree as Parameters<typeof projectTreeForResponse>[0]);
+    const context = buildSessionContext(snap.entries, snap.leafId);
 
-    const header = sm.getHeader();
-    let modified = header?.timestamp ?? new Date().toISOString();
+    const header = snap.header;
+    let modified =
+      ((header as Record<string, unknown> | null)?.timestamp as string) ?? new Date().toISOString();
     try {
       modified = statSync(filePath).mtime.toISOString();
     } catch {
@@ -136,10 +135,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const info = header
       ? {
           path: filePath,
-          id: header.id,
-          cwd: header.cwd ?? "",
-          name: sm.getSessionName(),
-          created: header.timestamp,
+          id: (header as Record<string, unknown>).id as string,
+          cwd: ((header as Record<string, unknown>).cwd as string) ?? "",
+          name: snap.sessionName,
+          created: (header as Record<string, unknown>).timestamp as string,
           modified,
           messageCount: context.messages.length,
           firstMessage: context.messages.find((m) => m.role === "user")
@@ -191,7 +190,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       sessionId: id,
       filePath,
       info,
-      leafId,
+      leafId: snap.leafId,
       tree,
       context,
       ...(agentState !== undefined ? { agentState } : {}),
@@ -214,6 +213,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!filePath) return errorResponse("Session not found", 404);
     const sm = SessionManager.open(filePath);
     sm.appendSessionInfo(name.trim());
+    invalidateSessionDataCache(filePath);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return errorResponse(error);
@@ -268,8 +268,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
 
     getRpcSession(id)?.destroy();
-    unlinkSync(filePath);
+    invalidateSessionDataCache(filePath);
     invalidateSessionPathCache(id);
+    unlinkSync(filePath);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return errorResponse(error);

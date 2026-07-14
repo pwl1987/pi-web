@@ -13,6 +13,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   AgentMessage,
   AssistantContentBlock,
@@ -507,11 +508,6 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   // InspectorPanel can jump a task row to the message that created it.
   const { register: registerMessageEl, scrollTo: scrollToMessage } = useMessageScroll();
 
-  // Expose imperative handle to the parent (AppShell) for click-to-jump.
-  // The parent holds a ref; calling `ref.current?.scrollToEntry(eid)`
-  // scrolls the matching message into view.
-  useImperativeHandle(ref, () => ({ scrollToEntry: scrollToMessage }), [scrollToMessage]);
-
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !agentRunning;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
 
@@ -593,6 +589,317 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     },
     [chatInputRef],
   );
+
+  // ── 消息列表：useMemo 包裹原渲染期 IIFE，消除流式 tick 的 O(n²) 重算 ──
+  // 依赖仅含真正影响列表结构的项；流式只改 streamState.streamingMessage，
+  // 故流式高频重渲染会命中缓存、跳过全量重算。同时导出 entryId→扁平索引，
+  // 供虚拟滚动下的 scrollToEntry 跳转使用。
+  const messageList = useMemo(() => {
+    let lastUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        lastUserIdx = i;
+        break;
+      }
+    }
+
+    const visibleRefIndexByMessage = new Map<number, number>();
+    let refIdx = 0;
+    messages.forEach((msg, idx) => {
+      if (msg.role === "user" || msg.role === "assistant") {
+        visibleRefIndexByMessage.set(idx, refIdx++);
+      }
+    });
+
+    const entryToIndex = new Map<string, number>();
+    const items: ReactNode[] = [];
+    const push = (node: ReactNode, entryId?: string) => {
+      items.push(node);
+      if (entryId) entryToIndex.set(entryId, items.length - 1);
+    };
+
+    const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
+      messageRefs.current[refIndex] = el;
+      if (idx === lastUserIdx) {
+        (lastUserMsgRef as { current: HTMLDivElement | null }).current = el;
+      }
+      const eid = entryIds[idx];
+      if (eid) registerMessageEl(eid, el);
+    };
+
+    const renderMessage = (
+      idx: number,
+      options: {
+        attachRef?: boolean;
+        keyPrefix?: string;
+        messageOverride?: AgentMessage;
+        showTimestamp?: boolean;
+      } = {},
+    ): { node: ReactNode; entryId: string | undefined } => {
+      const msg = options.messageOverride ?? messages[idx];
+      const prevAssistantEntryId =
+        msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
+          ? entryIds[idx - 1]
+          : undefined;
+      const isVisible = msg.role === "user" || msg.role === "assistant";
+      const currentRefIdx = visibleRefIndexByMessage.get(idx);
+      const keyPrefix = options.keyPrefix ?? "message";
+      let showTimestamp = false;
+      if (msg.role === "assistant") {
+        showTimestamp = true;
+        for (let j = idx + 1; j < messages.length; j++) {
+          const r = messages[j].role;
+          if (r === "user") break;
+          if (r === "assistant") {
+            showTimestamp = false;
+            break;
+          }
+        }
+        if (showTimestamp && streamState.isStreaming && idx === messages.length - 1) {
+          showTimestamp = false;
+        }
+      }
+      if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
+      const view = (
+        <MessageView
+          key={`${keyPrefix}-view-${idx}`}
+          message={msg}
+          toolResults={toolResultsMap}
+          modelNames={modelNames}
+          cwd={messageCwd}
+          onOpenFile={onOpenFile}
+          entryId={entryIds[idx]}
+          onFork={
+            agentRunning || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork
+          }
+          forking={forkingEntryId === entryIds[idx]}
+          onNavigate={agentRunning ? undefined : handleNavigate}
+          prevAssistantEntryId={agentRunning ? undefined : prevAssistantEntryId}
+          onEditContent={handleEditContent}
+          showTimestamp={showTimestamp}
+          prevTimestamp={
+            idx > 0
+              ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp
+              : undefined
+          }
+        />
+      );
+      if (!isVisible || options.attachRef === false || currentRefIdx === undefined) {
+        return { node: view, entryId: undefined };
+      }
+      const entryId = entryIds[idx] ?? undefined;
+      return {
+        node: (
+          <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
+            {view}
+          </div>
+        ),
+        entryId,
+      };
+    };
+
+    for (let idx = 0; idx < messages.length;) {
+      const msg = messages[idx];
+      if (msg.role !== "user") {
+        const m = renderMessage(idx);
+        push(m.node, m.entryId);
+        idx += 1;
+        continue;
+      }
+
+      const userIdx = idx;
+      let endIdx = userIdx + 1;
+      while (endIdx < messages.length && messages[endIdx].role !== "user") endIdx += 1;
+
+      const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
+
+      if (finalAssistantIdx === -1) {
+        for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+          const m = renderMessage(renderIdx);
+          push(m.node, m.entryId);
+        }
+        idx = endIdx;
+        continue;
+      }
+
+      const isLiveTail =
+        (agentRunning || streamState.isStreaming) &&
+        endIdx === messages.length &&
+        userIdx === lastUserIdx;
+      if (isLiveTail) {
+        for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+          const m = renderMessage(renderIdx);
+          push(m.node, m.entryId);
+        }
+        idx = endIdx;
+        continue;
+      }
+
+      const u = renderMessage(userIdx);
+      push(u.node, u.entryId);
+
+      const processIndices: number[] = [];
+      for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
+        processIndices.push(processIdx);
+      }
+      const visibleProcessIndices = processIndices.filter((processIdx) =>
+        hasDisplayableProcessMessage(messages[processIdx]),
+      );
+      const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
+      const finalSplit = splitFinalAssistantBlocks(finalAssistant);
+      const finalProcessMessage =
+        finalSplit.processBlocks.length > 0
+          ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
+          : null;
+      const finalAnswerMessage =
+        finalSplit.answerBlocks.length > 0
+          ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
+          : null;
+
+      const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
+      if (processCount > 0) {
+        const processRefIdx =
+          visibleProcessIndices
+            .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
+            .find((value): value is number => typeof value === "number") ??
+          (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
+        const processGroup = (
+          <ProcessDetailsGroup
+            messageCount={processCount}
+            toolCallCount={
+              countToolCalls(messages, visibleProcessIndices) +
+              countToolCallBlocks(finalSplit.processBlocks)
+            }
+          >
+            {visibleProcessIndices.map(
+              (processIdx) =>
+                renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }).node,
+            )}
+            {finalProcessMessage &&
+              renderMessage(finalAssistantIdx, {
+                attachRef: false,
+                keyPrefix: "process-final",
+                messageOverride: finalProcessMessage,
+                showTimestamp: false,
+              }).node}
+          </ProcessDetailsGroup>
+        );
+        push(
+          <div
+            key={`process-group-${userIdx}-${finalAssistantIdx}`}
+            ref={
+              processRefIdx === undefined
+                ? undefined
+                : (el) => {
+                    messageRefs.current[processRefIdx] = el;
+                  }
+            }
+          >
+            {processGroup}
+          </div>,
+          undefined,
+        );
+      }
+
+      if (finalAnswerMessage) {
+        const m = renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage });
+        push(m.node, m.entryId);
+      }
+      for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
+        const m = renderMessage(renderIdx);
+        push(m.node, m.entryId);
+      }
+      idx = endIdx;
+    }
+    return { items, entryToIndex };
+  }, [
+    messages,
+    entryIds,
+    streamState.isStreaming,
+    agentRunning,
+    modelNames,
+    toolResultsMap,
+    handleFork,
+    handleNavigate,
+    onOpenFile,
+    handleEditContent,
+    forkingEntryId,
+    isNew,
+    messageCwd,
+    messageRefs,
+    lastUserMsgRef,
+    registerMessageEl,
+  ]);
+
+  // ── 消息列表虚拟化（窗口化渲染长会话，避免一次性挂载全部 MarkdownBody）──
+  const messageListRef = useRef<HTMLDivElement>(null);
+  // 虚拟列表相对滚动容器的固定偏移，供 react-virtual 正确定位。
+  const messageListOffset =
+    messageListRef.current && scrollContainerRef.current
+      ? messageListRef.current.getBoundingClientRect().top -
+        scrollContainerRef.current.getBoundingClientRect().top +
+        scrollContainerRef.current.scrollTop
+      : 0;
+  const virtualizer = useVirtualizer({
+    count: messageList.items.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 220,
+    overscan: 10,
+    scrollMargin: messageListOffset,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+
+  const renderVirtualMessageList = (items: ReactNode[]) => (
+    <div ref={messageListRef} style={{ position: "relative", height: virtualizer.getTotalSize() }}>
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          transform: `translateY(${
+            virtualItems.length > 0 ? virtualItems[0].start - virtualizer.options.scrollMargin : 0
+          }px)`,
+        }}
+      >
+        {virtualItems.map((vItem) => (
+          <div
+            key={vItem.key}
+            data-index={vItem.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${vItem.start}px)`,
+            }}
+          >
+            {items[vItem.index]}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Expose imperative handle to the parent (AppShell) for click-to-jump.
+  // The parent holds a ref; calling `ref.current?.scrollToEntry(eid)`
+  // scrolls the matching message into view. 虚拟滚动下，离屏条目未挂载，
+  // 先 scrollToIndex 将其带入可视窗口，再精确滚动到该消息。
+  const scrollToEntry = useCallback(
+    (entryId: string) => {
+      const idx = messageList.entryToIndex.get(entryId);
+      if (idx !== undefined) {
+        virtualizer.scrollToIndex(idx, { align: "center" });
+        // 滚动到位后元素才会挂载，延迟再精确滚动到该消息。
+        setTimeout(() => scrollToMessage(entryId), 60);
+        return;
+      }
+      scrollToMessage(entryId);
+    },
+    [messageList, virtualizer, scrollToMessage],
+  );
+  useImperativeHandle(ref, () => ({ scrollToEntry }), [scrollToEntry]);
 
   if (loading) {
     return (
@@ -733,220 +1040,8 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
                 </div>
               )}
 
-              {(() => {
-                let lastUserIdx = -1;
-                for (let i = messages.length - 1; i >= 0; i--) {
-                  if (messages[i].role === "user") {
-                    lastUserIdx = i;
-                    break;
-                  }
-                }
-
-                const visibleRefIndexByMessage = new Map<number, number>();
-                let refIdx = 0;
-                messages.forEach((msg, idx) => {
-                  if (msg.role === "user" || msg.role === "assistant") {
-                    visibleRefIndexByMessage.set(idx, refIdx++);
-                  }
-                });
-
-                const attachVisibleRef =
-                  (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
-                    messageRefs.current[refIndex] = el;
-                    if (idx === lastUserIdx) {
-                      (lastUserMsgRef as { current: HTMLDivElement | null }).current = el;
-                    }
-                    const eid = entryIds[idx];
-                    if (eid) registerMessageEl(eid, el);
-                  };
-
-                const renderMessage = (
-                  idx: number,
-                  options: {
-                    attachRef?: boolean;
-                    keyPrefix?: string;
-                    messageOverride?: AgentMessage;
-                    showTimestamp?: boolean;
-                  } = {},
-                ): ReactNode => {
-                  const msg = options.messageOverride ?? messages[idx];
-                  const prevAssistantEntryId =
-                    msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
-                      ? entryIds[idx - 1]
-                      : undefined;
-                  const isVisible = msg.role === "user" || msg.role === "assistant";
-                  const currentRefIdx = visibleRefIndexByMessage.get(idx);
-                  const keyPrefix = options.keyPrefix ?? "message";
-                  let showTimestamp = false;
-                  if (msg.role === "assistant") {
-                    showTimestamp = true;
-                    for (let j = idx + 1; j < messages.length; j++) {
-                      const r = messages[j].role;
-                      if (r === "user") break;
-                      if (r === "assistant") {
-                        showTimestamp = false;
-                        break;
-                      }
-                    }
-                    if (showTimestamp && streamState.isStreaming && idx === messages.length - 1) {
-                      showTimestamp = false;
-                    }
-                  }
-                  if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
-                  const view = (
-                    <MessageView
-                      key={`${keyPrefix}-view-${idx}`}
-                      message={msg}
-                      toolResults={toolResultsMap}
-                      modelNames={modelNames}
-                      cwd={messageCwd}
-                      onOpenFile={onOpenFile}
-                      entryId={entryIds[idx]}
-                      onFork={
-                        agentRunning || isNew || (idx === 0 && msg.role === "user")
-                          ? undefined
-                          : handleFork
-                      }
-                      forking={forkingEntryId === entryIds[idx]}
-                      onNavigate={agentRunning ? undefined : handleNavigate}
-                      prevAssistantEntryId={agentRunning ? undefined : prevAssistantEntryId}
-                      onEditContent={handleEditContent}
-                      showTimestamp={showTimestamp}
-                      prevTimestamp={
-                        idx > 0
-                          ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp
-                          : undefined
-                      }
-                    />
-                  );
-                  if (!isVisible || options.attachRef === false || currentRefIdx === undefined)
-                    return view;
-                  return (
-                    <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
-                      {view}
-                    </div>
-                  );
-                };
-
-                const rendered: ReactNode[] = [];
-                for (let idx = 0; idx < messages.length;) {
-                  const msg = messages[idx];
-                  if (msg.role !== "user") {
-                    rendered.push(renderMessage(idx));
-                    idx += 1;
-                    continue;
-                  }
-
-                  const userIdx = idx;
-                  let endIdx = userIdx + 1;
-                  while (endIdx < messages.length && messages[endIdx].role !== "user") endIdx += 1;
-
-                  const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-                  if (finalAssistantIdx === -1) {
-                    for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                      rendered.push(renderMessage(renderIdx));
-                    }
-                    idx = endIdx;
-                    continue;
-                  }
-
-                  const isLiveTail =
-                    (agentRunning || streamState.isStreaming) &&
-                    endIdx === messages.length &&
-                    userIdx === lastUserIdx;
-                  if (isLiveTail) {
-                    for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                      rendered.push(renderMessage(renderIdx));
-                    }
-                    idx = endIdx;
-                    continue;
-                  }
-
-                  rendered.push(renderMessage(userIdx));
-
-                  const processIndices: number[] = [];
-                  for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
-                    processIndices.push(processIdx);
-                  }
-                  const visibleProcessIndices = processIndices.filter((processIdx) =>
-                    hasDisplayableProcessMessage(messages[processIdx]),
-                  );
-                  const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-                  const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                  const finalProcessMessage =
-                    finalSplit.processBlocks.length > 0
-                      ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, {
-                          omitUsage: true,
-                        })
-                      : null;
-                  const finalAnswerMessage =
-                    finalSplit.answerBlocks.length > 0
-                      ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
-                      : null;
-
-                  const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
-                  if (processCount > 0) {
-                    const processRefIdx =
-                      visibleProcessIndices
-                        .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
-                        .find((value): value is number => typeof value === "number") ??
-                      (finalAnswerMessage
-                        ? undefined
-                        : visibleRefIndexByMessage.get(finalAssistantIdx));
-                    const processGroup = (
-                      <ProcessDetailsGroup
-                        messageCount={processCount}
-                        toolCallCount={
-                          countToolCalls(messages, visibleProcessIndices) +
-                          countToolCallBlocks(finalSplit.processBlocks)
-                        }
-                      >
-                        {visibleProcessIndices.map((processIdx) =>
-                          renderMessage(processIdx, {
-                            attachRef: false,
-                            keyPrefix: "process",
-                          }),
-                        )}
-                        {finalProcessMessage &&
-                          renderMessage(finalAssistantIdx, {
-                            attachRef: false,
-                            keyPrefix: "process-final",
-                            messageOverride: finalProcessMessage,
-                            showTimestamp: false,
-                          })}
-                      </ProcessDetailsGroup>
-                    );
-                    rendered.push(
-                      <div
-                        key={`process-group-${userIdx}-${finalAssistantIdx}`}
-                        ref={
-                          processRefIdx === undefined
-                            ? undefined
-                            : (el) => {
-                                messageRefs.current[processRefIdx] = el;
-                              }
-                        }
-                      >
-                        {processGroup}
-                      </div>,
-                    );
-                  }
-
-                  if (finalAnswerMessage) {
-                    rendered.push(
-                      renderMessage(finalAssistantIdx, {
-                        messageOverride: finalAnswerMessage,
-                      }),
-                    );
-                  }
-                  for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                }
-                return rendered;
-              })()}
+              {/* 窗口化渲染：仅挂载可视区域内的消息，长会话不再一次性渲染全部 MarkdownBody */}
+              {renderVirtualMessageList(messageList.items)}
 
               {streamState.isStreaming && streamState.streamingMessage && (
                 <MessageView

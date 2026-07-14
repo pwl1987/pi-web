@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const args = ["skills", "add", pkg.trim(), "-y", "--agent", "pi"];
     if (isGlobal) args.push("-g");
 
-    console.log(`[skills/install] running: npx ${args.join(" ")}`);
+    console.warn(`[skills/install] running: npx ${args.join(" ")}`);
     const { stdout, stderr } = await runNpx(args, {
       timeout: 60000,
       cwd: !isGlobal && cwd ? cwd : undefined,

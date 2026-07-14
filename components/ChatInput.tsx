@@ -37,19 +37,30 @@ import {
   linkPlanSession,
 } from "@/lib/plan-mode-store";
 import type { ToolEntry } from "@/lib/tool-presets";
-import { BUILTIN_TOOL_NAMES, PRESET_NONE, PRESET_DEFAULT, PRESET_FULL } from "@/lib/tool-presets";
-import { getToolLabel } from "@/lib/tool-labels";
+import { applyPresetToTools } from "@/lib/tool-presets";
+import { formatTokenCount } from "@/lib/format-token-count";
+import { compareModelOptions, modelOptionCollator, type ModelOption } from "@/lib/model-utils";
+import {
+  imageToDraftImage,
+  draftImageToAttachedImage,
+  revokeImagePreview,
+} from "@/lib/image-utils";
+import { QueuedMessageRow } from "@/components/QueuedMessageRow";
+import { ToolChecklist } from "@/components/ToolChecklist";
+import {
+  type SlashCommandPaletteItem,
+  type SlashCommandSource,
+  buildBuiltinSlashCommands,
+  SLASH_SOURCES,
+  SLASH_SOURCE_GROUP_LABEL,
+  SLASH_SOURCE_ORDER,
+  slashMatchRank,
+} from "@/lib/slash-commands";
 
 // AttachedImage and ChatInputHandle live in @/lib/types (shared with
 // useAgentSession). Re-exported here for backward-compatible imports.
 import type { AttachedImage } from "@/lib/types";
 export type { AttachedImage };
-
-interface ModelOption {
-  provider: string;
-  modelId: string;
-  name: string;
-}
 
 interface Props {
   onSend: (message: string, images?: AttachedImage[]) => void;
@@ -109,15 +120,6 @@ const TOOL_PRESET_MAP: Record<"off" | "default" | "full", "none" | "default" | "
   full: "full",
 };
 const COMPOSITION_END_ENTER_GRACE_MS = 100;
-const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-
-function compareModelOptions(a: ModelOption, b: ModelOption): number {
-  return (
-    MODEL_OPTION_COLLATOR.compare(a.name || a.modelId, b.name || b.modelId) ||
-    MODEL_OPTION_COLLATOR.compare(a.provider, b.provider) ||
-    MODEL_OPTION_COLLATOR.compare(a.modelId, b.modelId)
-  );
-}
 
 const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"] as const;
 const THINKING_LEVEL_DESC: Record<(typeof THINKING_LEVELS)[number], string> = {
@@ -129,356 +131,6 @@ const THINKING_LEVEL_DESC: Record<(typeof THINKING_LEVELS)[number], string> = {
   high: "thinking.high",
   xhigh: "thinking.xhigh",
 };
-
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-  return tokens.toLocaleString();
-}
-
-type SlashCommandPaletteItem =
-  | SlashCommandInfo
-  | {
-      name: string;
-      description: string;
-      source: "builtin";
-    };
-
-type SlashCommandSource = SlashCommandPaletteItem["source"];
-
-/** Built-in slash commands — descriptions are localized at call time. */
-function buildBuiltinSlashCommands(t: (key: string) => string): SlashCommandPaletteItem[] {
-  return [
-    { name: "compact", description: t("slash.compact"), source: "builtin" },
-    { name: "reload", description: t("slash.reload"), source: "builtin" },
-    { name: "name", description: t("slash.name"), source: "builtin" },
-    { name: "session", description: t("slash.session"), source: "builtin" },
-    { name: "copy", description: t("slash.copy"), source: "builtin" },
-  ];
-}
-
-const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill"];
-
-const SLASH_SOURCE_GROUP_LABEL: Record<SlashCommandSource, string> = {
-  builtin: "slashGroup.builtin",
-  extension: "slashGroup.extension",
-  prompt: "slashGroup.prompt",
-  skill: "slashGroup.skill",
-};
-
-const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
-  builtin: 0,
-  extension: 1,
-  prompt: 2,
-  skill: 3,
-};
-
-function slashMatchRank(command: SlashCommandPaletteItem, query: string): number {
-  const name = command.name.toLowerCase();
-  const description = command.description?.toLowerCase() ?? "";
-  if (name === query) return 0;
-  if (name.startsWith(query)) return 1;
-  if (name.includes(query)) return 2;
-  if (description.includes(query)) return 3;
-  return 4;
-}
-
-function imageToDraftImage(image: AttachedImage): ChatDraftImage {
-  return { data: image.data, mimeType: image.mimeType };
-}
-
-function draftImageToAttachedImage(image: ChatDraftImage): AttachedImage {
-  return {
-    ...image,
-    previewUrl: `data:${image.mimeType};base64,${image.data}`,
-  };
-}
-
-function revokeImagePreview(image: AttachedImage): void {
-  if (image.previewUrl.startsWith("blob:")) {
-    URL.revokeObjectURL(image.previewUrl);
-  }
-}
-
-function QueuedMessageRow({
-  kind,
-  label,
-  text,
-}: {
-  kind: "steer" | "follow-up";
-  label: string;
-  text: string;
-}) {
-  return (
-    <div
-      title={text}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "3px 10px",
-        fontSize: 12,
-        color: "var(--text-muted)",
-        minWidth: 0,
-      }}
-    >
-      <span
-        style={{
-          flexShrink: 0,
-          fontSize: 10,
-          fontFamily: "var(--font-mono)",
-          padding: "1px 7px",
-          borderRadius: 999,
-          border: `1px solid ${kind === "steer" ? "color-mix(in srgb, var(--accent) 45%, transparent)" : "var(--border)"}`,
-          color: kind === "steer" ? "var(--accent)" : "var(--text-dim)",
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-      >
-        {text}
-      </span>
-    </div>
-  );
-}
-
-/**
- * Apply a preset's tool-name set to the current tool list, preserving the list
- * shape and order. Tools named in `activeNames` become active, others inactive.
- */
-function applyPresetToTools(tools: ToolEntry[], activeNames: string[]): ToolEntry[] {
-  const active = new Set(activeNames);
-  return tools.map((tool) => ({ ...tool, active: active.has(tool.name) }));
-}
-
-/** Quick-preset chip button used in the tool checklist header. */
-function PresetChip({
-  label,
-  title,
-  onClick,
-}: {
-  label: string;
-  title: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        background: "none",
-        border: "1px solid var(--border)",
-        borderRadius: 5,
-        padding: "3px 8px",
-        fontSize: 11,
-        color: "var(--text-muted)",
-        cursor: "pointer",
-        flex: 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--bg-hover)";
-        e.currentTarget.style.color = "var(--text)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "none";
-        e.currentTarget.style.color = "var(--text-muted)";
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-/** Per-tool checklist panel: built-in tools, extension tools, quick presets. */
-function ToolChecklist({
-  tools,
-  onChange,
-  onPresetApply,
-  onClose,
-}: {
-  tools: ToolEntry[];
-  onChange: (tools: ToolEntry[]) => void;
-  onPresetApply: (names: string[]) => void;
-  onClose: () => void;
-}) {
-  const { t, locale } = useI18n();
-  const builtin = tools.filter((x) => BUILTIN_TOOL_NAMES.has(x.name));
-  const extensions = tools.filter((x) => !BUILTIN_TOOL_NAMES.has(x.name));
-
-  const toggle = (name: string) => {
-    onChange(tools.map((x) => (x.name === name ? { ...x, active: !x.active } : x)));
-  };
-
-  const renderRow = (tool: ToolEntry) => {
-    const label = getToolLabel(tool.name, locale);
-    const description = label.description || tool.description;
-    return (
-      <button
-        key={tool.name}
-        onClick={() => toggle(tool.name)}
-        title={description || tool.name}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          width: "100%",
-          padding: "6px 12px",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          textAlign: "left",
-          color: tool.active ? "var(--text)" : "var(--text-muted)",
-          fontSize: 12,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "none";
-        }}
-      >
-        <span
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: 3,
-            flexShrink: 0,
-            border: tool.active ? "1px solid var(--accent)" : "1px solid var(--border)",
-            background: tool.active ? "var(--accent)" : "none",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {tool.active && (
-            <svg
-              width="9"
-              height="9"
-              viewBox="0 0 10 10"
-              fill="none"
-              stroke="var(--bg)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="1.5 5 4 7.5 8.5 2.5" />
-            </svg>
-          )}
-        </span>
-        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{tool.name}</span>
-        {description && (
-          <span
-            style={{
-              fontSize: 10,
-              color: "var(--text-dim)",
-              marginLeft: "auto",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              maxWidth: 120,
-            }}
-          >
-            {description}
-          </span>
-        )}
-      </button>
-    );
-  };
-
-  return (
-    <div style={{ maxHeight: "min(60vh, 460px)", overflowY: "auto" }}>
-      {/* Quick presets */}
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          padding: "7px 10px",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <PresetChip
-          label={t("input.presetAll")}
-          title={t("input.toolsFull")}
-          onClick={() => {
-            onPresetApply(PRESET_FULL);
-          }}
-        />
-        <PresetChip
-          label={t("input.presetDefault")}
-          title={t("input.toolsDefault")}
-          onClick={() => {
-            onPresetApply(PRESET_DEFAULT);
-          }}
-        />
-        <PresetChip
-          label={t("input.presetNone")}
-          title={t("input.toolsNone")}
-          onClick={() => {
-            onPresetApply(PRESET_NONE);
-          }}
-        />
-      </div>
-      {builtin.length > 0 && (
-        <>
-          <div
-            style={{
-              padding: "5px 12px 2px",
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--text-dim)",
-            }}
-          >
-            {t("input.toolsBuiltin")}
-          </div>
-          {builtin.map(renderRow)}
-        </>
-      )}
-      {extensions.length > 0 && (
-        <>
-          <div
-            style={{
-              padding: "5px 12px 2px",
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--text-dim)",
-              borderTop: builtin.length > 0 ? "1px solid var(--border)" : "none",
-            }}
-          >
-            {t("input.toolsExtensions")}
-          </div>
-          {extensions.map(renderRow)}
-        </>
-      )}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          padding: "6px 10px",
-          borderTop: "1px solid var(--border)",
-        }}
-      >
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            fontSize: 11,
-            cursor: "pointer",
-          }}
-        >
-          {t("common.done")}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export const ChatInput = memo(
   forwardRef<ChatInputHandle, Props>(function ChatInput(
@@ -960,7 +612,7 @@ export const ChatInput = memo(
           if (rankDelta !== 0) return rankDelta;
           return (
             SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source] ||
-            MODEL_OPTION_COLLATOR.compare(a.name, b.name)
+            modelOptionCollator.compare(a.name, b.name)
           );
         });
     }, [slashQuery, isStreaming, slashCommands, t]);
