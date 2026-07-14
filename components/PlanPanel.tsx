@@ -95,6 +95,9 @@ export function PlanPanel() {
   const [error, setError] = useState<string | null>(null);
   // 普通模式确认后展示方案文档落盘路径（引擎模式直接跳转引擎面板，无需此提示）。
   const [docSavedPath, setDocSavedPath] = useState<string | null>(null);
+  // Tab 切换：讨论结束后(awaiting_confirm+)用户可在「推荐方案」与「讨论时间线」间切换，
+  // 完整保留并展示历史讨论过程。讨论中只显示时间线（无 tab）。默认 plans。
+  const [activeTab, setActiveTab] = useState<"plans" | "discussion">("plans");
   const esRef = useRef<EventSource | null>(null);
   // 跟踪当前编排器状态：终态后停止 SSE 重连与对账，避免 404 风暴。
   const statusRef = useRef<string>("idle");
@@ -664,6 +667,44 @@ export function PlanPanel() {
           </span>
         ) : null}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          {orchestratorId && (
+            <>
+              <a
+                href={`/api/plan/${encodeURIComponent(orchestratorId)}/export?format=md`}
+                download
+                title={t("plan.exportMd")}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "none",
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  textDecoration: "none",
+                }}
+              >
+                {t("plan.export")}
+              </a>
+              <a
+                href={`/api/plan/${encodeURIComponent(orchestratorId)}/export?format=html`}
+                download
+                title={t("plan.exportHtml")}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "none",
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  textDecoration: "none",
+                }}
+              >
+                HTML
+              </a>
+            </>
+          )}
           <button
             onClick={() => setShowConfig((v) => !v)}
             style={{
@@ -817,8 +858,56 @@ export function PlanPanel() {
           </div>
         )}
 
-        {/* 讨论时间线 */}
-        {!showPlans && (
+        {/* Tab 栏：仅讨论结束后(showPlans)显示，让用户在「推荐方案」与「讨论时间线」间切换。
+            讨论中(!showPlans)只显示时间线，无 tab。完整保留历史讨论过程不因生成方案而丢失。 */}
+        {showPlans && (
+          <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+            {(
+              [
+                { id: "plans", label: t("plan.plans") },
+                { id: "discussion", label: t("plan.discussionTimeline") },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 8,
+                  border: `1px solid ${activeTab === tab.id ? "var(--accent)" : "var(--border)"}`,
+                  background: activeTab === tab.id ? "var(--accent-bg)" : "none",
+                  color: activeTab === tab.id ? "var(--accent)" : "var(--text-muted)",
+                  fontSize: 12,
+                  fontWeight: activeTab === tab.id ? 600 : 400,
+                  cursor: "pointer",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 最终方案横幅：讨论结束后在方案 tab 顶部醒目提示 */}
+        {showPlans && activeTab === "plans" && (
+          <div
+            style={{
+              padding: "8px 12px",
+              marginBottom: 10,
+              borderRadius: 8,
+              background: "var(--accent-bg)",
+              border: "1px solid var(--accent)",
+              color: "var(--accent)",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {t("plan.finalPlanBanner")}
+          </div>
+        )}
+
+        {/* 讨论时间线：讨论中独占显示；讨论结束后可经 tab 切回查看完整历史 */}
+        {(!showPlans || activeTab === "discussion") && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {s.messages.map((m) => (
               <div key={m.id} style={{ display: "flex", gap: 8 }}>
@@ -862,17 +951,17 @@ export function PlanPanel() {
           </div>
         )}
 
-        {/* 推荐方案 */}
-        {showPlans && (
+        {/* 推荐方案：讨论结束后(showPlans)且 tab 在 plans 时显示 */}
+        {showPlans && activeTab === "plans" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-              {t("plan.plans")}
-            </div>
             {s.plans.length === 0 && (
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("plan.emptyDraft")}</div>
             )}
             {s.plans.map((p: RecommendationPlan) => {
               const selected = s.selectedPlanId === p.id;
+              // 推荐徽标：confidence 最高的方案标记为「推荐」
+              const topPlanId = [...s.plans].sort((a, b) => b.confidence - a.confidence)[0]?.id;
+              const isRecommended = p.id === topPlanId;
               const confidenceColor =
                 p.confidence >= 0.8
                   ? "var(--git-added)"
@@ -946,6 +1035,20 @@ export function PlanPanel() {
                       >
                         {riskLevel}
                       </span>
+                      {isRecommended && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: "1px 6px",
+                            borderRadius: 4,
+                            backgroundColor: "var(--accent)",
+                            color: "#fff",
+                          }}
+                        >
+                          {t("plan.recommended")}
+                        </span>
+                      )}
                     </div>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t("plan.confidence")}: {Math.round(p.confidence * 100)}%

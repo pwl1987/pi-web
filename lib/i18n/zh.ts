@@ -986,4 +986,10 @@ export const zh = {
   "plan.controllerAction.stop": "提前停止",
   "plan.controllerAction.redirect": "定向追问",
   "plan.controllerAction.clarify": "请求澄清",
+  "plan.discussionTimeline": "讨论时间线",
+  "plan.finalPlanBanner": "讨论已结束，以下为最终推荐方案",
+  "plan.recommended": "推荐",
+  "plan.export": "导出",
+  "plan.exportMd": "导出 Markdown",
+  "plan.exportHtml": "导出 HTML",
 } satisfies Record<keyof TranslationKeys, string>;

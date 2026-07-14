@@ -995,4 +995,10 @@ export const en = {
   "plan.controllerAction.stop": "stop early",
   "plan.controllerAction.redirect": "redirect",
   "plan.controllerAction.clarify": "clarify",
+  "plan.discussionTimeline": "Discussion timeline",
+  "plan.finalPlanBanner": "Discussion ended — recommended plans below",
+  "plan.recommended": "Recommended",
+  "plan.export": "Export",
+  "plan.exportMd": "Export Markdown",
+  "plan.exportHtml": "Export HTML",
 } satisfies Record<string, string>;
