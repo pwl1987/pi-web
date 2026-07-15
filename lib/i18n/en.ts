@@ -935,6 +935,14 @@ export const en = {
   "engine.processMonitor": "Process Monitor",
   "engine.requirementLifecycle": "Requirement Lifecycle",
   "engine.taskStatus": "Task Status",
+  "engine.terminal": "Terminal",
+  "engine.terminalEmpty":
+    "No terminal output yet (live task and test output appears once a run starts)",
+  "engine.terminalClosed": "closed",
+  "engine.processTree": "Process Tree",
+  "engine.processTreeEmpty":
+    "No processes yet (spawned subprocesses show here during task execution)",
+  "engine.guardStatus": "Guard Status",
 
   // ----- Plan 讨论模式 / 多 Agent 协同 -----
   "plan.mode": "Plan Mode",

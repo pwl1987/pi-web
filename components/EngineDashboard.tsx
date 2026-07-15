@@ -10,6 +10,8 @@ import { useEngineRuntime } from "@/hooks/useEngineRuntime";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { StageStepper } from "./StageStepper";
 import { PlanTaskCard } from "./PlanTaskCard";
+import { TerminalPanel } from "./TerminalPanel";
+import { ProcessTree } from "./ProcessTree";
 import { Skeleton } from "./Skeleton";
 import { useI18n } from "@/hooks/useI18n";
 import { stripAnsi } from "@/lib/ansi";
@@ -250,8 +252,18 @@ const boardTitleStyle: CSSProperties = {
 export function EngineDashboard() {
   const { t } = useI18n();
   const isMobile = useIsMobile();
-  const { runs, processes, requirementLifecycle, taskStatus, autoplan, connected, phase } =
-    useEngineRuntime();
+  const {
+    runs,
+    processes,
+    requirementLifecycle,
+    taskStatus,
+    autoplan,
+    connected,
+    phase,
+    terminals,
+    processTree,
+    guardStatus,
+  } = useEngineRuntime();
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -463,6 +475,48 @@ export function EngineDashboard() {
       )}
 
       {boards}
+
+      {selected && (
+        <div style={{ display: "flex", gap: 12, minHeight: 0 }}>
+          <div style={{ flex: 2, minHeight: 0, display: "flex" }}>
+            <TerminalPanel terminals={terminals} runId={selectedRunId} />
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+            <ProcessTree processTree={processTree} />
+          </div>
+        </div>
+      )}
+
+      {selected && guardStatus.length > 0 && (
+        <div
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            padding: "8px 12px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+            {t("engine.guardStatus")}
+          </span>
+          {guardStatus.slice(-4).map((g, i) => (
+            <span
+              key={i}
+              style={{
+                fontSize: 11,
+                padding: "2px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                color: g.passed ? "#22C55E" : "#EF4444",
+              }}
+            >
+              {g.phase} {g.passed ? "✓" : "✗"} {g.message ? `· ${g.message.slice(0, 40)}` : ""}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>

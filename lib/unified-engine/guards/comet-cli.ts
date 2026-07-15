@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { resolveExecutable } from "../../allowed-commands.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -83,7 +84,9 @@ export async function runCometScript(
     const skipInDev = process.env.NODE_ENV === "development" || Boolean(process.env.TURBOPACK);
     const skipBuild = explicit ?? (skipInDev ? "1" : "0");
     const childEnv = skipBuild === "1" ? { ...process.env, COMET_SKIP_BUILD: "1" } : process.env;
-    const { stdout } = await execFileAsync("node", [scriptPath, ...args], {
+    // 经共享白名单解析 node 可执行文件（M4：统一受控命令解析，杜绝任意二进制直调）。
+    const nodeBin = resolveExecutable("node", cwd);
+    const { stdout } = await execFileAsync(nodeBin, [scriptPath, ...args], {
       cwd,
       env: childEnv,
       timeout: 30_000,

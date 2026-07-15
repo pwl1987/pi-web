@@ -928,6 +928,12 @@ export const zh = {
   "engine.processMonitor": "进程监控",
   "engine.requirementLifecycle": "需求生命周期",
   "engine.taskStatus": "任务状态",
+  "engine.terminal": "终端流",
+  "engine.terminalEmpty": "暂无终端输出（运行开始后实时显示任务与测试输出）",
+  "engine.terminalClosed": "已关闭",
+  "engine.processTree": "进程树",
+  "engine.processTreeEmpty": "暂无进程（任务执行期会显示 spawn 的子进程）",
+  "engine.guardStatus": "守卫状态",
 
   // ----- Plan 讨论模式 / 多 Agent 协同 -----
   "plan.mode": "计划模式",

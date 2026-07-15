@@ -24,6 +24,7 @@ import type {
 import { uid } from "../id.ts";
 import { log } from "../engine-logger.ts";
 import { writeDeliverables } from "./autoplan-deliverables.ts";
+import { assertSafeLlmBaseUrl } from "./ssrf-guard.ts";
 
 function numEnv(name: string, fallback: number): number {
   const v = process.env[name];
@@ -111,6 +112,12 @@ export function createLlmAutoPlanAdapter(
   const tasks = new Map<string, Task>();
   const counters = new Map<string, RunCounters>();
 
+  // SSRF 防护（Q3）：若显式配置 LLM base_url，必须命中白名单/公网约束，否则 fail-closed 阻断。
+  const cfgBaseUrl = process.env.ENGINE_LLM_BASE_URL;
+  if (cfgBaseUrl) {
+    assertSafeLlmBaseUrl(cfgBaseUrl);
+  }
+
   const maxFailures = numEnv("ENGINE_AUTOPLAN_MAX_FAILURES", 3);
   const maxFiles = numEnv("ENGINE_AUTOPLAN_MAX_FILES", 50);
   const tokenBudget = numEnv("ENGINE_AUTOPLAN_TOKEN_BUDGET", 200_000);
@@ -180,9 +187,11 @@ export function createLlmAutoPlanAdapter(
     }
   };
 
-  /** 写盘后运行测试验证（受超时约束、cwd 受限）；无可执行测试命令时跳过。 */
+  /** 写盘后运行测试验证（受超时约束、cwd 受限）；无可执行测试命令时跳过。
+   *  经 ctx 回调实时上报终端输出与进程树事件（M5 / Q14）。 */
   const executeTests = (
     cwd: string,
+    ctx?: RunContext,
   ): Promise<{
     ran: boolean;
     passed?: boolean;
@@ -226,20 +235,35 @@ export function createLlmAutoPlanAdapter(
         timeout: testTimeoutMs,
         env: { ...process.env, CI: "true" },
       });
+      const pid = proc.pid ?? -1;
+      ctx?.onProcessSpawn?.({
+        pid,
+        ppid: process.pid ?? -1,
+        title: cmd,
+        status: "running",
+        startedAt: new Date().toISOString(),
+      });
       let out = "";
-      proc.stdout?.on("data", (d) => (out += d.toString()));
-      proc.stderr?.on("data", (d) => (out += d.toString()));
-      proc.on("error", (e) =>
-        resolvePromise({ ran: true, passed: false, exitCode: -1, output: String(e.message) }),
-      );
-      proc.on("close", (code, signal) =>
+      const forward = (d: Buffer | string) => {
+        const s = d.toString();
+        out += s;
+        ctx?.onTerminalChunk?.(s);
+      };
+      proc.stdout?.on("data", forward);
+      proc.stderr?.on("data", forward);
+      proc.on("error", (e) => {
+        ctx?.onProcessExit?.(pid);
+        resolvePromise({ ran: true, passed: false, exitCode: -1, output: String(e.message) });
+      });
+      proc.on("close", (code, signal) => {
+        ctx?.onProcessExit?.(pid);
         resolvePromise({
           ran: true,
           passed: code === 0,
           exitCode: code ?? (signal ? 1 : 0),
           output: out.slice(0, 2000),
-        }),
-      );
+        });
+      });
     });
   };
 
@@ -331,7 +355,7 @@ export function createLlmAutoPlanAdapter(
         const snapshot = safeWrite(ctx.cwd, edits, c);
 
         // 写盘后真实运行测试验证（受超时与 cwd 约束）。
-        const test = await executeTests(ctx.cwd);
+        const test = await executeTests(ctx.cwd, ctx);
         if (test.ran && !test.passed) {
           rollback(snapshot);
           c.consecutiveFailures += 1;

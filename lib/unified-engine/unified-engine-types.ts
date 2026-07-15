@@ -100,6 +100,12 @@ export interface GuardResult {
 export interface RunContext {
   cwd: string;
   changeName: string;
+  /** 任务执行期的终端输出片段回调（PTY/测试输出实时流）。 */
+  onTerminalChunk?: (chunk: string) => void;
+  /** 任务执行期 spawn 的进程节点回调（进程树）。 */
+  onProcessSpawn?: (p: ProcessNode) => void;
+  /** 进程退出回调（按 pid）。 */
+  onProcessExit?: (pid: number) => void;
 }
 
 export interface RunState {
@@ -138,4 +144,41 @@ export interface EngineEvent {
   at: string;
   message?: string;
   payload?: unknown;
+}
+
+// ── 富事件切片类型（M5 / Q14：终端实时流 + 进程树深度视图 + 守卫实时状态） ──
+
+/** 终端流：PTY/进程实时输出（ANSI 序列保留，前端 stripAnsi 渲染）。 */
+export interface TerminalStream {
+  id: string;
+  runId?: string;
+  title: string;
+  lines: string[];
+  pid?: number;
+  isPty: boolean;
+  updatedAt: string;
+  closed: boolean;
+}
+
+/** 进程树节点：父子关系 + 资源占用（best-effort）。 */
+export interface ProcessNode {
+  pid: number;
+  ppid: number;
+  title: string;
+  status: "running" | "exited" | "killed";
+  runId?: string;
+  /** 资源占用（best-effort，单位随平台；缺失表示不可得）。 */
+  cpu?: number;
+  memMb?: number;
+  startedAt?: string;
+}
+
+/** 守卫实时状态事件（对应 comet guard 评估）。 */
+export interface GuardStatusEvent {
+  runId: string;
+  change: string;
+  phase: Stage;
+  passed: boolean;
+  message?: string;
+  at: string;
 }

@@ -3,7 +3,14 @@
 // 作为 agent-orchestrator 与 unified-engine 双引擎合并后的「唯一」监控状态表面：
 // 任何引擎的运行时状态变更都收敛到此处，前端经 hooks/useEngineRuntime 订阅，
 // 不再各自维护平行的状态副本（消除 unified-engine 与 orchestrator 重复持久化/事件的问题）。
-import type { RunState, Requirement, Task } from "./unified-engine/unified-engine-types";
+import type {
+  RunState,
+  Requirement,
+  Task,
+  TerminalStream,
+  ProcessNode,
+  GuardStatusEvent,
+} from "./unified-engine/unified-engine-types";
 
 export type EnginePhase = "idle" | "planning" | "discussing" | "executing" | "done" | "error";
 
@@ -50,6 +57,12 @@ export interface UnifiedEngineState {
   runs: RunState[];
   /** autoplan-ts 运行时桥接：就绪状态与已启用特性（T3.2 注入真实值）。 */
   autoplan: AutoPlanStatus;
+  /** 终端实时流（PTY 输出），每个终端一段带 ANSI 的行缓冲。 */
+  terminals: TerminalStream[];
+  /** 进程树：父子进程关系 + 资源占用（best-effort）。 */
+  processTree: ProcessNode[];
+  /** 守卫实时状态（最近 N 条）。 */
+  guardStatus: GuardStatusEvent[];
   stats: { startedAt: number; updatedAt: number; errorCount: number };
 }
 
@@ -61,6 +74,9 @@ const EMPTY: UnifiedEngineState = {
   taskStatus: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0, total: 0 },
   runs: [],
   autoplan: { ready: false, features: [] },
+  terminals: [],
+  processTree: [],
+  guardStatus: [],
   stats: { startedAt: 0, updatedAt: 0, errorCount: 0 },
 };
 
@@ -168,6 +184,36 @@ export function isEngineStateEquivalent(a: UnifiedEngineState, b: UnifiedEngineS
       if (x.tasks[j].status !== y.tasks[j].status) return false;
     }
   }
+  // 终端流：长度 + 各终端 id/closed/行数/更新时刻 变化即不等价。
+  const term = a.terminals ?? [];
+  const term2 = b.terminals ?? [];
+  if (term.length !== term2.length) return false;
+  for (let i = 0; i < term.length; i++) {
+    const x = term[i];
+    const y = term2[i];
+    if (
+      x.id !== y.id ||
+      x.closed !== y.closed ||
+      x.lines.length !== y.lines.length ||
+      x.updatedAt !== y.updatedAt
+    ) {
+      return false;
+    }
+  }
+  // 进程树：长度 + 各节点 pid/status 变化即不等价。
+  const pt = a.processTree ?? [];
+  const pt2 = b.processTree ?? [];
+  if (pt.length !== pt2.length) return false;
+  for (let i = 0; i < pt.length; i++) {
+    if (pt[i].pid !== pt2[i].pid || pt[i].status !== pt2[i].status) return false;
+  }
+  // 守卫状态：长度 + 末条 at/passed 变化即不等价。
+  const gs = a.guardStatus ?? [];
+  const gs2 = b.guardStatus ?? [];
+  if (gs.length !== gs2.length) return false;
+  for (let i = 0; i < gs.length; i++) {
+    if (gs[i].at !== gs2[i].at || gs[i].passed !== gs2[i].passed) return false;
+  }
   return (
     t.pending === u.pending &&
     t.running === u.running &&
@@ -191,7 +237,12 @@ export function buildEngineState(
   runs: RunState[],
   requirements: Requirement[],
   errorCount: number,
-  autoplan?: AutoPlanStatus,
+  opts?: {
+    autoplan?: AutoPlanStatus;
+    terminals?: TerminalStream[];
+    processTree?: ProcessNode[];
+    guardStatus?: GuardStatusEvent[];
+  },
 ): UnifiedEngineState {
   const allTasks = runs.flatMap((r) => r.tasks);
   const processes: EngineProcess[] = runs.map((r) => ({
@@ -211,7 +262,7 @@ export function buildEngineState(
     lifecycle: lifecycleFromRun(runByReq.get(q.id)),
     createdAt: q.createdAt,
   }));
-  const autoPlanStatus = autoplan ?? autoPlanStatusProvider?.() ?? EMPTY.autoplan;
+  const autoPlanStatus = opts?.autoplan ?? autoPlanStatusProvider?.() ?? EMPTY.autoplan;
   return {
     engineId: "unified-engine",
     phase: derivePhase(runs),
@@ -220,6 +271,9 @@ export function buildEngineState(
     taskStatus: summarizeTasks(allTasks),
     runs,
     autoplan: autoPlanStatus,
+    terminals: opts?.terminals ?? EMPTY.terminals,
+    processTree: opts?.processTree ?? EMPTY.processTree,
+    guardStatus: opts?.guardStatus ?? EMPTY.guardStatus,
     stats: { startedAt: 0, updatedAt: Date.now(), errorCount },
   };
 }

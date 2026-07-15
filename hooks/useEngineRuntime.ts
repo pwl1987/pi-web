@@ -23,6 +23,9 @@ const EMPTY: UnifiedEngineState = {
   taskStatus: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0, total: 0 },
   runs: [],
   autoplan: { ready: false, features: [] },
+  terminals: [],
+  processTree: [],
+  guardStatus: [],
   stats: { startedAt: 0, updatedAt: 0, errorCount: 0 },
 };
 
