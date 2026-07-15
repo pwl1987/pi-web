@@ -733,6 +733,17 @@ export const en = {
   "plugins.configSaved": "Configuration saved.",
   "plugins.configSave": "Save",
 
+  // Plugin master switch (global on/off, saves tokens)
+  "plugins.masterSwitch": "Plugins master switch",
+  "plugins.masterOn": "On (plugins run normally)",
+  "plugins.masterOff": "Off (plugins disabled to save tokens)",
+  "plugins.masterHint":
+    "When off, plugin background install and runtime are stopped and new sessions load no plugins to save tokens; turn back on to restore. Reload the session after toggling for running sessions.",
+  "plugins.masterDisabledNote":
+    "Master switch is off — per-plugin actions are locked. Turn the master switch on above.",
+  "plugins.masterSaving": "Saving...",
+  "plugins.masterSaved": "Plugins master switch updated.",
+
   // ----- SkillsConfig.tsx -----
   // Header / common
   "skills.skills": "Skills",

@@ -22,6 +22,16 @@
 - 单测：`lib/agent-orchestrator/orchestrator.test.mjs`（node --test --experimental-strip-types，脱 LLM）。注意：测试须直接 import `./orchestrator.ts` 等具体文件，**不能** import `./index.ts`（它会 re-export `llm-backend.ts`，后者依赖 `@/` 别名，纯 Node 无法解析）。
 - 参考项目：`jnMetaCode/agency-orchestrator`（原需求误写为 jetaCode）。
 
+### 插件全局总开关（2026-07-15 实现）
+- 目标：一键关闭全部插件以省 token——关闭时彻底停止插件后台安装/运行与数据请求，开启时恢复。
+- 状态持久化：`~/.pi/agent/pi-web-plugin-master.json`（`{enabled, snapshot}`），由 `lib/plugin-master-switch.ts` 读写（globalThis 缓存）。
+- 行为闸门：
+  - `lib/plugin-auto-install.ts` 的 `ensureRecommendedPlugins()` 在 `getPluginsMasterEnabled()` 为 false 时直接返回 skipped（不发任何安装网络请求）；新增 `resetAutoInstall()` 清空缓存锁，便于关闭→开启后真正触发安装。
+  - `app/api/plugins/master`（GET/PUT）切换时复用 `lib/plugin-disable.ts` 的 `setPackageDisabled` 把每个「非核心」可选插件包在 settings.json 的资源数组清空（与单包 disable 同机制，agent 运行时不再加载其 extension/skill/prompt/theme），并快照各包关闭前禁用态以便原样恢复。核心插件 = `DEFAULT_PLUGINS`（pi-subagents、rpiv-todo），总开关不触碰，避免破坏关键 UI。
+  - 切换后需「重新加载会话」对正在运行的会话生效；新会话自动应用。
+- UI：插件面板头部（`components/PluginsConfig.tsx`）新增总开关（复用 `Toggle`），关闭时锁定单插件启停并提示。i18n 键 `plugins.master*`（zh/en）。
+- 注意：禁用作用于 **global** 作用域（auto-installer 的安装目标）；project 作用域的可选插件不在总开关覆盖范围内。
+
 ### 提交 / 推送约定（2026-07-12 确认）
 - husky `pre-commit` 钩子（`.husky/pre-commit`）实际只跑：`npx lint-staged` → `npm run type-check` → `npm run test:node` → `npm run test:coverage`。**不调用 comet-guard**；`[guard]FATAL` 来自 comet 工作流/手动调用，非 git 钩子。提交时钩子会自动复跑这些校验，须全绿才提交成功。
 - lint-staged 配置：`.{js,mjs,cjs,jsx,ts,tsx}` → prettier --write + eslint --fix；`.{json,md,yaml,yml,css}` → prettier --write。

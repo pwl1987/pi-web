@@ -233,17 +233,20 @@ function Toggle({
   loading,
   onToggle,
   label,
+  disabled,
 }: {
   enabled: boolean;
   loading: boolean;
   onToggle: () => void;
   label: string;
+  disabled?: boolean;
 }) {
+  const isDisabled = Boolean(disabled) || loading;
   return (
     <button
       type="button"
       onClick={onToggle}
-      disabled={loading}
+      disabled={isDisabled}
       title={label}
       aria-label={label}
       aria-pressed={enabled}
@@ -254,12 +257,12 @@ function Toggle({
         borderRadius: 11,
         border: "none",
         padding: 0,
-        cursor: loading ? "wait" : "pointer",
+        cursor: isDisabled ? "not-allowed" : "pointer",
         background: enabled ? "var(--accent)" : "var(--border)",
         position: "relative",
         transition: "background 0.18s",
         outline: "none",
-        opacity: loading ? 0.65 : 1,
+        opacity: isDisabled ? 0.5 : 1,
       }}
     >
       <span
@@ -473,6 +476,7 @@ function PackageDetail({
   onReloadSession,
   onConfigure,
   complement,
+  masterEnabled,
 }: {
   pkg: PluginPackageInfo;
   cwd: string;
@@ -484,6 +488,7 @@ function PackageDetail({
   onReloadSession: () => void;
   onConfigure: (pkg: PluginPackageInfo) => void;
   complement?: ComplementInfo;
+  masterEnabled: boolean;
 }) {
   const { t } = useI18n();
   const key = packageKey(pkg);
@@ -511,7 +516,21 @@ function PackageDetail({
             loading={busy || reloadBusy}
             onToggle={() => onAction(pkg.disabled ? "enable" : "disable", pkg)}
             label={pkg.disabled ? t("plugins.enablePackage") : t("plugins.disablePackage")}
+            disabled={!masterEnabled}
           />
+          {!masterEnabled && (
+            <span
+              style={{
+                fontSize: 10,
+                padding: "1px 5px",
+                borderRadius: 3,
+                background: "rgba(120,120,120,0.12)",
+                color: "var(--text-dim)",
+              }}
+            >
+              {t("plugins.masterDisabledNote")}
+            </span>
+          )}
           <ScopeTag scope={pkg.scope} />
           {pkg.disabled ? (
             <span
@@ -724,6 +743,26 @@ export function PluginsConfig({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
+  // 插件总开关（全局启停）状态。
+  const [masterEnabled, setMasterEnabled] = useState(true);
+  const [masterBusy, setMasterBusy] = useState(false);
+  const [masterError, setMasterError] = useState<string | null>(null);
+
+  const loadMaster = useCallback(async () => {
+    try {
+      const { ok, data: res } = await csrfFetchJson<{ enabled: boolean }>("/api/plugins/master", {
+        method: "GET",
+      });
+      if (ok) setMasterEnabled(res.enabled);
+    } catch {
+      // 读取失败则维持默认（开启），不影响主流程。
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMaster();
+  }, [loadMaster]);
+
   const packages = useMemo(() => data?.packages ?? [], [data?.packages]);
   const selectedPackage = packages.find((pkg) => packageKey(pkg) === selected) ?? null;
 
@@ -775,6 +814,31 @@ export function PluginsConfig({
   useEffect(() => {
     void run(loadPlugins);
   }, [loadPlugins, run]);
+
+  const toggleMaster = useCallback(async () => {
+    setMasterBusy(true);
+    setMasterError(null);
+    setActionError(null);
+    try {
+      const {
+        ok,
+        status,
+        data: res,
+      } = await csrfFetchJson<{ enabled: boolean; error?: string }>("/api/plugins/master", {
+        method: "PUT",
+        body: { enabled: !masterEnabled, cwd },
+      });
+      if (!ok || res.error) throw new Error(res.error ?? `HTTP ${status}`);
+      setMasterEnabled(res.enabled);
+      setActionMessage(t("plugins.masterSaved"));
+      // 重新加载插件列表以反映禁用/启用后的真实状态。
+      await loadPlugins();
+    } catch (err) {
+      setMasterError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMasterBusy(false);
+    }
+  }, [cwd, loadPlugins, masterEnabled, t]);
 
   const runAction = useCallback(
     async (action: PluginAction, pkg: PluginPackageInfo) => {
@@ -920,6 +984,39 @@ export function PluginsConfig({
             >
               {shortenPath(cwd)}
             </code>
+          </div>
+          <div
+            title={t("plugins.masterHint")}
+            style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 2,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: masterEnabled ? "var(--text)" : "var(--text-muted)",
+                }}
+              >
+                {t("plugins.masterSwitch")}
+              </span>
+              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                {masterEnabled ? t("plugins.masterOn") : t("plugins.masterOff")}
+              </span>
+              {masterError && <span style={{ fontSize: 10, color: "#ef4444" }}>{masterError}</span>}
+            </div>
+            <Toggle
+              enabled={masterEnabled}
+              loading={masterBusy}
+              onToggle={toggleMaster}
+              label={masterEnabled ? t("plugins.masterOff") : t("plugins.masterOn")}
+            />
           </div>
           <button
             onClick={onClose}
@@ -1120,6 +1217,7 @@ export function PluginsConfig({
                 onReloadSession={reloadSession}
                 onConfigure={setConfiguring}
                 complement={complementInfo.get(selectedPackage.source)}
+                masterEnabled={masterEnabled}
               />
             ) : (
               <div

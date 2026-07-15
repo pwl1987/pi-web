@@ -728,6 +728,16 @@ export const zh = {
   "plugins.configSaved": "配置已保存。",
   "plugins.configSave": "保存",
 
+  // 插件总开关（全局启停，节省 token）
+  "plugins.masterSwitch": "插件总开关",
+  "plugins.masterOn": "已开启（插件正常运行）",
+  "plugins.masterOff": "已关闭（停用插件以节省 token）",
+  "plugins.masterHint":
+    "关闭后停止插件的后台安装与运行，新会话不再加载插件以节省 token；重新开启可恢复。切换后重载会话对正在运行的会话生效。",
+  "plugins.masterDisabledNote": "总开关已关闭，单个插件操作已锁定。请在上方开启总开关。",
+  "plugins.masterSaving": "保存中...",
+  "plugins.masterSaved": "插件总开关已更新。",
+
   // ----- SkillsConfig.tsx -----
   // 标题 / 通用
   "skills.skills": "技能",

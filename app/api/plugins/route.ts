@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import { basename, dirname, extname, join, relative } from "path";
-import type { PackageSource, ResolvedPaths, ResolvedResource, SdkSettingsManager } from "@/lib/pi";
+import type { ResolvedPaths, ResolvedResource } from "@/lib/pi";
 import { getPiAdapter } from "@/lib/pi";
 
 const { DefaultPackageManager, getAgentDir, SettingsManager } = getPiAdapter();
@@ -18,6 +18,7 @@ import { validateCsrf } from "@/lib/csrf";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { patchPackageManagerForUninstall } from "@/lib/plugin-package-manager";
 import { isPinned } from "@/lib/recommended-plugins";
+import { getDisabledPackages, keyFor, setPackageDisabled } from "@/lib/plugin-disable";
 
 // Mirror install flags onto uninstall so removing pi extensions (which declare
 // @earendil-works/pi-* peers) doesn't fail with ERESOLVE. See module for details.
@@ -33,70 +34,6 @@ function emptyCounts(): PluginResourceCounts {
 
 function toPluginScope(scope: string): PluginScope {
   return scope === "project" ? "project" : "global";
-}
-
-function keyFor(source: string, scope: PluginScope): string {
-  return `${scope}\0${source}`;
-}
-
-function getPackageSource(entry: PackageSource): string {
-  return typeof entry === "string" ? entry : entry.source;
-}
-
-function isDisabledPackage(entry: PackageSource): boolean {
-  if (typeof entry === "string") return false;
-  return (
-    Array.isArray(entry.extensions) &&
-    entry.extensions.length === 0 &&
-    Array.isArray(entry.skills) &&
-    entry.skills.length === 0 &&
-    Array.isArray(entry.prompts) &&
-    entry.prompts.length === 0 &&
-    Array.isArray(entry.themes) &&
-    entry.themes.length === 0
-  );
-}
-
-function getDisabledPackages(settingsManager: SdkSettingsManager): Map<string, boolean> {
-  const disabled = new Map<string, boolean>();
-  for (const entry of settingsManager.getGlobalSettings().packages ?? []) {
-    disabled.set(keyFor(getPackageSource(entry), "global"), isDisabledPackage(entry));
-  }
-  for (const entry of settingsManager.getProjectSettings().packages ?? []) {
-    disabled.set(keyFor(getPackageSource(entry), "project"), isDisabledPackage(entry));
-  }
-  return disabled;
-}
-
-function setPackageDisabled(
-  settingsManager: SdkSettingsManager,
-  source: string,
-  scope: PluginScope,
-  disabled: boolean,
-): boolean {
-  const current =
-    scope === "project"
-      ? (settingsManager.getProjectSettings().packages ?? [])
-      : (settingsManager.getGlobalSettings().packages ?? []);
-  let changed = false;
-  const next = current.map((entry): PackageSource => {
-    if (getPackageSource(entry) !== source) return entry;
-    changed = true;
-    if (disabled) {
-      return {
-        ...(typeof entry === "string" ? { source: entry } : entry),
-        extensions: [],
-        skills: [],
-        prompts: [],
-        themes: [],
-      };
-    }
-    return getPackageSource(entry);
-  });
-  if (!changed) return false;
-  if (scope === "project") settingsManager.setProjectPackages(next);
-  else settingsManager.setPackages(next);
-  return true;
 }
 
 function addCount(counts: PluginResourceCounts, kind: keyof PluginResourceCounts): void {

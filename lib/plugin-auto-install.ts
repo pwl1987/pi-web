@@ -9,11 +9,12 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { ALL_PLUGINS } from "./recommended-plugins";
 import { getPiAdapter } from "./pi";
+import { getPluginsMasterEnabled } from "./plugin-master-switch";
 
 export interface PluginInstallResult {
   source: string;
   name: string;
-  status: "installed" | "already" | "failed";
+  status: "installed" | "already" | "failed" | "skipped";
   error?: string;
 }
 
@@ -21,6 +22,16 @@ declare global {
   var __piAutoInstallResults: PluginInstallResult[] | undefined;
 
   var __piAutoInstallLock: Promise<PluginInstallResult[]> | undefined;
+}
+
+/**
+ * 清空自动安装缓存与锁。总开关从「关闭」切回「开启」时调用，使
+ * ensureRecommendedPlugins() 能重新执行真正的缺失插件安装（否则会命中启动时
+ * 因总开关关闭而缓存的 skipped 结果）。
+ */
+export function resetAutoInstall(): void {
+  globalThis.__piAutoInstallResults = undefined;
+  globalThis.__piAutoInstallLock = undefined;
 }
 
 /** Read the configured packages list from settings.json. */
@@ -45,6 +56,17 @@ export async function ensureRecommendedPlugins(): Promise<PluginInstallResult[]>
   }
 
   globalThis.__piAutoInstallLock = (async (): Promise<PluginInstallResult[]> => {
+    // 总开关关闭时彻底跳过后台安装——不发起任何网络/安装请求，直接返回。
+    if (!getPluginsMasterEnabled()) {
+      const skipped = ALL_PLUGINS.map((p) => ({
+        source: p.source,
+        name: p.name,
+        status: "skipped" as const,
+      }));
+      globalThis.__piAutoInstallResults = skipped;
+      return skipped;
+    }
+
     const configured = getConfiguredPackages();
     const results: PluginInstallResult[] = [];
     const missing = ALL_PLUGINS.filter((p) => !configured.has(p.source));
