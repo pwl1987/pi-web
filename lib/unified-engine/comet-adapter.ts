@@ -45,9 +45,14 @@ export function createCometAdapter(): WorkflowStateMachinePort {
       return readState(change, cwd);
     },
     async prepareVerifyArtifacts(change, cwd) {
+      // 真实验证默认开（PRD FR-4 / V6）：默认不伪造验证报告，交由 comet 真实 verify
+      // 输出驱动归档守卫，确保 build/verify 守卫真正执行而非被"公关"通过。
+      // 仅显式 ENGINE_REAL_VERIFY=0 时兜底写诚实标注的存根报告（用于无 comet 的演示环境）。
+      if (process.env.ENGINE_REAL_VERIFY !== "0") return;
       // verify→archive 守卫检查两项：verification_report 文件存在 + branch_status=handled。
       // 写中文报告文件（匹配项目配置 language=zh-CN），再用 comet-state.mjs set
       // 把路径写入 .comet.yaml 的 verification_report 字段、branch_status 设为 handled。
+      // 注：桩模式下报告如实标注"autoplan 存根，无代码变更，构建检查跳过"，不作欺骗性通过。
       const changeDir = join(cwd, "openspec", "changes", change);
       const reportPath = join(changeDir, "verification-report.md");
       const reportContent = `# 验证报告\n\n## 摘要\n\n所有构建阶段任务均已成功完成，变更已准备好进入归档。\n\n## 检查项\n\n- 任务清单：全部完成（tasks.md）\n- 提案文档：已记录（proposal.md）\n- 构建检查：跳过（autoplan 存根，无代码变更）\n\n## 结论\n\n验证通过\n`;

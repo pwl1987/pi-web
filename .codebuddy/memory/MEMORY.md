@@ -29,6 +29,21 @@
 - `vendor/comet/`、`vendor/autoplan/` 已被 `.gitignore` 忽略（vendored upstream）。
 - 仓库规范完整 CI：`npm run ci` = format:check && lint && type-check && test:node && test:coverage。
 
+### 自主编程引擎（comet/autoplan/unified-engine）架构事实（2026-07-15）
+- **三引擎并存**：`lib/agent-orchestrator`（自研、已上线、TS、无 Electron 依赖，计划生成+多角色讨论+收敛）+ `lib/unified-engine`（comet/autoplan 适配层，半接入，独立 `/api/engine/*` + `AutonomousCodingDashboard`，与 PlanPanel 平行零复用）+ vendored `comet`/`autoplan`。
+- **统一决策**：以 agent-orchestrator 为计划主引擎，unified-engine 收敛为可选执行出口；合并持久化/事件/前端为一套（新增 `lib/engine-runtime-store.ts` 统一状态层 + `app/api/engine/state` + `hooks/useEngineRuntime`）。
+- **前端状态面合并（2026-07-15 批次 A 已落地）**：删除 `hooks/useUnifiedEngine.ts` 与 `components/AutonomousCodingDashboard.tsx`（原平行状态面，V1）；新增 `components/EngineDashboard.tsx` 三看板（进程监控/需求生命周期/任务状态）单一消费 `useEngineRuntime`（唯一 SSE）。`UnifiedEngineState` 含 `runs: RunState[]` 透传 + `autoplan:{ready,features}` 桥接字段（`setAutoPlanStatusProvider` 注入点待 T3.2 填充）。`/api/engine/runs` 仅保留 POST 控制，GET 直读已移除。`PlanPanel` 走 `usePlanMode`（agent-orchestrator 计划模式，独立域）不并入引擎状态面。
+- **守卫真实化 + 安全修复（2026-07-15 批次 B 已落地）**：`guards/comet-cli.ts` 新增 `isCometAvailable()`（探测 comet-guard.mjs 是否存在）；`unified-engine-runtime.ts` 的 `safeGuard`/`safeAdvance` 改为「仅当 comet 未安装才降级放行，其余一律阻断」——守卫语义失败（passed:false）或推进被守卫阻止（advanceStage 抛错）不再静默通过（V4）。`comet-adapter.ts` `prepareVerifyArtifacts` 真实验证默认开（`ENGINE_REAL_VERIFY !== "0"` 才兜底写诚实存根，V6）。`autoplan-llm-adapter.ts` `executeTests` 消除 `shell:true`，受控命令字符串解析为 argv（V5，修复命令注入）。tsc/eslint 0 错，引擎 node 单测 16 项全绿。
+- **生命周期贯通 + 遗留清理（2026-07-15 批次 C+D 已落地）**：执行体选型定为**方案 b**（维持 `autoplan-llm-adapter` 自包含真实执行，方案 a 委托 AgentSession 因风险高暂缓）。`autoplan-adapter.ts` 新增 `getAutoPlanStatus()` 并在 `createAutoPlanAdapter` 三分支注册 `setAutoPlanStatusProvider`，使 `UnifiedEngineState.autoplan` 实时反映就绪/特性（T3.2）。新增 `autoplan-lifecycle.test.mjs`（T3.4，memory 脱 LLM 跑通全生命周期）。`DEFAULT_WORKFLOW` 决策维持 hotfix 并加 `ENGINE_WORKFLOW` 取值校验（非法回退 hotfix，T6.1）。删空目录 `app/api/engine/autoplan/`、Go 零引用确认（T7.1/T7.2）。PRD 四批次 A/B/C/D 全部完成，tsc/eslint 0 错、引擎 node 单测 19 绿。
+- **autoplan 功能迁移 = 纯 TypeScript 等价实现（禁用 Go，2026-07-15 修正）**：本功能迁移任务明确**禁止使用 Go 语言**。因此不拉起任何 Go 进程/二进制，autoplan 的「需求立项→计划生成→任务入队→交付物落盘→任务执行→反馈回收」生命周期在**本仓库既有 TypeScript 运行时**内做等价移植，契约 `PlanGeneratorPort` 不变，功能逻辑不变。
+  - 上游事实（仅调研价值，不再落地为 Go sidecar）：本地钉选 `e06c2b2` 仅前端骨架、无 backend；上游 `origin/main@bbce9de` 含完整 Go 后端（426 .go / ~69k 行，含 `backend/cmd/autoplan-server` daemon + `AUTOPLAN_GO_*_API` 特性门 fail-closed + `X-Autoplan-Session` 鉴权等式）。`go build` 曾实测成功（go1.25.0 工具链自动下载），但**现已按约束作废**。
+  - **已移除的 Go 相关代码**：`lib/autoplan-sidecar.ts`、`scripts/build-autoplan.mjs`、`app/api/engine/autoplan/route.ts`、`vendor/autoplan/backend/`、`package.json` 的 `autoplan:build`、`engine-runtime-store.ts` 的 `autoplan` 进程态字段。
+  - **当前实现**：`lib/unified-engine/autoplan-adapter.ts` 纯 TS —— `tryLoadVendorAutoPlan()`（ENGINE_AUTOPLAN_VENDOR=1 时动态加载 vendored TS 端口 `autoplan-loop-service`，无 Go/无子进程）+ `createLlmAutoPlanAdapter`（真实 LLM）+ `createMemoryAutoPlanAdapter`（兜底）。功能逻辑与原 `PlanGeneratorPort` 消费方完全一致。
+  - 验收：`tsc`/`eslint`(0 错)/`node --test` 57 项全绿；无残留 Go 引用。
+  - 报告：`docs/AUTONOMOUS-ENGINE-FUSION.md`（架构调研有效；其 §0–§6 的 Go sidecar 落地方案已加注作废）。
+- **comet 接入约束**：仅限 Node Runtime；`guards/comet-cli.ts` 白名单调用 `vendor/comet/assets/skills/comet/scripts/*.mjs`（`COMET_SKIP_BUILD` 现仅 dev 跳过）；`DEFAULT_WORKFLOW` 经 `ENGINE_WORKFLOW` 可配；伪造验证报告受 `ENGINE_REAL_VERIFY` 控制（默认开；仅 `=0` 才写诚实标注的存根报告）。
+- 结构化调研报告：`docs/AUTONOMOUS-ENGINE-SURVEY.md`。
+
 ### 前端共用模块约定（2026-07-13 确立）
 - **禁止**在客户端组件里裸写 `fetch(url, { headers: csrfHeaders({...}), body: JSON.stringify(...) })` + `res.json()` 模式。一律改用 `lib/csrf-fetch.ts` 的 `csrfFetchJson<T>(url, { method, body, headers })` → 返回 `{ ok, status, data }`（空/非 JSON 响应用 `.catch(() => ({}))` 兜底）。
 - 配置面板 UI 复用 `components/ui/ConfigModal.tsx` 原语：`ConfigModal`(外壳) / `ConfigSidebar` / `ConfigListRow`(选中+hover) / `ModalButton`(primary/secondary/danger) / `SaveButton`(带 saved-pop 勾选动画)。API 成功响应统一用 `lib/api-utils.ts` 的 `jsonOk(data, init)`。

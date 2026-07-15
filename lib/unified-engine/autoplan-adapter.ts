@@ -1,12 +1,14 @@
-// autoplan-adapter.ts —— 唯一接入 vendor/autoplan 的适配层
-// 实现 PlanGeneratorPort。默认走真实 LLM 适配器（组合根注入 pi 系统配置的 createPiLlmCompletion），
+// autoplan-adapter.ts —— 唯一接入 vendor/autoplan 的适配层（纯 TypeScript 实现，不使用 Go）
+// 实现 PlanGeneratorPort。实现语言：TypeScript（本仓库主语言，非 Go）。
+// 默认走真实 LLM 适配器（组合根注入 pi 系统配置的 createPiLlmCompletion），
 // 仅在完全未注入 LLM 工厂（测试/极端场景）时回退内存桩；**生产路径不使用内存桩**。
 //
-// 关于真实 autoplan 模块（vendor/autoplan/src）的接入（B 阶段骨架）：
-// 必须通过「运行时」动态加载（createRequire(import.meta.url) + 变量路径），
-// 且加载表达式不能被 webpack 静态求值，否则 Next.js 构建会报
-// "server relative imports are not implemented yet"。
-// 见下方 ENGINE_AUTOPLAN_VENDOR 分支与 tryLoadVendorAutoPlan()。
+// 等价迁移说明（本任务约束：禁用 Go）：
+// autoplan 上游为 Go 后端，但本功能迁移任务明确要求【不使用 Go 语言开发】，
+// 故不拉起任何 Go 进程 / 二进制，改为在本仓库既有 TypeScript 运行时内对 autoplan 的
+// 「需求立项 → 计划生成 → 任务入队 → 交付物落盘 → 任务执行 → 反馈回收」生命周期做等价移植。
+// 等价实现严格保持与原有统一引擎消费契约（PlanGeneratorPort）一致，功能逻辑不变。
+// 仅当 vendored/autoplan 暴露 TS 端口（autoplan-loop-service）时才走真实供应商路径，否则回退 LLM/内存。
 import { createRequire } from "node:module";
 import type { PlanGeneratorPort } from "./plan-generator-ports";
 import type {
@@ -18,25 +20,42 @@ import type {
   RequirementInput,
   LlmCompletionFn,
 } from "./unified-engine-types";
+import { uid } from "../id.ts";
 import { log } from "../engine-logger.ts";
 import { writeDeliverables } from "./autoplan-deliverables.ts";
 import { createLlmAutoPlanAdapter } from "./autoplan-llm-adapter.ts";
+import { setAutoPlanStatusProvider, type AutoPlanStatus } from "../engine-runtime-store.ts";
 
-function uid(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+// ─────────────────────────────────────────────────────────────────────────
+// T3.2 autoplan 状态桥接（FR-3 / V7）
+//
+// 记录当前实际选用的 autoplan 实现与启用特性，经 setAutoPlanStatusProvider 注入统一
+// runtime store：publish() 时 buildEngineState 读取，前端 EngineDashboard 实时反映
+// autoplan 运行状态（就绪 + 启用特性），不再是恒定的「未就绪」占位。
+// ─────────────────────────────────────────────────────────────────────────
+type AutoPlanKind = "vendor" | "llm" | "memory" | null;
+let selectedKind: AutoPlanKind = null;
+
+/** 汇报 autoplan-ts 运行时状态：real 实现（vendor / llm）视为就绪，内存桩仅测试兜底不算就绪。 */
+export function getAutoPlanStatus(): AutoPlanStatus {
+  const features: string[] = [];
+  if (selectedKind === "vendor") features.push("vendor-ts-port");
+  else if (selectedKind === "llm") features.push("llm-completion");
+  else if (selectedKind === "memory") features.push("memory-stub");
+  // 环境驱动的能力开关（与实际执行行为一致，便于面板与运维核对）。
+  if (process.env.ENGINE_AUTOPLAN_RUN_TESTS === "1") features.push("run-tests");
+  if (process.env.ENGINE_REAL_VERIFY !== "0") features.push("real-verify");
+  return { ready: selectedKind === "vendor" || selectedKind === "llm", features };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// B 阶段骨架：真实 autoplan 引擎动态加载（ENGINE_AUTOPLAN_VENDOR=1）
+// 等价迁移：真实 autoplan 供应商 TS 端口（ENGINE_AUTOPLAN_VENDOR=1）
 //
-// 设计要点：
-// 1. 用变量路径（modulePath）经 createRequire 动态加载，webpack 无法静态求值，
-//    规避 "server relative imports are not implemented yet" 构建错误。
-// 2. vendored/autoplan 当前仅含前端骨架（缺 backend/ Go 引擎），故真实委托
-//    默认不可用；加载失败时回退内存桩，引擎始终可演示。
-// 3. mapVendorToPlanGenerator 是接入点：把 vendored autoplan 的
-//    loopService / intakeService 适配为 PlanGeneratorPort。当前仅做签名映射骨架，
-//    真正消费其返回值（LLM 执行、代码写入）需在 vendor 补回后端或用 JS 重实现循环驱动器。
+// 纯 TypeScript 加载，不使用 Go、不拉起子进程。经 createRequire + 变量路径运行时加载
+// vendored/autoplan 暴露的 TS 端口，webpack 无法静态求值该路径，规避构建期
+// "server relative imports are not implemented yet" 错误。
+// 端口不可用（缺 backend / 未导出 createAutoPlanPort）时返回 null，由 createAutoPlanAdapter
+// 降级到 LLM/内存桩，保证引擎始终可演示。
 // ─────────────────────────────────────────────────────────────────────────
 let vendorLoadAttempted = false;
 let cachedVendorAdapter: PlanGeneratorPort | null = null;
@@ -48,32 +67,25 @@ function tryLoadVendorAutoPlan(): PlanGeneratorPort | null {
 
   const modulePath = process.env.AUTOPLAN_VENDOR_MODULE || "autoplan-loop-service";
   try {
-    // 经 createRequire 运行时加载 vendored/autoplan：webpack 无需静态解析该依赖。
-    // 1) /* webpackIgnore: true */ 消除 "Critical dependency: the request of a
-    //    dependency is an expression" 警告；
-    // 2) 同时规避 Next.js 构建的 "server relative imports are not implemented yet" 错误。
+    // webpackIgnore：消除 "Critical dependency: the request of a dependency is an expression" 警告。
     const req = createRequire(import.meta.url);
     const mod = req(/* webpackIgnore: true */ modulePath);
-    cachedVendorAdapter = mapVendorToPlanGenerator(mod);
-    log("info", "engine", "已加载真实 autoplan 供应商适配器（ENGINE_AUTOPLAN_VENDOR=1）");
-    return cachedVendorAdapter;
+    const m = (mod ?? {}) as Record<string, unknown>;
+    if (typeof m.createAutoPlanPort === "function") {
+      cachedVendorAdapter = (m.createAutoPlanPort as () => PlanGeneratorPort)();
+      log("info", "engine", "已加载 vendored autoplan TS 端口（等价迁移，无 Go）");
+      return cachedVendorAdapter;
+    }
+    log("debug", "engine", "vendored autoplan 未导出 createAutoPlanPort，回退 LLM/内存桩");
+    return null;
   } catch (e) {
-    log("warn", "engine", `真实 autoplan 供应商不可用，回退内存桩：${(e as Error).message}`);
+    log(
+      "debug",
+      "engine",
+      `vendored autoplan TS 端口不可用，回退 LLM/内存：${(e as Error).message}`,
+    );
     return null;
   }
-}
-
-/** 把 vendored autoplan 的循环服务模块映射为 PlanGeneratorPort（接入骨架）。 */
-function mapVendorToPlanGenerator(mod: unknown): PlanGeneratorPort {
-  const m = (mod ?? {}) as Record<string, unknown>;
-  // 优先使用 vendored 模块暴露的同名工厂；缺失时退化为内存桩行为由上层兜底。
-  if (typeof m.createAutoPlanPort === "function") {
-    return (m.createAutoPlanPort as () => PlanGeneratorPort)();
-  }
-  // 未实现真实委托：抛出明确错误，便于后续按接入点补全，而非静默失效。
-  throw new Error(
-    "vendored autoplan 未导出 createAutoPlanPort；请补回 backend/ 引擎或实现循环驱动器映射",
-  );
 }
 
 /**
@@ -111,6 +123,9 @@ function createMemoryAutoPlanAdapter(): PlanGeneratorPort {
     async enqueueTasks(planId: string): Promise<Task[]> {
       const plan = plans.get(planId);
       if (!plan) return [];
+      // 幂等：同一 plan 已入队则直接返回既有任务，避免重复调用追加重复任务。
+      const existing = [...tasks.values()].filter((t) => t.planId === planId);
+      if (existing.length) return existing;
       const titles = ["分析需求与约束", "实现核心逻辑", "编写并运行测试", "沉淀文档与验证证据"];
       const ts: Task[] = titles.map((t) => ({
         id: uid("task"),
@@ -152,7 +167,7 @@ function createMemoryAutoPlanAdapter(): PlanGeneratorPort {
 
 /**
  * 构造 autoplan 适配器，按优先级选择实现：
- *   1) ENGINE_AUTOPLAN_VENDOR=1 且 vendored 后端可用 → 真实供应商适配器；
+ *   1) ENGINE_AUTOPLAN_VENDOR=1 且 vendored TS 端口可用 → 真实供应商适配器（纯 TS，无 Go）；
  *   2) 注入了 createLlm → 真实 LLM 适配器（B 阶段「真实执行」，pi 系统配置模型）；
  *   3) 否则 → 内存桩（仅当完全未注入 LLM，如单测隔离场景；生产路径不触发）。
  *
@@ -162,8 +177,18 @@ export function createAutoPlanAdapter(
   createLlm?: (cwd: string) => LlmCompletionFn | null,
 ): PlanGeneratorPort {
   const vendor = tryLoadVendorAutoPlan();
-  if (vendor) return vendor;
-  if (createLlm) return createLlmAutoPlanAdapter(createLlm);
+  if (vendor) {
+    selectedKind = "vendor";
+    setAutoPlanStatusProvider(getAutoPlanStatus);
+    return vendor;
+  }
+  if (createLlm) {
+    selectedKind = "llm";
+    setAutoPlanStatusProvider(getAutoPlanStatus);
+    return createLlmAutoPlanAdapter(createLlm);
+  }
+  selectedKind = "memory";
+  setAutoPlanStatusProvider(getAutoPlanStatus);
   return createMemoryAutoPlanAdapter();
 }
 

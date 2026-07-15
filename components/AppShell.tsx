@@ -26,7 +26,7 @@ import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { SettingsPanel } from "./SettingsPanel";
 import { ConstraintPanel } from "./ConstraintPanel";
-import { AutonomousCodingDashboard } from "./AutonomousCodingDashboard";
+import { EngineDashboard } from "./EngineDashboard";
 import { CommandPalette } from "./CommandPalette";
 import { BranchNavigator } from "./BranchNavigator";
 import { TopBarButton } from "./TopBarButton";
@@ -1562,7 +1562,7 @@ export function AppShell() {
                       overflow: "hidden",
                     }}
                   >
-                    <AutonomousCodingDashboard />
+                    <EngineDashboard />
                   </div>
                 )}
               </div>

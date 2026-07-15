@@ -9,7 +9,7 @@
 // 此处进一步要求 LLM 返回的相对路径不得含 ".."、不得为绝对路径、不得含空字节，
 // 且最终写入目标必为 resolve(cwd, rel)，因此无法逃逸 cwd（等价 allowed-roots 约束）。
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { dirname, isAbsolute, resolve, join } from "node:path";
+import { dirname, isAbsolute, resolve, join, sep } from "node:path";
 import { spawn } from "node:child_process";
 import type { PlanGeneratorPort } from "./plan-generator-ports";
 import type {
@@ -21,12 +21,9 @@ import type {
   RunContext,
   LlmCompletionFn,
 } from "./unified-engine-types";
+import { uid } from "../id.ts";
 import { log } from "../engine-logger.ts";
 import { writeDeliverables } from "./autoplan-deliverables.ts";
-
-function uid(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function numEnv(name: string, fallback: number): number {
   const v = process.env[name];
@@ -133,12 +130,18 @@ export function createLlmAutoPlanAdapter(
 
   /** 在 cwd 内安全写入一组编辑；先做路径/上限/预算校验，再落盘并产出回滚快照。 */
   const safeWrite = (cwd: string, edits: FileEdit[], c: RunCounters): WriteSnapshot => {
+    const root = resolve(cwd);
     const absEdits = edits.map((e) => {
       const rel = e.path.replace(/\\/g, "/").replace(/^\/+/, "").trim();
       if (!rel || rel.includes("..") || isAbsolute(rel) || rel.includes("\0")) {
         throw new Error(`非法写入路径：${e.path}`);
       }
-      return { rel, abs: resolve(cwd, rel), content: e.content };
+      const abs = resolve(root, rel);
+      // 防符号链接逃逸：绝对路径必须仍位于 cwd 之下（无 ".." 时本应恒成立，作纵深防御）。
+      if (abs !== root && !abs.startsWith(root + sep)) {
+        throw new Error(`非法写入路径（逃逸 cwd）：${e.path}`);
+      }
+      return { rel, abs, content: e.content };
     });
     if (c.filesWritten + absEdits.length > maxFiles) {
       throw new Error(`超出单运行文件写入上限（${maxFiles}）`);
@@ -204,9 +207,22 @@ export function createLlmAutoPlanAdapter(
         resolvePromise({ ran: false });
         return;
       }
-      const proc = spawn(cmd, {
+      // 安全修复（PRD FR-5 / V5）：消除 shell:true，避免命令注入。
+      // 将受控命令字符串（来自 env 或 package.json 的 test 脚本，如 "npm test"）解析为 argv 数组。
+      const trimmed = cmd.trim();
+      const sepIdx = trimmed.indexOf(" ");
+      const binary = sepIdx === -1 ? trimmed : trimmed.slice(0, sepIdx);
+      const testArgs =
+        sepIdx === -1
+          ? []
+          : trimmed
+              .slice(sepIdx + 1)
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean);
+      const proc = spawn(binary, testArgs, {
         cwd,
-        shell: true,
+        shell: false,
         timeout: testTimeoutMs,
         env: { ...process.env, CI: "true" },
       });
@@ -265,6 +281,9 @@ export function createLlmAutoPlanAdapter(
     async enqueueTasks(planId: string): Promise<Task[]> {
       const plan = plans.get(planId);
       if (!plan) return [];
+      // 幂等：同一 plan 已入队则直接返回既有任务，避免重复调用追加重复任务。
+      const existing = [...tasks.values()].filter((t) => t.planId === planId);
+      if (existing.length) return existing;
       const titles = extractTaskTitles(plan.spec);
       const ts: Task[] = titles.map((t) => ({
         id: uid("task"),

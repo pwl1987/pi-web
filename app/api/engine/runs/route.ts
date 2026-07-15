@@ -4,21 +4,11 @@ import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import {
   registerDefaultEngine,
   getUnifiedEngineAdapter,
-  getEngineRuntimeInstance,
 } from "@/lib/unified-engine/unified-engine-adapter";
 
-// GET /api/engine/runs —— 列举所有运行（融合引擎全局状态）
-export async function GET() {
-  try {
-    registerDefaultEngine();
-    const runs = getEngineRuntimeInstance().listRuns();
-    return NextResponse.json({ runs });
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
-
 // POST /api/engine/runs  body: { runId, action: "start" | "pause" | "resume" }
+// 注：列举运行改为统一状态面 GET /api/engine/state（前端经 hooks/useEngineRuntime 订阅），
+// 此处不再提供 GET 直读，避免与 engine-runtime-store 形成平行状态面（FR-1）。
 export async function POST(req: Request) {
   const csrf = validateCsrf(req);
   if (csrf) return csrf;

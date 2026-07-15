@@ -3,6 +3,7 @@
 // 绝不 import() 上游 comet-runtime.mjs（471KB 运行时），全部经 child_process 隔离执行。
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 const execFileAsync = promisify(execFile);
@@ -41,10 +42,11 @@ export function assertChangeName(change: string): void {
 /** 校验通用 CLI 参数：拒绝路径穿越、空字节、绝对路径、控制字符与超长。 */
 function assertCliArg(arg: string): void {
   if (arg.length > MAX_ARG_LEN) throw new Error(`comet 参数过长：${arg.length}`);
-  if (arg.includes("..") || arg.includes("\0") || arg.startsWith("/") || arg.includes("\0")) {
+  // 路径穿越 / 绝对路径 / 空字节。
+  if (arg.includes("..") || arg.includes("\0") || arg.startsWith("/")) {
     throw new Error(`非法 comet 参数：${arg}`);
   }
-  // 拒绝控制字符（除常见的空白外）
+  // 拒绝控制字符（除常见的空白外）。
   if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(arg)) {
     throw new Error(`非法 comet 参数（含控制字符）：${arg}`);
   }
@@ -73,11 +75,14 @@ export async function runCometScript(
   const scriptPath = join(COMET_SCRIPTS_DIR, script);
   try {
     // comet guard 的 build/verify 检查会跑 `npm run build` 验证项目可构建。
-    // pi-web 融合引擎的 autoplan 桩实现不产生代码改动，build 检查对桩场景无意义；
-    // 且 dev server 进程环境的 TURBOPACK/NODE_ENV 会让 `next build --webpack` 冲突失败。
-    // comet 内置 COMET_SKIP_BUILD=1 逃生口（comet-runtime.mjs:10355），桩场景下跳过
-    // build 检查，让 guard 聚焦于交付物（proposal.md/tasks.md）与配置项校验。
-    const childEnv = { ...process.env, COMET_SKIP_BUILD: "1" };
+    // dev server 进程环境的 TURBOPACK/NODE_ENV 会让 `next build --webpack` 冲突失败，
+    // 故仅在该环境下默认跳过 build 检查（comet 内置 COMET_SKIP_BUILD=1 逃生口）。
+    // 生产环境（NODE_ENV=production 且无 TURBOPACK）默认允许 comet 跑真实构建验证；
+    // 也可用 COMET_SKIP_BUILD 显式覆盖（0/1）。
+    const explicit = process.env.COMET_SKIP_BUILD;
+    const skipInDev = process.env.NODE_ENV === "development" || Boolean(process.env.TURBOPACK);
+    const skipBuild = explicit ?? (skipInDev ? "1" : "0");
+    const childEnv = skipBuild === "1" ? { ...process.env, COMET_SKIP_BUILD: "1" } : process.env;
     const { stdout } = await execFileAsync("node", [scriptPath, ...args], {
       cwd,
       env: childEnv,
@@ -98,4 +103,11 @@ export async function cometGet(change: string, field: string, cwd: string): Prom
   const { stdout, code } = await runCometScript("comet-state.mjs", ["get", change, field], cwd);
   if (code !== 0) return "";
   return stdout.trim();
+}
+
+/** comet 运行时是否可用：探测白名单守卫脚本是否存在。
+ *  守卫真实化（PRD FR-4 / V4）据此区分「comet 未安装（降级放行，保证可演示）」与
+ *  「comet 已安装但守卫拒绝/执行异常（必须阻断，绝不静默通过）」。 */
+export function isCometAvailable(): boolean {
+  return existsSync(join(COMET_SCRIPTS_DIR, "comet-guard.mjs"));
 }

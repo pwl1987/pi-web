@@ -16,7 +16,18 @@ export const STAGES: readonly Stage[] = ["open", "design", "build", "verify", "a
  *  - tweak：另一精简预设，语义类似 hotfix。 */
 export type Workflow = "full" | "hotfix" | "tweak";
 
-export const DEFAULT_WORKFLOW: Workflow = "hotfix";
+/** 默认工作流预设，可通过 ENGINE_WORKFLOW 环境变量覆盖（T6.1 决策：默认 "hotfix"）。
+ *  取值边界（自动化引擎仅走精简预设）：
+ *  - 未设 / 非法值 → "hotfix"（精简预设，init 自动填 build_mode/tdd_mode/isolation/
+ *    verify_mode/review_mode，autoplan 直写模式仅产出 proposal.md/tasks.md 即可过 build 守卫）；
+ *  - "tweak" → 另一精简预设，语义类似 hotfix；
+ *  - "full" → 完整五阶段，四项守卫字段全 null，需在真实引擎部署下由使用方逐项配置。
+ *  仅接受 Workflow 三个合法值；非法值（如 "classic"）会被 comet init validateEnum 拒绝，
+ *  故此处收敛回退到 "hotfix"，避免非法值透传到 comet 导致 .comet.yaml 不创建。 */
+export const DEFAULT_WORKFLOW: Workflow = ((): Workflow => {
+  const v = process.env.ENGINE_WORKFLOW;
+  return v === "full" || v === "hotfix" || v === "tweak" ? v : "hotfix";
+})();
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
@@ -107,12 +118,18 @@ export interface RunState {
    *  ensureRehydrated 时才能重建 Requirement 供 runLoop 调 generatePlan，否则 runLoop
    *  因 !req 直接 failed（表现为"启动运行"后无任何阶段日志即失败）。 */
   requirementDescription?: string;
+  /** 需求创建时刻快照。Requirement 全部字段（id/title/description/createdAt）均随 run 落盘，
+   *  使空闲清空内存 / 进程重启后可「无损」重建 Requirement——原先 rehydrate 回退用 run.createdAt
+   *  近似需求创建时刻，此字段令重建结果与原对象逐字段一致。缺省（旧快照）时回退旧行为。 */
+  requirementCreatedAt?: string;
 }
 
 export interface ChangeInput {
   title: string;
   description?: string;
   cwd: string;
+  /** 可选幂等键：携带相同键的重复 createChange 会复用既有 run（防 REST 重放/重复提交）。 */
+  idempotencyKey?: string;
 }
 
 export interface EngineEvent {
