@@ -51,6 +51,7 @@ import {
 import { useConstraints } from "@/lib/constraints/useConstraints";
 import { translate } from "@/lib/i18n";
 import { copyText } from "@/lib/clipboard";
+import { setAccessToken } from "@/lib/access-token-client";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText } from "@/lib/file-fuzzy";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
@@ -115,6 +116,18 @@ export function AppShell() {
   useEffect(() => {
     setMobileSidebarReady(true);
   }, []);
+  // S1 访问网关：启动终端经 ?token= 把明文令牌交付浏览器首屏。
+  // 取出存入 localStorage 后立即抹除 URL 中的令牌（防泄露到 Referer / 历史记录）。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = searchParams.get("token");
+    if (token) {
+      setAccessToken(token);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("token");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    }
+  }, [searchParams]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   // Holds the imperative ChatWindow handle (currently: scrollToEntry).
   // Populated by ChatWindow via useImperativeHandle on the ref we pass

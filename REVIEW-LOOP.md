@@ -13,6 +13,8 @@
 | 快照                | `git commit` 评审前快照（仅源码+评审文档，排除 86k 行生成物） | `20281b4`（husky 全绿：lint+type+281 vitest+359 node） |
 | 自动修复（第 1 轮） | 仅对"确定性技术缺陷"动手：C1 / A1+B2 / L1 / L2                | 见 §1                                                  |
 | 测试验证            | type-check + test:node + vitest                               | 全绿（359 + 281，VITEST_EXIT=0）                       |
+| 快照（S1 落地前）   | `git commit` S1 落地前快照                                    | （见 §8，husky 全绿）                                  |
+| S1 落地（批次①②③）  | 本地访问令牌网关 + 客户端注入 + 启动注入 + L10 归属收敛       | 见 §8（CI_EXIT=0，全绿）                               |
 | 重评审              | 复读 4 个修复文件确认状态翻转                                 | §2 显示 4 项已从"开放"→"已修复"                        |
 | 循环判定            | 阻塞/严重项中已无剩余"确定性可自动修复"项                     | 循环终止（见 §3）                                      |
 
@@ -229,3 +231,49 @@ C1、A1、B2、L1、L2、B3 共 6 项（含 4 项严重）已通过确定性修�
 ### 7.5 回滚路径
 
 - 第 2 轮修复有问题：`git revert <第2轮提交>` 或 `git reset --hard 20281b4`（快照完好）。
+
+---
+
+## 8. S1 访问网关落地（分批③①→②→③，独立可回滚）
+
+> 依铁律 S1 属 #1 阻塞级架构变更，先产出 OpenSpec 提案（`openspec/changes/s1-access-gateway/`）经人工确认后落地。
+> 方案取向：D1 终端打印+`?token=` 自动打开 / D2 dev 强制令牌 / D3 仅 `/api/health` 开放 / D4 单用户受信根 / D5 分 PR。
+
+### 8.1 批次① 令牌生成与持久化（纯新增、无害）
+
+- 新增 `lib/access-token.ts`：`ensureAccessToken` / `loadTokenHash`（0600、原子写、重启复用、损坏兜底），`@/-free` 可单测。
+- 新增 `lib/access-token.test.mjs`（5 用例全绿）。
+
+### 8.2 批次② 网关 + 客户端 + 启动注入（核心）
+
+- 新增 `app/middleware.ts`(Edge)：matcher `/api/*`，三源校验（Bearer/cookie/`?token=`）+ 定时安全比较 + `PI_WEB_DISABLE_AUTH=1` 降级 + `/api/health` 无状态开放。
+- 新增 `lib/access-gate.ts`（纯函数，抽离校验核心供单测）+ `lib/access-gate.test.mjs`（9 用例全绿）。
+- 新增 `lib/access-token-client.ts`（localStorage get/set/clear）。
+- 改 `lib/csrf-client.ts#csrfHeaders`：合并 `Authorization: Bearer`。
+- 改 `components/AppShell.tsx`：首屏从 `?token=` 取令牌存 localStorage 并 `replaceState` 抹除 URL。
+- 改 `bin/pi-web.js#startServer`：调 `scripts/gen-access-token.mjs` 生成/复用 → 注入子进程 env `PI_WEB_ACCESS_TOKEN_HASH` → 自动打开 URL 带 `?token=` + 终端打印明文 + 非回环警告补充令牌提示。
+- 新增 `scripts/gen-access-token.mjs`（CommonJS 可同步调用的生成脚本）。
+- 新增 `app/instrumentation.ts`（dev 令牌注入 env，供 Edge middleware 读取）。
+- 新增 `app/api/health/route.ts`（无状态 `{ok:true}`）。
+
+### 8.3 批次③ L10 归属校验
+
+- 改 `app/api/files/[...path]/route.ts`：`sessionReference` 旁路**再叠加 `isFilePathAllowed(filePath, allowedRoots)`**（文件新-1 越权读收敛为受信根内）。
+- `sessions/[id]/*`（route/context/export）已统一经 `resolveSessionPath` 约束在 `agentDir/sessions` 内（404 即越界），单用户模型下即满足归属校验，无需额外代码；仅补注释说明语义。
+
+### 8.4 验证
+
+- 每批次经 `npm run ci`（format:check+lint+type-check+test:node+test:coverage）全绿：
+  - 批次①：`node --test` access-token 5/5。
+  - 批次②：`node --test` access-token+access-gate+hostname 18/18；`npm run ci` CI_EXIT=0（281 vitest 全绿）。
+  - 批次③：`npm run ci` CI_EXIT=0（281 vitest 全绿，lint 0 error）。
+- 手动验证（待用户在真实环境确认）：隐身窗口无令牌访问 `/api/agent` 应 401；错误 `?token=` 应 401；`/api/health` 无令牌应 200；`PI_WEB_DISABLE_AUTH=1` 整站开放。
+
+### 8.5 回滚路径
+
+- S1 落地前快照（见 §0）；任一批次有问题：`git revert <该批次提交>` 或 `git reset --hard <S1 快照>`。
+- 即时降级：`PI_WEB_DISABLE_AUTH=1` 重启即整站开放（救命绳，默认关闭）。
+
+### 8.6 仍待办（依赖 S1 但属独立 change）
+
+- S3 `mcp-config/test` 命令白名单、S4 包安装白名单+`--ignore-scripts`、S5 扩展 symlink 受信根校验（CSP 已在第2轮加）——这些端点内部的加固仍须各自 PR，本网关作为统一前置防线已拦截未授权访问。

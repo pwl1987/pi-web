@@ -15,6 +15,9 @@
 export const CSRF_COOKIE = "__Host-pi-csrf";
 export const CSRF_HEADER = "X-CSRF-Token";
 
+// S1 访问网关：客户端统一携带访问令牌（Authorization: Bearer）。
+import { getAccessToken } from "./access-token-client";
+
 /**
  * Read the CSRF token from `document.cookie`, or `null` if absent / in SSR.
  *
@@ -49,7 +52,10 @@ export function readCsrfToken(): string | null {
  */
 export function csrfHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const token = readCsrfToken();
+  const accessToken = getAccessToken();
   const headers: Record<string, string> = { ...extra };
   if (token) headers[CSRF_HEADER] = token;
+  // S1：访问令牌统一注入。服务端按「未配置哈希则拒绝 / 降级则放行」判定。
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
   return headers;
 }

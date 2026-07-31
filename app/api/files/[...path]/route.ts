@@ -287,10 +287,13 @@ export async function GET(
     const sessionId = request.nextUrl.searchParams.get("sessionId");
 
     const allowedRoots = await getAllowedFileRoots();
+    // L10/文件新-1：会话引用旁路也须落在 allowedRoots 内。
+    // 原实现允许「会话引用过的任意绝对路径」读取，绕过项目根，可被注入恶意
+    // 引用的 jsonl 用于越权读 /etc/shadow 等。收敛为：引用文件同样必须受信根允许。
     const allowedByRoot = isFilePathAllowed(filePath, allowedRoots);
     const allowedBySessionReference =
-      !allowedByRoot &&
       type !== "list" &&
+      isFilePathAllowed(filePath, allowedRoots) &&
       (await isFilePathReferencedBySession(filePath, sessionId));
     if (!allowedByRoot && !allowedBySessionReference) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });

@@ -275,11 +275,34 @@ function startServer() {
     process.exit(1);
   }
 
+  // S1 访问网关：生成/复用访问令牌，把哈希注入 next 子进程 env，
+  // 明文仅打印终端 + 自动打开的浏览器 URL。降级开关可跳过。
+  let accessTokenHash = process.env.PI_WEB_ACCESS_TOKEN_HASH || "";
+  let accessTokenPlain = "";
+  if (process.env.PI_WEB_DISABLE_AUTH !== "1") {
+    try {
+      const genScript = path.join(pkgDir, "scripts", "gen-access-token.mjs");
+      const out = execSync(`"${process.execPath}" "${genScript}"`, {
+        cwd: pkgDir,
+        env: process.env,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim();
+      const parsed = JSON.parse(out);
+      accessTokenHash = parsed.hash;
+      accessTokenPlain = parsed.plain || "";
+    } catch {
+      // 生成失败 → 不注入哈希；middleware 对「未配置哈希」采取 D2 强制拒绝。
+      accessTokenHash = "";
+    }
+  }
+
   // Security warning when binding to anything other than loopback.
   // pi-web has no authentication; non-loopback binding exposes the agent,
   // filesystem, and API keys to anyone who can reach the host.
   const isLoopback = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
-  if (!isLoopback) {
+  if (!isLoopback && process.env.PI_WEB_DISABLE_AUTH !== "1") {
     console.warn(
       `\n⚠️  WARNING: pi-web is binding to "${hostname}" (non-loopback).\n` +
         `   pi-web has NO authentication. Anyone on this network can read your\n` +
@@ -294,10 +317,12 @@ function startServer() {
 
   // Always run next's JS entry with node directly — avoids .bin symlink issues
   // and path-with-spaces problems on Windows when shell: true is used.
+  const childEnv = { ...process.env };
+  if (accessTokenHash) childEnv.PI_WEB_ACCESS_TOKEN_HASH = accessTokenHash;
   const child = spawn(process.execPath, [nextBin, ...nextArgs], {
     cwd: pkgDir,
     stdio: ["inherit", "pipe", "inherit"],
-    env: { ...process.env },
+    env: childEnv,
   });
 
   let browserOpened = false;
@@ -308,10 +333,15 @@ function startServer() {
     process.stdout.write(text);
     if (!browserOpened && text.includes("Ready")) {
       browserOpened = true;
+      // S1：把明文令牌注入自动打开的浏览器 URL（仅本机启动终端可控）。
+      const openUrl =
+        accessTokenPlain && process.env.PI_WEB_DISABLE_AUTH !== "1"
+          ? `${url}/?token=${accessTokenPlain}`
+          : url;
       const isWindows = process.platform === "win32";
       const isMac = process.platform === "darwin";
       const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
-      const opener = spawn(openCmd, [url], {
+      const opener = spawn(openCmd, [openUrl], {
         shell: isWindows,
         stdio: "ignore",
         detached: true,
@@ -322,6 +352,14 @@ function startServer() {
       });
 
       opener.unref();
+
+      if (accessTokenPlain && process.env.PI_WEB_DISABLE_AUTH !== "1") {
+        console.log(
+          `\n🔑 pi-web 访问令牌（已自动注入浏览器，仅本次启动有效）：\n` +
+            `   ${accessTokenPlain}\n` +
+            `   若需在其它浏览器/隐身窗口访问，请手动带上 ?token= 或 Authorization: Bearer。\n`,
+        );
+      }
     }
   });
 
