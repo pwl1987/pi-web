@@ -252,10 +252,15 @@ export function buildSessionContext(
 
   // Walk path from target leaf to root
   const path: SessionEntry[] = [];
+  const visited = new Set<string>();
   let cur: SessionEntry | undefined = targetLeaf;
-  while (cur) {
+  let depth = 0;
+  while (cur && depth < 10000) {
+    if (visited.has(cur.id)) break; // 新-4：防御损坏/恶意 jsonl 中的 parentId 环导致死循环
+    visited.add(cur.id);
     path.unshift(cur);
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    depth++;
   }
 
   // Build UI history from the FULL branch path (root to leaf), without trimming.

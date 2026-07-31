@@ -763,7 +763,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
           <iframe
             key={previewUrl}
             src={previewUrl}
-            sandbox={isPdf ? undefined : ""}
+            sandbox=""
             title={t("file.previewName", { name: getFileName(filePath) })}
             style={{
               width: "100%",
@@ -1129,7 +1129,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId }: Props) {
         ) : isHtml && previewMode ? (
           <iframe
             srcDoc={data.content}
-            sandbox="allow-scripts"
+            sandbox=""
             style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
             title={t("file.htmlPreview")}
           />

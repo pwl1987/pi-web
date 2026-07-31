@@ -34,11 +34,17 @@ export async function GET(
   const data = readFileSync(resolved.absPath);
   const mime = MIME[extname(resolved.absPath).toLowerCase()] ?? "application/octet-stream";
 
+  // 新-2/新-4：扩展脚本/资源在浏览器侧以可信 ES module 动态 import 执行，
+  // 加 X-Content-Type-Options: nosniff 防止 MIME 嗅探，并用 CSP 收紧执行能力
+  // （禁内联脚本/连接外域），降低不可信扩展的沙箱逃逸面。
   return new NextResponse(data, {
     status: 200,
     headers: {
       "Content-Type": mime,
       "Cache-Control": "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy":
+        "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'",
     },
   });
 }

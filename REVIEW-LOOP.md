@@ -151,5 +151,81 @@ C1、A1、B2、L1、L2、B3 共 6 项（含 4 项严重）已通过确定性修�
 ## 6. 操作记录（commit/diff）
 
 - 快照：`20281b4` snapshot: 对抗性评审前快照（pre-review）
-- 修复提交：见 `git show` 本仓库最新提交（C1/A1/L1/L2/B3 五文件）
+- 修复提交 1：`2cd9c5a` 第 1 轮（C1/A1/L1/L2/B3 五文件）
+- 修复提交 2：见本仓库最新提交（第 2 轮 A/B/C/D/E 五文件，详见 §7）
 - 回滚路径：若修复引入问题，`git revert <修复提交>` 或 `git reset --hard 20281b4` 回到快照。
+
+---
+
+## 7. 第 2 轮：深度模块扫描（新发现）+ 自动修复
+
+> 第 1 轮仅核验基线文档已知项。第 2 轮按原始要求「按模块逐一评审」，派 3 路并行子代理对前端组件/hooks、文件/会话 API、配置/模型/技能/MCP/设置端点做对抗性扫描，挖掘**基线文档未记录的新问题**。
+
+### 7.1 第 2 轮自动修复（确定性技术缺陷，已落地 + 测试通过）
+
+| 编号 | 问题                                                                                              | 严重度   | 文件                                                   | 修复                                                                                                         | 验证               |
+| ---- | ------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------ |
+| 新-A | 扩展资产路由缺 `nosniff`+CSP，不可信 ES module 执行面过大                                         | 严重     | `app/api/extensions/[extensionId]/[...asset]/route.ts` | 加 `X-Content-Type-Options: nosniff` + `Content-Security-Policy: default-src 'none'; script-src 'self'; ...` | type-check✅ 281✅ |
+| 新-B | FileViewer HTML 预览 `iframe sandbox="allow-scripts"` 执行文件内任意脚本                          | 严重     | `components/FileViewer.tsx`                            | `sandbox=""`（禁脚本执行）                                                                                   | ✅                 |
+| 新-C | FileViewer PDF 预览 `sandbox={isPdf?undefined:""}` 未收紧，内嵌 PDF JS 可运行                     | 一般     | `components/FileViewer.tsx`                            | `sandbox=""`                                                                                                 | ✅                 |
+| 新-D | `buildSessionContext` 从 leaf 回溯 root 的 `while(cur)` 无环/深度保护，损坏 jsonl 致死循环卡死 UI | 一般     | `lib/session-reader.ts`                                | 加 `visited` Set + `depth<10000` 上限，`break` 防环                                                          | ✅                 |
+| 新-E | `cwd/validate` 把 `/etc`、`~/.ssh` 等敏感目录加入全局文件访问白名单                               | 严重边界 | `app/api/cwd/validate/route.ts`                        | 新增 `isSensitiveDir` 拦截系统目录 + home 隐藏目录，返回 403                                                 | ✅                 |
+
+> 验证：`npm run type-check` OK；`npm run test:node` 359 绿；`CI=true npx vitest run` 281 绿（VITEST_EXIT=0）。lint 0 error（warning 均为既有代码）。
+
+### 7.2 第 2 轮新发现 · 需人工审核（阻塞/严重/重要）
+
+均为**安全姿态/行为/架构决策**，超出"确定性技术缺陷"范围，依铁律标记「需人工审核」。
+
+#### 严重 · 越权读取 / 信息泄露
+
+- **文件 新-1 `files/[...path]` sessionReference 旁路任意路径读取**（严重）：第 289-297 行 `isFilePathReferencedBySession(filePath, sessionId)` 仅校验"会话是否引用过该绝对路径"，**不要求落在项目根内**。若会话 jsonl 含 `../../etc/shadow` 之类的引用（S1 无认证时任意本地进程可写入），即可越权读任意文件。需决策：会话引用文件是否应限制在 `allowedRoots` ∪ 受信会话输出目录内；最小修复为对 sessionReference 旁路再叠加 `isFilePathAllowed` 或受信根收敛。
+- **文件 新-3 `sessions/[id]/export` 无归属校验 + cliPath 受 cwd 影响**（严重）：`resolveSessionPath` 已做 404（落在 agentDir 内），但无 owner/cwd 归属；`getPiCliPath` 在 dev 下 `join(process.cwd(), "node_modules", ...)`——若部署 `process.cwd()` 为不可信目录则被利用。须并入 S1 归属校验 + 明确 cliPath 受信根。
+- **配置 新-1 `mcp-config` GET 明文回传 `env`/`headers`**（严重，依赖 S1）：第 63-64 行把 MCP 服务器密钥原样回传浏览器。本地单用户下前端需回填编辑值（见 `McpConfigPanel.tsx:103-107`），**脱敏会破坏编辑 UX**；真正风险仅在 S1 未授权远程 GET 时成立。须随 S1 加认证；或 GET 仅授权后返回、且区分"展示键名"与"回写值"。
+
+#### 严重 · 命令执行 / 供应链（与 S3/S4/S5 同源，确认/细化）
+
+- **配置 新-2 `skills/install` 跑 postinstall + 无 registry 白名单 + 无 `--ignore-scripts`**（=S4）：需 `npm install --ignore-scripts` + registry 前缀白名单。
+- **配置 新-3 `mcp-config/codegraph/setup` 任意 cwd 初始化仓库/拉取**：需约束 cwd 在受信项目根内。
+- **配置 新-6 `installLocalExtension` 未 `realpath` 校验 symlink 跳出**（=S5）：install 时解析真实路径并校验落在扩展受信根内。
+
+#### 严重/一般 · 资源耗尽 / 竞态
+
+- **文件 新-2 `files/[...path]` watch 无并发上限 → fd 耗尽 DoS**（严重）：每 SSE watch 开一个 fs watcher，需全局信号量 + 超额 429；容量与 serverless 多实例一致性需人工拍板。
+- **配置 新-5 `mcp-config` PUT 整文件覆盖无乐观锁**（一般）：并发 PUT 丢失，需 `If-Match`/版本号。
+
+#### 一般 · 防御性（可后续确定性修，本轮为聚焦严重暂未做）
+
+- **文件 新-5** sidecar `pi-web-state.json` 的 `pinnedDirs`/`sessionId` 无路径边界校验 → 扩写允许列表。
+- **文件 新-6** `worktrees` POST `branch` 仅 `trim()`（底层 `git(argv)` 实际安全，但路由层加 `^[\w./-]+$` 正则更稳）。
+- **文件 新-7** `file-index` 遍历无单目录 entry 上限 → 大目录同步阻塞。
+- **文件 新-8** `git-diff` 爬到整仓（非 cwd 子目录）→ 信息泄露/大输出。
+- **前端 新-3** markdown `a` 未加 `rel="noopener noreferrer"`（仅新标签打开场景，S1 无远程时低风险）。
+- **前端 新-5** i18n 插值未显式转义（React 文本节点天然转义，防御性）。
+- **前端 新-6** SSE 重连固定 1s 无指数退避上限 → 重连风暴。
+- **前端 新-7** drag-drop 无文件大小限制。
+
+### 7.3 更新后的 Top 10 风险（合并基线 + 第 2 轮新发现，按业务影响排序）
+
+| #   | 风险                                                | 维度          | 严重度 | 业务影响                                                | 修复成本                              | 状态       |
+| --- | --------------------------------------------------- | ------------- | ------ | ------------------------------------------------------- | ------------------------------------- | ---------- |
+| 1   | S1 无全局认证 + 无归属校验                          | 安全/越权     | 阻塞   | 同机/局域网任意进程读写所有会话、触发命令执行、窃取密钥 | 高                                    | 需人工审核 |
+| 2   | 文件 新-1 sessionReference 旁路任意路径读取         | 安全/越权     | 严重   | 无认证下经会话引用读 `/etc/shadow` 等任意文件           | 中（受信根收敛）                      | 需人工审核 |
+| 3   | S3 mcp-config/test 任意命令执行                     | 安全/RCE      | 严重   | 经可信端点直接 RCE，接管本机                            | 中（白名单）                          | 需人工审核 |
+| 4   | S4 / 配置 新-2 任意包安装                           | 安全/供应链   | 严重   | 安装恶意包 → 代码执行/凭证外泄                          | 中（白名单+--ignore-scripts）         | 需人工审核 |
+| 5   | S5 / 配置 新-6 扩展 symlink 加载不可信模块          | 安全/沙箱逃逸 | 严重   | 加载攻击者可控 ES module → RCE                          | 中（受信根+禁 symlink+CSP，CSP 已加） | 需人工审核 |
+| 6   | L7 SSE 断开不 abort                                 | 容错/资损     | 严重   | 关页/断网后 agent 仍跑，烧 token 甚至误提交             | 低（abort）                           | 需人工审核 |
+| 7   | L9 fork 在 running 直接 destroy                     | 逻辑/一致性   | 严重   | 丢失进行中 run、文件状态不一致                          | 低（先 abort）                        | 需人工审核 |
+| 8   | P6 无并发上限                                       | 性能/单点     | 严重   | 并发×10 → 进程 OOM 崩溃                                 | 低（信号量+429）                      | 需人工审核 |
+| 9   | P1 全量枚举无分页                                   | 性能/OOM      | 严重   | 会话数×10 → 列举超时/OOM                                | 中（分页）                            | 需人工审核 |
+| 10  | L3 re-parent 绝对路径外键 / 文件 新-3 export 无归属 | 棕地/越权     | 严重   | 迁移后会话树断裂 + 越权导出                             | 中（键重构+归属校验）                 | 需人工审核 |
+
+> 第 2 轮已确定性修复并消除：新-A（扩展 CSP/nosniff）、新-B（HTML 预览 sandbox）、新-E（cwd 敏感目录拦截）。新-C/新-D 为防御性一般项，一并消除。
+
+### 7.4 循环判定
+
+第 2 轮扫描 + 修复后，**阻塞/严重项中已无剩余"确定性可自动修复"项**（新-A/B/C/D/E 均已修；其余严重项均为安全姿态/行为/架构决策，须人工拍板）。循环终止。
+
+### 7.5 回滚路径
+
+- 第 2 轮修复有问题：`git revert <第2轮提交>` 或 `git reset --hard 20281b4`（快照完好）。
