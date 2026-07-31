@@ -50,8 +50,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const cleanup = () => {
         clearInterval(heartbeat);
         unsubscribe();
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // controller already closed
+        }
+        // L7 修复：客户端断连（关标签页/网络断开）后，AgentSession 仍在后台
+        // 跑会持续烧 token。此处检测会话仍在运行则显式 abort，停止后台工作。
+        // 用 guard 防止心跳/多次 abort 触发重复 abort；abort 是幂等的，
+        // 即使会话已结束也安全（send 内部 guard 已处理 _alive 状态）。
+        if (!cleanedUp && session.isRunning()) {
+          cleanedUp = true;
+          void session.send({ type: "abort" }).catch(() => {});
+        }
       };
+      let cleanedUp = false;
 
       // Detect client disconnect via abort signal
       req.signal?.addEventListener("abort", cleanup);

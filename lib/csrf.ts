@@ -35,11 +35,22 @@ export function setCsrfCookie(response: NextResponse): NextResponse {
   return response;
 }
 
+/**
+ * 是否启用 CSRF 防护。
+ *
+ * 历史：早期仅在 NODE_ENV==="production" 时校验，开发模式完全放行，导致
+ * 本地服务一旦暴露即无状态变更防护（对抗性评审 S2）。现改为**默认全环境开启**，
+ * 仅当显式设置 `PI_WEB_DISABLE_CSRF=1` 时才降级放行（与 S1 的 `PI_WEB_DISABLE_AUTH`
+ * 同理，防止自锁门外/本地联调不便）。
+ */
+function csrfEnabled(): boolean {
+  return process.env.PI_WEB_DISABLE_CSRF !== "1";
+}
+
 /** Validate the CSRF token on mutating requests.
  *  Returns null if valid, or a 403 response if invalid. */
 export function validateCsrf(req: NextRequest | Request): NextResponse | null {
-  // Skip CSRF check in development for convenience
-  if (process.env.NODE_ENV !== "production") return null;
+  if (!csrfEnabled()) return null;
 
   const cookieToken = req.headers
     .get("cookie")

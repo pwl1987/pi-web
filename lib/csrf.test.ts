@@ -84,8 +84,21 @@ describe("validateCsrf", () => {
     vi.unstubAllEnvs();
   });
 
-  it("returns null (passes) in development mode regardless of tokens", () => {
+  it("enforces CSRF in development mode by default (rejects when token missing)", () => {
     vi.stubEnv("NODE_ENV", "development");
+    const req = new Request("https://example.com/api/test", {
+      method: "POST",
+    });
+
+    // S2 修复：早期仅在 production 校验、dev 完全放行；现默认全环境开启。
+    const result = validateCsrf(req);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(403);
+  });
+
+  it("skips CSRF when PI_WEB_DISABLE_CSRF=1 (local trusted dev opt-out)", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("PI_WEB_DISABLE_CSRF", "1");
     const req = new Request("https://example.com/api/test", {
       method: "POST",
     });
