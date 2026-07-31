@@ -71,6 +71,7 @@ interface Props {
   onOpenPlugins: () => void;
   onOpenExtensions: () => void;
   onOpenAgents: () => void;
+  onOpenPromptOpt: () => void;
 }
 
 /** Unified settings modal — pi agent config + UI preferences + management shortcuts. */
@@ -81,6 +82,7 @@ export function SettingsPanel({
   onOpenPlugins,
   onOpenExtensions,
   onOpenAgents,
+  onOpenPromptOpt,
 }: Props) {
   const { isDark, toggleTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
@@ -656,6 +658,13 @@ export function SettingsPanel({
             onClick={() => {
               onClose();
               onOpenAgents();
+            }}
+          />
+          <ManagementButton
+            label={t("settings.openPromptOpt")}
+            onClick={() => {
+              onClose();
+              onOpenPromptOpt();
             }}
           />
 

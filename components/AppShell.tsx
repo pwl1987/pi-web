@@ -24,6 +24,7 @@ import {
 } from "./config-panels.registry";
 import { ExtensionsConfig } from "./ExtensionsConfig";
 import { AgentsConfig } from "./AgentsConfig";
+import { PromptsConfig } from "./PromptsConfig";
 import { SettingsPanel } from "./SettingsPanel";
 import { ConstraintPanel } from "./ConstraintPanel";
 import { EngineDashboard } from "./EngineDashboard";
@@ -74,6 +75,7 @@ export function AppShell() {
   const [extensionsConfigOpen, setExtensionsConfigOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentsConfigOpen, setAgentsConfigOpen] = useState(false);
+  const [promptsConfigOpen, setPromptsConfigOpen] = useState(false);
 
   // Expose React on window so extension modules (loaded via dynamic import) share
   // the same React instance — otherwise hooks break across instance boundaries.
@@ -1946,6 +1948,13 @@ export function AppShell() {
           onOpenPlugins={() => setPluginsConfigOpen(true)}
           onOpenExtensions={() => setExtensionsConfigOpen(true)}
           onOpenAgents={() => setAgentsConfigOpen(true)}
+          onOpenPromptOpt={() => setPromptsConfigOpen(true)}
+        />
+      )}
+      {promptsConfigOpen && (
+        <PromptsConfig
+          cwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? undefined}
+          onClose={() => setPromptsConfigOpen(false)}
         />
       )}
       {agentsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (

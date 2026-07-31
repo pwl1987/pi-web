@@ -14,6 +14,14 @@
 
 > 注：本仓库已有自研零依赖 i18n（`lib/i18n/zh.ts` + `en.ts`），用户可见文案应走 i18n 而非硬编码。
 
+### 系统提示词优化框架（2026-07-15 实现）
+- 位置：`lib/prompt-system/`（纯逻辑，node:test）+ `lib/pi-model-creds.ts` + `lib/prompt-modules-state.ts`（侧车持久化）+ `app/api/prompts/**` + `components/PromptsConfig.tsx`。
+- 目标：把散落的系统提示词（enhance/AGENTS.md/orchestrator/engine）统一建模为 `PromptModule`，提供 ①压缩（`compress.ts` 离线规则 + `compress-llm.ts` 可选 LLM，失败兜底离线）②动态开关（`switches.ts`+侧车 `~/.pi/agent/pi-web-prompt-modules.json`）③动态提交（`select.ts` 启发式子串打分 + `select-llm.ts` 可选 LLM 分类，安全底线 20%，失败回退全量）④单入口 `compose.ts` `composeSystemPrompt`（开关过滤→选择→拼接优先 compressedText）。
+- **回归安全**：`enhance-modules.ts` 的 `ENHANCE_LINES` 是原 `buildEnhanceSystemPrompt` 逐字副本，`prompt-enhance.ts` 仅 re-export；旧测试逐字一致。enhance 路由用 `buildEnhanceSystemPromptSelected(prompt, ctx)` 动态裁剪、空输入回退全量。
+- **coding agent 接入**：`lib/rpc-manager.ts` modular 总闸（`getAgentsMdModular()` 默认关）；开启时 `composeModularAgentsMdSystemPrompt({cwd, baseSystemPrompt})` **只替换完整 system prompt 内的 AGENTS.md `<project_instructions>` 段**（保留 SYSTEM.md/APPEND_SYSTEM.md/SKILLS.md/其它上下文/tools/日期），`replaceAgentsMdContext` 实现；try/catch 回退 SDK 原样。
+- **坑（2026-07-15 修复）**：modular 总闸绝不能把 `agent.state.systemPrompt` 整体替换为 AGENTS.md-only —— SDK 完整 prompt 还含身份/插件/技能/工具约束，整体替换会清空核心内容。必须基于 SDK 已构建的 base prompt 做段级替换。
+- **约定**：纯逻辑模块禁 `@/`、相对 value import 须带 `.ts` 后缀（node:test 要求）；服务侧模块用 `@/`；LLM 凭证统一走 `resolveDefaultModelCredentials(cwd?)`。中文无空格→select 用子串包含匹配。i18n 用 `promptOpt.*` 命名空间（`prompts.*` 已被 AGENTS.md 编辑器占用）。UI 入口在 SettingsPanel「提示词优化」+ AppShell `promptsConfigOpen`。
+
 ### Plan 讨论模式 · 多 Agent 协同编排器（2026-07-12 实现）
 - 位置：`lib/agent-orchestrator/`（纯逻辑，与后端无关）+ `lib/plan-mode-store.ts` + `app/api/plan/**` + `components/PlanPanel.tsx`。
 - 设计核心：**不是**拉起多个真实 `AgentSession` 讨论，而是用「角色化单轮补全」——每个角色每轮 = 一次带该角色 systemPrompt 的 `completeSimple` 调用（参考 `app/api/agent/enhance`）。天然满足「只讨论不写码」。

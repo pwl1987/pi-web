@@ -8,6 +8,8 @@ import { getRegistry, getLocks, notifyRunningChange } from "./session-registry";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { SlashCommandInfo } from "./pi";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
+import { getAgentsMdModular } from "@/lib/prompt-modules-state";
+import { composeModularAgentsMdSystemPrompt } from "@/lib/prompt-system/agents-md-modules";
 
 // ============================================================================
 // Types
@@ -1088,6 +1090,24 @@ export async function startRpcSession(
     // keep this forced after extension resource discovery and reloads as well.
     if (toolNames?.length === 0) {
       wrapper.setForceEmptySystemPrompt(true);
+    }
+
+    // AGENTS.md modular 总闸（默认关）：开启时按模块开关+选择裁剪 coding-agent
+    // 系统提示词中的 AGENTS.md 片段，减少 Token。仅在 SDK 已构建完整提示词时生效，
+    // 仅替换 AGENTS.md 注入段，保留 SYSTEM.md/APPEND_SYSTEM.md/SKILLS.md/工具约束等。
+    // 失败一律回退 SDK 原样，绝不阻断会话。
+    if (getAgentsMdModular()) {
+      try {
+        const base = inner.agent.state?.systemPrompt ?? "";
+        if (base) {
+          const merged = composeModularAgentsMdSystemPrompt({ cwd, baseSystemPrompt: base });
+          if (merged && merged.trim() && inner.agent.state) {
+            inner.agent.state.systemPrompt = merged;
+          }
+        }
+      } catch {
+        // 回退 SDK 默认系统提示词
+      }
     }
     wrapper.start();
 

@@ -4,7 +4,8 @@ import { getAssistantText } from "@/lib/api-shared";
 import { getPiAdapter } from "@/lib/pi";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
-const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple } = getPiAdapter();
+const { completeSimple } = getPiAdapter();
+import { resolveDefaultModelCredentials } from "@/lib/pi-model-creds";
 
 export const dynamic = "force-dynamic";
 
@@ -29,25 +30,9 @@ export async function POST(req: NextRequest) {
     const fileType = body.file ?? "agents";
     if (!content.trim()) return errorResponse("Content is empty — nothing to optimize.", 400);
 
-    // Read the user's default model + provider from settings.
-    const agentDir = getAgentDir();
-    const mgr = SettingsManager.create(body.cwd ?? process.cwd(), agentDir);
-    await mgr.reload();
-    const defaultProvider = mgr.getDefaultProvider();
-    const defaultModel = mgr.getDefaultModel();
-    if (!defaultProvider || !defaultModel) {
-      return errorResponse("No default model configured. Set one in Settings.", 400);
-    }
-
-    // Resolve model + API key from the real models.json (not a temp copy).
-    const modelsPath = `${agentDir}/models.json`;
-    const registry = ModelRegistry.create(AuthStorage.create(), modelsPath);
-    const model = registry.find(defaultProvider, defaultModel);
-    if (!model) return errorResponse(`Model not found: ${defaultProvider}/${defaultModel}`, 400);
-
-    const auth = await registry.getApiKeyAndHeaders(model);
-    if (!auth.ok) return errorResponse(auth.error, 400);
-    if (!auth.apiKey) return errorResponse(`No API key for "${defaultProvider}"`, 400);
+    // 解析默认 provider/model + apiKey/headers（与压缩/选择共用的凭证解析）。
+    const creds = await resolveDefaultModelCredentials(body.cwd ?? process.cwd());
+    const { model, apiKey, headers } = creds;
 
     const customInstruction = body.instruction?.trim();
     const promptContext =
@@ -68,7 +53,7 @@ export async function POST(req: NextRequest) {
       .join("\n");
 
     const message = await completeSimple(
-      model,
+      model as Parameters<typeof completeSimple>[0],
       {
         messages: [
           {
@@ -77,10 +62,10 @@ export async function POST(req: NextRequest) {
             timestamp: Date.now(),
           },
         ],
-      },
+      } as Parameters<typeof completeSimple>[1],
       {
-        apiKey: auth.apiKey,
-        headers: auth.headers,
+        apiKey,
+        headers,
         maxTokens: 8192,
         timeoutMs: TIMEOUT_MS,
         maxRetries: 0,

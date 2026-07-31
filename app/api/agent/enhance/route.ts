@@ -9,6 +9,7 @@ const { AuthStorage, ModelRegistry, SettingsManager, getAgentDir, completeSimple
 import { getAssistantText } from "@/lib/api-shared";
 import {
   buildEnhanceSystemPrompt,
+  buildEnhanceSystemPromptSelected,
   buildEnhanceUserMessage,
   stripToolCallArtifacts,
 } from "@/lib/prompt-enhance";
@@ -162,7 +163,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const systemPrompt = buildEnhanceSystemPrompt(projectContext);
+    // 动态提交：按用户原始 prompt 选择相关 enhace 模块，减少 Token；
+    // 核心模块（身份/禁止执行/示例/输出规则）恒发，过激时回退全量。
+    const systemPrompt = buildEnhanceSystemPromptSelected(prompt, projectContext);
 
     // IMPORTANT: in @earendil-works/pi-ai the system prompt lives on the Context
     // object (2nd arg), NOT on the options object (3rd arg). Putting it in
