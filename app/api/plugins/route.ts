@@ -19,6 +19,7 @@ import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 import { patchPackageManagerForUninstall } from "@/lib/plugin-package-manager";
 import { isPinned } from "@/lib/recommended-plugins";
 import { getDisabledPackages, keyFor, setPackageDisabled } from "@/lib/plugin-disable";
+import { readPluginMasterState } from "@/lib/plugin-master-switch";
 
 // Mirror install flags onto uninstall so removing pi extensions (which declare
 // @earendil-works/pi-* peers) doesn't fail with ERESOLVE. See module for details.
@@ -251,6 +252,17 @@ export async function POST(req: Request) {
     if (parseError) return parseError;
     if (!body.cwd) return errorResponse("cwd required", 400);
     if (!body.action) return errorResponse("action required", 400);
+
+    // L2：插件总开关关闭后，禁止任何会增加插件占用（启用/安装/更新）的操作，
+    // 否则会与总开关的"全局停用"意图漂移。禁用/移除/降级仍允许。
+    if (!readPluginMasterState().enabled) {
+      if (body.action === "enable" || body.action === "install" || body.action === "update") {
+        return NextResponse.json(
+          { error: "插件总开关已关闭，请先在插件面板开启总开关" },
+          { status: 409 },
+        );
+      }
+    }
 
     const settingsManager = SettingsManager.create(body.cwd, getAgentDir());
     const packageManager = new DefaultPackageManager({

@@ -3,9 +3,9 @@ import { validateCsrf } from "@/lib/csrf";
 import { getAssistantText } from "@/lib/api-shared";
 import { getPiAdapter } from "@/lib/pi";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { resolveDefaultModelCredentials, ModelCredentialsError } from "@/lib/pi-model-creds";
 
 const { completeSimple } = getPiAdapter();
-import { resolveDefaultModelCredentials } from "@/lib/pi-model-creds";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ optimized });
   } catch (error) {
+    if (error instanceof ModelCredentialsError) {
+      return errorResponse(error.message, error.status);
+    }
     return errorResponse(error);
   }
 }

@@ -6,6 +6,17 @@
 import { getPiAdapter } from "@/lib/pi";
 import { getAgentDir } from "@/lib/config-file";
 
+/** 凭证缺失/配置错误：调用方应将其映射为 4xx（而非 500），以保持 API 契约稳定。 */
+export class ModelCredentialsError extends Error {
+  constructor(
+    message: string,
+    public status = 400,
+  ) {
+    super(message);
+    this.name = "ModelCredentialsError";
+  }
+}
+
 /** 解析出的默认模型凭证。model 透传给 completeSimple。 */
 export interface ModelCredentials {
   model: unknown;
@@ -24,17 +35,18 @@ export async function resolveDefaultModelCredentials(cwd?: string): Promise<Mode
   const defaultProvider = mgr.getDefaultProvider();
   const defaultModel = mgr.getDefaultModel();
   if (!defaultProvider || !defaultModel) {
-    throw new Error("No default model configured. Set one in Settings.");
+    throw new ModelCredentialsError("No default model configured. Set one in Settings.");
   }
 
   const modelsPath = `${agentDir}/models.json`;
   const registry = ModelRegistry.create(AuthStorage.create(), modelsPath);
   const model = registry.find(defaultProvider, defaultModel);
-  if (!model) throw new Error(`Model not found: ${defaultProvider}/${defaultModel}`);
+  if (!model)
+    throw new ModelCredentialsError(`Model not found: ${defaultProvider}/${defaultModel}`);
 
   const auth = await registry.getApiKeyAndHeaders(model);
-  if (!auth.ok) throw new Error(auth.error);
-  if (!auth.apiKey) throw new Error(`No API key for "${defaultProvider}"`);
+  if (!auth.ok) throw new ModelCredentialsError(auth.error);
+  if (!auth.apiKey) throw new ModelCredentialsError(`No API key for "${defaultProvider}"`);
 
   return {
     model,

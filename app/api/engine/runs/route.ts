@@ -23,12 +23,22 @@ export async function POST(req: Request) {
     registerDefaultEngine();
     const adapter = getUnifiedEngineAdapter();
     let run;
-    if (action === "start") run = await adapter.startRun(runId);
-    else if (action === "pause") {
+    if (action === "start") {
+      const current = await adapter.getRunState(runId);
+      if (current.status === "completed" || current.status === "failed") {
+        return NextResponse.json({ error: "运行已处于终态，不可重新启动" }, { status: 409 });
+      }
+      run = await adapter.startRun(runId);
+    } else if (action === "pause") {
       await adapter.pauseRun(runId);
-      run = adapter.getRunState(runId);
-    } else if (action === "resume") run = await adapter.resumeRun(runId);
-    else
+      run = await adapter.getRunState(runId);
+    } else if (action === "resume") {
+      const current = await adapter.getRunState(runId);
+      if (current.status === "completed" || current.status === "failed") {
+        return NextResponse.json({ error: "运行已处于终态，不可恢复" }, { status: 409 });
+      }
+      run = await adapter.resumeRun(runId);
+    } else
       return NextResponse.json(
         { error: "未知 action（应为 start/pause/resume）" },
         { status: 400 },

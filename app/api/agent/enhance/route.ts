@@ -163,9 +163,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 动态提交：按用户原始 prompt 选择相关 enhace 模块，减少 Token；
-    // 核心模块（身份/禁止执行/示例/输出规则）恒发，过激时回退全量。
-    const systemPrompt = buildEnhanceSystemPromptSelected(prompt, projectContext);
+    // 动态提交（ENHANCE_DYNAMIC_SELECT=1 时启用）：按用户原始 prompt 选择相关
+    // enhance 模块以减少 Token；核心模块（身份/禁止执行/示例/输出规则）恒发，
+    // 过激时回退全量。默认关闭，回退到全量 buildEnhanceSystemPrompt，以保持输出
+    // 与旧版本逐字一致（确定性、可回归、兼容既有调用方）。
+    const enableDynamicSelect = process.env.ENHANCE_DYNAMIC_SELECT === "1";
+    const systemPrompt = enableDynamicSelect
+      ? buildEnhanceSystemPromptSelected(prompt, projectContext)
+      : buildEnhanceSystemPrompt(projectContext);
 
     // IMPORTANT: in @earendil-works/pi-ai the system prompt lives on the Context
     // object (2nd arg), NOT on the options object (3rd arg). Putting it in
