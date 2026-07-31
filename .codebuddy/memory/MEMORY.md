@@ -2,67 +2,40 @@
 
 ## 用户偏好 / 项目约定
 
-### 中文模式本地化约束（2026-07-12 起生效）
-在中文语境下，AI 代码助手的所有输出必须严格保持全中文，禁止出现未经翻译的英文状态/提示。适用范围：
-
-- **进程状态 / 进度追踪 / TODO / 任务列表**：全部用中文表达。
-- **交互回复 / 最终回复 / 系统提示**：全中文，不含裸英文短语。
-- **代码注释**：新写的注释用中文（如适用；纯技术标识符注释可保留英文术语）。
-- **变量命名**：内部标识符（变量/函数/类名）保留英文是行业惯例，改动会破坏编译与引用，故按 "如适用" 处理——仅当用户明确另要求时才中文化；用户可见的展示文案一律走 `lib/i18n/zh.ts` 中文。
-
-**硬性约束**：中文模式下不得输出未翻译的英文状态或提示；所有执行步骤、进度、任务列表与最终回复必须全中文，以达成完全本地化开发体验。
-
-> 注：本仓库已有自研零依赖 i18n（`lib/i18n/zh.ts` + `en.ts`），用户可见文案应走 i18n 而非硬编码。
+### 中文模式本地化约束（2026-07-12 起）
+中文语境下所有输出（进度/任务列表/交互回复/代码注释）必须全中文，禁裸英文状态提示；用户可见文案走 `lib/i18n/zh.ts`。内部标识符保留英文（行业惯例，改动会破坏编译）。
 
 ### 系统提示词优化框架（2026-07-15 实现）
-- 位置：`lib/prompt-system/`（纯逻辑，node:test）+ `lib/pi-model-creds.ts` + `lib/prompt-modules-state.ts`（侧车持久化）+ `app/api/prompts/**` + `components/PromptsConfig.tsx`。
-- 目标：把散落的系统提示词（enhance/AGENTS.md/orchestrator/engine）统一建模为 `PromptModule`，提供 ①压缩（`compress.ts` 离线规则 + `compress-llm.ts` 可选 LLM，失败兜底离线）②动态开关（`switches.ts`+侧车 `~/.pi/agent/pi-web-prompt-modules.json`）③动态提交（`select.ts` 启发式子串打分 + `select-llm.ts` 可选 LLM 分类，安全底线 20%，失败回退全量）④单入口 `compose.ts` `composeSystemPrompt`（开关过滤→选择→拼接优先 compressedText）。
-- **回归安全**：`enhance-modules.ts` 的 `ENHANCE_LINES` 是原 `buildEnhanceSystemPrompt` 逐字副本，`prompt-enhance.ts` 仅 re-export；旧测试逐字一致。enhance 路由用 `buildEnhanceSystemPromptSelected(prompt, ctx)` 动态裁剪、空输入回退全量。
-- **coding agent 接入**：`lib/rpc-manager.ts` modular 总闸（`getAgentsMdModular()` 默认关）；开启时 `composeModularAgentsMdSystemPrompt({cwd, baseSystemPrompt})` **只替换完整 system prompt 内的 AGENTS.md `<project_instructions>` 段**（保留 SYSTEM.md/APPEND_SYSTEM.md/SKILLS.md/其它上下文/tools/日期），`replaceAgentsMdContext` 实现；try/catch 回退 SDK 原样。
-- **坑（2026-07-15 修复）**：modular 总闸绝不能把 `agent.state.systemPrompt` 整体替换为 AGENTS.md-only —— SDK 完整 prompt 还含身份/插件/技能/工具约束，整体替换会清空核心内容。必须基于 SDK 已构建的 base prompt 做段级替换。
-- **约定**：纯逻辑模块禁 `@/`、相对 value import 须带 `.ts` 后缀（node:test 要求）；服务侧模块用 `@/`；LLM 凭证统一走 `resolveDefaultModelCredentials(cwd?)`。中文无空格→select 用子串包含匹配。i18n 用 `promptOpt.*` 命名空间（`prompts.*` 已被 AGENTS.md 编辑器占用）。UI 入口在 SettingsPanel「提示词优化」+ AppShell `promptsConfigOpen`。
+- 模块：`lib/prompt-system/`（纯逻辑 node:test）+ `lib/pi-model-creds.ts` + `lib/prompt-modules-state.ts`（侧车 `~/.pi/agent/pi-web-prompt-modules.json`）+ `app/api/prompts/**` + `components/PromptsConfig.tsx`。
+- 能力：压缩(compress.ts 离线 + compress-llm.ts 可选 LLM，失败兜底离线)、动态开关(switches.ts + 侧车)、动态提交(select.ts 子串打分 + select-llm.ts 可选 LLM，底线 20%，失败回退全量)、单入口 composeSystemPrompt。
+- 回归安全：`enhance-modules.ts` 的 ENHANCE_LINES 是原 buildEnhanceSystemPrompt 逐字副本；enhance 路由默认用 `buildEnhanceSystemPrompt`（全量），`ENHANCE_DYNAMIC_SELECT=1` 才走 `buildEnhanceSystemPromptSelected`。
+- coding agent 接入：`lib/rpc-manager.ts` 的 modular 总闸（getAgentsMdModular 默认关）开启时 `composeModularAgentsMdSystemPrompt` **只替换**完整 systemPrompt 的 AGENTS.md `<project_instructions>` 段，绝不整体替换（否则清空身份/工具约束）。
+- 约定：纯逻辑模块禁 `@/`、相对 value import 带 `.ts` 后缀；服务侧用 `@/`；LLM 凭证统一走 `resolveDefaultModelCredentials(cwd?)`（抛 ModelCredentialsError=400）。i18n 用 `promptOpt.*` 命名空间。
 
-### Plan 讨论模式 · 多 Agent 协同编排器（2026-07-12 实现）
-- 位置：`lib/agent-orchestrator/`（纯逻辑，与后端无关）+ `lib/plan-mode-store.ts` + `app/api/plan/**` + `components/PlanPanel.tsx`。
-- 设计核心：**不是**拉起多个真实 `AgentSession` 讨论，而是用「角色化单轮补全」——每个角色每轮 = 一次带该角色 systemPrompt 的 `completeSimple` 调用（参考 `app/api/agent/enhance`）。天然满足「只讨论不写码」。
-- 四大模块：意图解析(inten-parser 动态实例化角色) → 多轮讨论(orchestrator 事件总线/SSE) → 收敛(convergence：仲裁者 CONSENSUS 信号 / 相似度稳定 / 轮次上限) → 方案合成(plan-synthesizer 多套方案 pros/cons/scenarios) → 确认交接统一引擎(createChange+startRun，AppShell 跳转引擎面板)。
-- 可插拔 `AgentRunner`：Mock（单测用）与 `createCompleteSimpleRunner(createPiLlmCompletion(cwd))`（真实后端）。
-- 单测：`lib/agent-orchestrator/orchestrator.test.mjs`（node --test --experimental-strip-types，脱 LLM）。注意：测试须直接 import `./orchestrator.ts` 等具体文件，**不能** import `./index.ts`（它会 re-export `llm-backend.ts`，后者依赖 `@/` 别名，纯 Node 无法解析）。
-- 参考项目：`jnMetaCode/agency-orchestrator`（原需求误写为 jetaCode）。
+### Plan 讨论模式编排器（2026-07-12）
+- `lib/agent-orchestrator/`（纯逻辑）+ `lib/plan-mode-store.ts` + `app/api/plan/**` + `components/PlanPanel.tsx`。
+- 设计：角色化单轮 `completeSimple` 补全（非拉起真实 AgentSession），天然「只讨论不写码」。单测须直接 import `./orchestrator.ts` 等，**不能** import `./index.ts`（依赖 `@/` 纯 Node 无法解析）。
 
-### 插件全局总开关（2026-07-15 实现）
-- 目标：一键关闭全部插件以省 token——关闭时彻底停止插件后台安装/运行与数据请求，开启时恢复。
-- 状态持久化：`~/.pi/agent/pi-web-plugin-master.json`（`{enabled, snapshot}`），由 `lib/plugin-master-switch.ts` 读写（globalThis 缓存）。
-- 行为闸门：
-  - `lib/plugin-auto-install.ts` 的 `ensureRecommendedPlugins()` 在 `getPluginsMasterEnabled()` 为 false 时直接返回 skipped（不发任何安装网络请求）；新增 `resetAutoInstall()` 清空缓存锁，便于关闭→开启后真正触发安装。
-  - `app/api/plugins/master`（GET/PUT）切换时复用 `lib/plugin-disable.ts` 的 `setPackageDisabled` 把每个「非核心」可选插件包在 settings.json 的资源数组清空（与单包 disable 同机制，agent 运行时不再加载其 extension/skill/prompt/theme），并快照各包关闭前禁用态以便原样恢复。核心插件 = `DEFAULT_PLUGINS`（pi-subagents、rpiv-todo），总开关不触碰，避免破坏关键 UI。
-  - 切换后需「重新加载会话」对正在运行的会话生效；新会话自动应用。
-- UI：插件面板头部（`components/PluginsConfig.tsx`）新增总开关（复用 `Toggle`），关闭时锁定单插件启停并提示。i18n 键 `plugins.master*`（zh/en）。
-- 注意：禁用作用于 **global** 作用域（auto-installer 的安装目标）；project 作用域的可选插件不在总开关覆盖范围内。
+### 插件全局总开关（2026-07-15）
+- 状态：`~/.pi/agent/pi-web-plugin-master.json`（`{enabled, snapshot}`），`lib/plugin-master-switch.ts` 读写。
+- 行为：总闸关时 `ensureRecommendedPlugins()` 直接 skipped；PUT /api/plugins/master 复用 `setPackageDisabled` 清空非核心包资源数组并快照。`getPluginsMasterEnabled()===false` 时 /api/plugins 的 enable/install/update 返回 409（评审 L2 修复）。核心插件 DEFAULT_PLUGINS（pi-subagents、rpiv-todo）不触碰。禁用作用 global 作用域。
 
-### 提交 / 推送约定（2026-07-12 确认）
-- husky `pre-commit` 钩子（`.husky/pre-commit`）实际只跑：`npx lint-staged` → `npm run type-check` → `npm run test:node` → `npm run test:coverage`。**不调用 comet-guard**；`[guard]FATAL` 来自 comet 工作流/手动调用，非 git 钩子。提交时钩子会自动复跑这些校验，须全绿才提交成功。
-- lint-staged 配置：`.{js,mjs,cjs,jsx,ts,tsx}` → prettier --write + eslint --fix；`.{json,md,yaml,yml,css}` → prettier --write。
-- `openspec/**/.comet/` 已在 `.gitignore` 排除（comet-guard 运行时产物，类似 `.next/`）；`.comet.yaml` 仍受版本管理，需随 change 记录提交。
-- `vendor/comet/`、`vendor/autoplan/` 已被 `.gitignore` 忽略（vendored upstream）。
-- 仓库规范完整 CI：`npm run ci` = format:check && lint && type-check && test:node && test:coverage。
+### 提交 / 推送约定（2026-07-12）
+- husky `pre-commit` 实际只跑：`lint-staged` → `type-check` → `test:node` → `test:coverage`（不调 comet-guard）。提交须全绿。lint-staged：代码文件 prettier+eslint --fix；json/md/yaml/css prettier。
+- 完整 CI：`npm run ci` = format:check && lint && type-check && test:node && test:coverage。
 
-### 自主编程引擎（comet/autoplan/unified-engine）架构事实（2026-07-15）
-- **三引擎并存**：`lib/agent-orchestrator`（自研、已上线、TS、无 Electron 依赖，计划生成+多角色讨论+收敛）+ `lib/unified-engine`（comet/autoplan 适配层，半接入，独立 `/api/engine/*` + `AutonomousCodingDashboard`，与 PlanPanel 平行零复用）+ vendored `comet`/`autoplan`。
-- **统一决策**：以 agent-orchestrator 为计划主引擎，unified-engine 收敛为可选执行出口；合并持久化/事件/前端为一套（新增 `lib/engine-runtime-store.ts` 统一状态层 + `app/api/engine/state` + `hooks/useEngineRuntime`）。
-- **前端状态面合并（2026-07-15 批次 A 已落地）**：删除 `hooks/useUnifiedEngine.ts` 与 `components/AutonomousCodingDashboard.tsx`（原平行状态面，V1）；新增 `components/EngineDashboard.tsx` 三看板（进程监控/需求生命周期/任务状态）单一消费 `useEngineRuntime`（唯一 SSE）。`UnifiedEngineState` 含 `runs: RunState[]` 透传 + `autoplan:{ready,features}` 桥接字段（`setAutoPlanStatusProvider` 注入点待 T3.2 填充）。`/api/engine/runs` 仅保留 POST 控制，GET 直读已移除。`PlanPanel` 走 `usePlanMode`（agent-orchestrator 计划模式，独立域）不并入引擎状态面。
-- **守卫真实化 + 安全修复（2026-07-15 批次 B 已落地）**：`guards/comet-cli.ts` 新增 `isCometAvailable()`（探测 comet-guard.mjs 是否存在）；`unified-engine-runtime.ts` 的 `safeGuard`/`safeAdvance` 改为「仅当 comet 未安装才降级放行，其余一律阻断」——守卫语义失败（passed:false）或推进被守卫阻止（advanceStage 抛错）不再静默通过（V4）。`comet-adapter.ts` `prepareVerifyArtifacts` 真实验证默认开（`ENGINE_REAL_VERIFY !== "0"` 才兜底写诚实存根，V6）。`autoplan-llm-adapter.ts` `executeTests` 消除 `shell:true`，受控命令字符串解析为 argv（V5，修复命令注入）。tsc/eslint 0 错，引擎 node 单测 16 项全绿。
-- **生命周期贯通 + 遗留清理（2026-07-15 批次 C+D 已落地）**：执行体选型定为**方案 b**（维持 `autoplan-llm-adapter` 自包含真实执行，方案 a 委托 AgentSession 因风险高暂缓）。`autoplan-adapter.ts` 新增 `getAutoPlanStatus()` 并在 `createAutoPlanAdapter` 三分支注册 `setAutoPlanStatusProvider`，使 `UnifiedEngineState.autoplan` 实时反映就绪/特性（T3.2）。新增 `autoplan-lifecycle.test.mjs`（T3.4，memory 脱 LLM 跑通全生命周期）。`DEFAULT_WORKFLOW` 决策维持 hotfix 并加 `ENGINE_WORKFLOW` 取值校验（非法回退 hotfix，T6.1）。删空目录 `app/api/engine/autoplan/`、Go 零引用确认（T7.1/T7.2）。PRD 四批次 A/B/C/D 全部完成，tsc/eslint 0 错、引擎 node 单测 19 绿。
-- **autoplan 功能迁移 = 纯 TypeScript 等价实现（禁用 Go，2026-07-15 修正）**：本功能迁移任务明确**禁止使用 Go 语言**。因此不拉起任何 Go 进程/二进制，autoplan 的「需求立项→计划生成→任务入队→交付物落盘→任务执行→反馈回收」生命周期在**本仓库既有 TypeScript 运行时**内做等价移植，契约 `PlanGeneratorPort` 不变，功能逻辑不变。
-  - 上游事实（仅调研价值，不再落地为 Go sidecar）：本地钉选 `e06c2b2` 仅前端骨架、无 backend；上游 `origin/main@bbce9de` 含完整 Go 后端（426 .go / ~69k 行，含 `backend/cmd/autoplan-server` daemon + `AUTOPLAN_GO_*_API` 特性门 fail-closed + `X-Autoplan-Session` 鉴权等式）。`go build` 曾实测成功（go1.25.0 工具链自动下载），但**现已按约束作废**。
-  - **已移除的 Go 相关代码**：`lib/autoplan-sidecar.ts`、`scripts/build-autoplan.mjs`、`app/api/engine/autoplan/route.ts`、`vendor/autoplan/backend/`、`package.json` 的 `autoplan:build`、`engine-runtime-store.ts` 的 `autoplan` 进程态字段。
-  - **当前实现**：`lib/unified-engine/autoplan-adapter.ts` 纯 TS —— `tryLoadVendorAutoPlan()`（ENGINE_AUTOPLAN_VENDOR=1 时动态加载 vendored TS 端口 `autoplan-loop-service`，无 Go/无子进程）+ `createLlmAutoPlanAdapter`（真实 LLM）+ `createMemoryAutoPlanAdapter`（兜底）。功能逻辑与原 `PlanGeneratorPort` 消费方完全一致。
-  - 验收：`tsc`/`eslint`(0 错)/`node --test` 57 项全绿；无残留 Go 引用。
-  - 报告：`docs/AUTONOMOUS-ENGINE-FUSION.md`（架构调研有效；其 §0–§6 的 Go sidecar 落地方案已加注作废）。
-- **comet 接入约束**：仅限 Node Runtime；`guards/comet-cli.ts` 白名单调用 `vendor/comet/assets/skills/comet/scripts/*.mjs`（`COMET_SKIP_BUILD` 现仅 dev 跳过）；`DEFAULT_WORKFLOW` 经 `ENGINE_WORKFLOW` 可配；伪造验证报告受 `ENGINE_REAL_VERIFY` 控制（默认开；仅 `=0` 才写诚实标注的存根报告）。
-- 结构化调研报告：`docs/AUTONOMOUS-ENGINE-SURVEY.md`。
+### 自主编程引擎架构事实（2026-07-15 收口）
+- 统一为 agent-orchestrator（计划主引擎）+ unified-engine（执行出口）；前端合并为 `components/EngineDashboard.tsx` 单一消费 `useEngineRuntime`。PlanPanel 走独立 `usePlanMode`。
+- 安全修复（已落地）：守卫未安装才降级放行、否则阻断；`prepareVerifyArtifacts` 真实验证默认开（ENGINE_REAL_VERIFY=0 才写诚实存根）；`executeTests` 消除 shell:true 解析为 argv（修复命令注入）；`DEFAULT_WORKFLOW` 经 ENGINE_WORKFLOW 校验。
+- **autoplan 迁移 = 纯 TS 等价实现，禁用 Go**：移除 `lib/autoplan-sidecar.ts`、`scripts/build-autoplan.mjs`、`app/api/engine/autoplan/route.ts`、`vendor/autoplan/backend/`；当前 `lib/unified-engine/autoplan-adapter.ts` 纯 TS（vendor 动态加载/真实 LLM/内存兜底）。调研见 `docs/AUTONOMOUS-ENGINE-SURVEY.md`、`docs/AUTONOMOUS-ENGINE-FUSION.md`（其 Go sidecar 方案已作废）。
+- comet 接入：仅 Node Runtime，白名单调用 `vendor/comet/assets/skills/comet/scripts/*.mjs`。
 
-### 前端共用模块约定（2026-07-13 确立）
-- **禁止**在客户端组件里裸写 `fetch(url, { headers: csrfHeaders({...}), body: JSON.stringify(...) })` + `res.json()` 模式。一律改用 `lib/csrf-fetch.ts` 的 `csrfFetchJson<T>(url, { method, body, headers })` → 返回 `{ ok, status, data }`（空/非 JSON 响应用 `.catch(() => ({}))` 兜底）。
-- 配置面板 UI 复用 `components/ui/ConfigModal.tsx` 原语：`ConfigModal`(外壳) / `ConfigSidebar` / `ConfigListRow`(选中+hover) / `ModalButton`(primary/secondary/danger) / `SaveButton`(带 saved-pop 勾选动画)。API 成功响应统一用 `lib/api-utils.ts` 的 `jsonOk(data, init)`。
-- 重构策略：保留各面板既有正确遮罩外壳，仅局部抽取重复逻辑（避免整体重写大体量 return 块引发视觉/行为回归）。
+### 前端共用模块约定（2026-07-13）
+- 客户端禁裸 fetch+csrfHeaders+res.json 模式，统一用 `lib/csrf-fetch.ts` 的 `csrfFetchJson<T>`（空/非 JSON 响应 `.catch(()=>({}))` 兜底）。成功响应用 `lib/api-utils.ts` 的 `jsonOk(data, init)`。
+- 配置面板复用 `components/ui/ConfigModal.tsx` 原语；重构保留既有遮罩外壳，仅局部抽取重复逻辑防回归。
+
+## 对抗性评审进度（2026-07-31）
+- 基线文档：`docs/ADVERSARIAL-REVIEW-2026-07-31.md`（S1–S10 安全 / P1–P12 性能 / L1–L23 逻辑 / A1–A3 API / B1–B3 浏览器 / C1–C3 约束）。
+- 第 1 轮自动修复（commit `2cd9c5a`，快照 `20281b4`）：C1(ModelCredentialsError 400)、A1(enhance 动态选择加开关默认 OFF)、L1(引擎终态 run 409)、L2(插件总闸关时 409)、B3(import 归位)。type-check+359 node+281 vitest 全绿。
+- 仍开放·需人工：S1(无认证/归属)、S2(CSRF 非 prod 失效)、S3(mcp-config/test 任意命令)、S4(任意包安装)、S5(扩展 symlink 加载)、P1/P2/P4(分页/缓存/去重)、P5/P6(idle 硬上限/并发 429)、L3(re-parent 绝对路径外键)、L7(SSE 断连不 abort)、L8(重复发送不幂等)、L9(fork running 直接 destroy)、L10(无归属校验)。详见 REVIEW-LOOP.md。
+- **S1 提案已产出（2026-07-31，待人工审核，未落地代码）**：OpenSpec change `openspec/changes/s1-access-gateway/`（`proposal/design/plan/tasks/.comet.yaml`）。方案要点——本地访问令牌（启动生成、明文仅给终端+`?token=`自动打开、服务端只存 sha256 哈希于 `~/.pi/agent/pi-web-auth.json` 0600）；新增 `app/middleware.ts`(Edge) 对 `/api/*` 做 Bearer/cookie/`?token=` 三源校验 + 定时安全比较；降级开关 `PI_WEB_DISABLE_AUTH=1`；dev 强制令牌（D2 取保守侧）；L10 归属校验并入 `sessions/[id]/*` 与 `files/[...path]`。依铁律未自动实现，分批次①令牌生成/②网关+客户端+启动注入/③L10 归属校验落地。
