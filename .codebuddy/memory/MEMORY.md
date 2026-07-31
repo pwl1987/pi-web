@@ -37,7 +37,8 @@
 ## 对抗性评审进度（2026-07-31）
 - 基线文档：`docs/ADVERSARIAL-REVIEW-2026-07-31.md`（S1–S10 安全 / P1–P12 性能 / L1–L23 逻辑 / A1–A3 API / B1–B3 浏览器 / C1–C3 约束）。
 - 第 1 轮自动修复（commit `2cd9c5a`，快照 `20281b4`）：C1(ModelCredentialsError 400)、A1(enhance 动态选择加开关默认 OFF)、L1(引擎终态 run 409)、L2(插件总闸关时 409)、B3(import 归位)。type-check+359 node+281 vitest 全绿。
-- 仍开放·需人工：P1/P2/P4(分页/缓存/去重)、P5/P6(idle 硬上限/并发 429)、L3(re-parent 绝对路径外键)、L8(重复发送不幂等)、L9(fork running 直接 destroy)。详见 REVIEW-LOOP.md §10。
+- 仍开放·需人工：P1/P2/P4(分页/缓存/去重)、P5/P6(idle 硬上限/并发 429)、L3(re-parent 绝对路径外键)、L8(重复发送不幂等)。详见 REVIEW-LOOP.md §10。
+- **L9 已落地（2026-07-31，commit `c0be63e2`，CI_EXIT=0）**：`lib/rpc-manager.ts` 的 `fork` 命令在 `promptRunning/isStreaming/isCompacting` 为真时先 `await withFinalRunningNotification(() => inner.abort())` 干净停止当前 run，再构建 branched session（修复前 fire-and-forget destroy 可能从不一致检查点派生）。新增 `lib/rpc-manager-lifecycle.test.ts` L9 用例（registerPiAdapter 注入缝 + 断言 abort 先于派生链 open 调用）。回滚：`git reset --hard a9ab1f6`（L9 前快照）。
 - **S2 已落地（2026-07-31，commit `a9ab1f6`，CI_EXIT=0）**：`lib/csrf.ts` 的 `validateCsrf` 从「仅 production 校验、dev 放行」改为**默认全环境开启**，新增 `PI_WEB_DISABLE_CSRF=1` 降级开关（仿 S1 `PI_WEB_DISABLE_AUTH`）。更新 `lib/csrf.test.ts`：废除 dev 无条件放行旧断言，新增降级用例。回滚：`git reset --hard 625034c`（S2/L7 前快照）。
 - **L7 已落地（2026-07-31，commit `a9ab1f6`，CI_EXIT=0）**：`app/api/agent/[id]/events/route.ts` 的 SSE `cleanup` 在客户端断连(abort)时若 `session.isRunning()` 为真则 `session.send({type:"abort"})` 停止后台工作，避免关标签页/网络断开后 AgentSession 持续烧 token。abort 幂等且受 `_alive` guard 保护。
 - **S1 已落地（2026-07-31，commit `959fbb0`，CI_EXIT=0）**：本地访问令牌网关 + L10 归属收敛（文件新-1 sessionReference 受信根收敛）。OpenSpec 提案 `openspec/changes/s1-access-gateway/`。令牌启动生成、明文仅给终端+`?token=`自动打开、服务端只存 sha256 哈希于 `~/.pi/agent/pi-web-auth.json` 0600；`app/middleware.ts`(Edge) 三源校验 + 定时安全比较 + `PI_WEB_DISABLE_AUTH=1` 降级 + `/api/health` 开放；dev 强制令牌（D2 保守侧）。回滚：`git reset --hard 9d2d3c1`（S1 前快照）。

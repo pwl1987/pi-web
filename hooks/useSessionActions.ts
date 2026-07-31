@@ -52,7 +52,13 @@ export function useSessionActions(
     async (message: string, images?: AttachedImage[]) => {
       const trimmedMessage = message.trim();
       if (!trimmedMessage && !images?.length) return;
-      if (stream.agentRunning) return;
+      // L8 修复：同步上锁，防止快速双击/连发时重复发送。
+      // 原先仅依赖 React state `stream.agentRunning` 做守卫，而 setState 是异步批处理，
+      // 在第一次 handleSend 尚未 flush 前第二次调用仍会看到 agentRunning=false，从而
+      // 两条 prompt 都被发出。改用同步 ref `agentRunningRef` 作为第一道闸门，并在通过
+      // 后立即置位，消除竞态窗口。
+      if (stream.agentRunning || streamApi.agentRunningRef.current) return;
+      streamApi.agentRunningRef.current = true;
       const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
       const promptRunId = streamApi.promptRunIdRef.current + 1;
 
@@ -73,7 +79,6 @@ export function useSessionActions(
       stream.setMessages((prev) => [...prev, userMsg]);
       streamApi.optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
       streamApi.promptRunIdRef.current = promptRunId;
-      streamApi.agentRunningRef.current = true;
       streamApi.setAgentRunning(true);
       streamApi.setAgentPhase(
         isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" },
