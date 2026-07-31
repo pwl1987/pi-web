@@ -429,6 +429,17 @@ export class AgentSessionWrapper {
 
       case "fork": {
         const entryId = command.entryId as string;
+
+        // L9 修复：若当前会话正在运行（prompt 进行中 / streaming / compaction），
+        // 必须先干净地 abort 当前 run，再派生 fork。否则旧会话的 SDK 状态与
+        // 会话文件可能停留在「进行中 run 中途」，新 fork 会从不一致的检查点
+        // 派生，导致文件状态不一致、丢失进行中 run 的边界错乱。
+        // 复用 destroy() 内的 abort 语义，但此处 await 完成再继续，确保停止彻底。
+        if (this.promptRunning || this.inner.isStreaming || this.inner.isCompacting) {
+          await this.withFinalRunningNotification(() => this.inner.abort());
+          this.promptRunning = false;
+        }
+
         const sessionManager = this.inner.sessionManager;
         const currentSessionFile = this.inner.sessionFile;
 

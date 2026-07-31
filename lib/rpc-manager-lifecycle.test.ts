@@ -15,8 +15,48 @@
  */
 import type { AgentSessionLike } from "./pi-types";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { PiSdkPort } from "./pi-ports";
+
+// 绕开 createDefaultExtensionTheme 对真实 SDK 的 Theme 构造依赖（test 环境
+// 下 pi.Theme 不可构造）。返回最小 fake theme，wrapper 仅存储该字段，测试不校验。
+vi.mock("./extension-theme", () => ({
+  createDefaultExtensionTheme: () => ({
+    name: "fake",
+    fg: {},
+    bg: {},
+    format: () => "",
+  }),
+}));
 
 const { AgentSessionWrapper } = await import("./rpc-manager");
+const { registerPiAdapter } = await import("./pi");
+
+// L9 测试需要 fork 内部调用的 getPiAdapter().SessionManager 链可控。
+// 通过现成的 registerPiAdapter 注入缝注册 fake adapter（不 mock ./pi 模块本身，
+// 避免破坏 createDefaultExtensionTheme 对 pi.Theme 的真实构造）。记录 create/open
+// 调用顺序以验证 fork 在 running 时会先 await abort 再派生分支。
+const forkSequence: string[] = [];
+const fakeAdapter = {
+  agentDir: "/tmp",
+  SessionManager: {
+    create: (_cwd: unknown, _sessionDir: unknown) => {
+      forkSequence.push("create");
+      return {
+        newSession: () => ({}),
+        getSessionFile: () => "/tmp/new-session.jsonl",
+      };
+    },
+    open: (file: unknown, _sessionDir: unknown) => {
+      forkSequence.push("open:" + String(file));
+      return {
+        getEntry: () => ({}),
+        createBranchedSession: () => "/tmp/new-session.jsonl",
+        getSessionFile: () => String(file),
+        getSessionId: () => "new-session-id",
+      };
+    },
+  },
+};
 
 /** Build a minimal fake inner satisfying the AgentSessionLike fields we use. */
 function makeFakeInner(overrides: Partial<Record<string, unknown>> = {}) {
@@ -61,6 +101,7 @@ function makeFakeInner(overrides: Partial<Record<string, unknown>> = {}) {
       prompt: vi.fn(async () => {}),
       abort: vi.fn(async () => {
         abortCalls += 1;
+        forkSequence.push("abort");
       }),
       reload: vi.fn(async () => {}),
       setModel: vi.fn(async () => {}),
@@ -165,5 +206,54 @@ describe("AgentSessionWrapper lifecycle (ST1)", () => {
     await vi.advanceTimersByTimeAsync(1_500);
     expect(wrapper.isAlive()).toBe(false);
     expect(onDestroy).toHaveBeenCalled();
+  });
+
+  it("L9: fork while running awaits abort before creating the branched session", async () => {
+    forkSequence.length = 0;
+    // 通过 registerPiAdapter 注入缝注册可控 adapter（仅覆盖 fork 所需的
+    // SessionManager 链），不影响其他真实 ./pi 符号。
+    const prevAdapter = (globalThis as Record<string, unknown>).__piSdkAdapter;
+    registerPiAdapter(fakeAdapter as unknown as PiSdkPort);
+
+    const { inner, getAbortCalls } = makeFakeInner({
+      isStreaming: true,
+      sessionManager: {
+        isPersisted: () => true,
+        getEntry: () => ({ parentId: "parent-1" }),
+        getSessionDir: () => "/tmp",
+        getCwd: () => "/tmp",
+      },
+    });
+    const wrapper = new AgentSessionWrapper(inner, { idleTimeoutMs: 60_000 });
+    wrapper.start();
+
+    // 会话正在运行：inner.prompt 永不 resolve 且 inner.isStreaming 为 true。
+    inner.prompt = vi.fn(() => new Promise<void>(() => {}));
+    await wrapper.send({ type: "prompt", message: "hi" });
+    expect(wrapper.isRunning()).toBe(true);
+
+    // fork 正在运行中的会话。
+    const result = await wrapper.send({ type: "fork", entryId: "entry-1" });
+
+    // 修复前：fork 直接 this.destroy()（fire-and-forget abort）再建分支，
+    // abort 可能尚未完成便派生，导致从不一致检查点 fork。
+    // 修复后：fork 前 await 干净 abort，abort 必须先于 SessionManager 链任何调用。
+    // fake 的 open/create 是同步 push，而 abort 是 await 的，故若 abort 先完成，
+    // 序列中 "abort" 必排在 "open:" 派生调用之前。
+    expect(getAbortCalls()).toBe(1);
+    expect(forkSequence).toContain("abort");
+    expect(forkSequence).toContain("open:/tmp/test.jsonl");
+    expect(forkSequence).toContain("open:/tmp/new-session.jsonl");
+    // 核心 L9 行为：abort 必须先于任何派生链调用发生。
+    expect(forkSequence.indexOf("abort")).toBeLessThan(
+      forkSequence.indexOf("open:/tmp/test.jsonl"),
+    );
+
+    // 新会话已派生，原 wrapper 已销毁、不再 running。
+    expect(result).toMatchObject({ newSessionId: "new-session-id" });
+    expect(wrapper.isAlive()).toBe(false);
+
+    // 还原 adapter，避免污染其他测试。
+    (globalThis as Record<string, unknown>).__piSdkAdapter = prevAdapter;
   });
 });
