@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { isPackageNameSafe } from "@/lib/skill-pkg-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,13 @@ export async function POST(req: Request) {
     if (parseError) return parseError;
     const { package: pkg, scope, cwd } = body;
     if (!pkg?.trim()) return errorResponse("package required", 400);
+    const trimmedPkg = pkg.trim();
+    if (!isPackageNameSafe(trimmedPkg)) {
+      return errorResponse("invalid package name", 400);
+    }
 
     const isGlobal = scope !== "project";
-    const args = ["skills", "add", pkg.trim(), "-y", "--agent", "pi"];
+    const args = ["skills", "add", "--ignore-scripts", trimmedPkg, "-y", "--agent", "pi"];
     if (isGlobal) args.push("-g");
 
     console.warn(`[skills/install] running: npx ${args.join(" ")}`);

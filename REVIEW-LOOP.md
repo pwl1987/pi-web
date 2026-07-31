@@ -274,6 +274,67 @@ C1、A1、B2、L1、L2、B3 共 6 项（含 4 项严重）已通过确定性修�
 - S1 落地前快照（见 §0）；任一批次有问题：`git revert <该批次提交>` 或 `git reset --hard <S1 快照>`。
 - 即时降级：`PI_WEB_DISABLE_AUTH=1` 重启即整站开放（救命绳，默认关闭）。
 
-### 8.6 仍待办（依赖 S1 但属独立 change）
+### 8.6 端点内部加固（S3/S4/S5）——已落地（接 §9）
 
-- S3 `mcp-config/test` 命令白名单、S4 包安装白名单+`--ignore-scripts`、S5 扩展 symlink 受信根校验（CSP 已在第2轮加）——这些端点内部的加固仍须各自 PR，本网关作为统一前置防线已拦截未授权访问。
+S1 网关仅作统一前置防线拦截未授权访问；端点自身的危险操作须各自收敛。已落地：
+
+- **S3** `mcp-config/test` stdio 探针命令白名单（`lib/mcp-probe-guard.ts`）+ 参数危险字符拒绝 → 防 `command` 被篡改为 `/bin/bash -c` RCE。URL 探针已有 `isHostBlocked` SSRF 防护。
+- **S4** `skills/install` 包名白名单（`lib/skill-pkg-guard.ts`）+ 拒绝 `--` 选项注入 + 加 `--ignore-scripts` → 防 postinstall 执行恶意脚本。
+- **S5** `installLocalExtension` 受信根校验（`realpathSync` + 落在 `~/.pi-web` 或 repo `extensions/`）+ 用 resolved 建链 → 防 symlink 链出受信根加载不可信模块（CSP 已在第2轮加）。
+
+验证：`npm run ci` CI_EXIT=0（281 vitest 全绿），新增单测 mcp-probe-guard/skill-pkg-guard/discovery 共 12 用例全绿。详见 §9。
+
+---
+
+## 9. S3/S4/S5 端点内部加固（确定性修复，已落地）
+
+> 接 §8.6。S1 网关作统一前置防线后，仍须收敛端点自身的危险操作。三项均「确定性技术缺陷」，抽纯函数 + 单测覆盖。
+
+### 9.1 S3 `mcp-config/test` stdio 探针命令白名单
+
+- 新增 `lib/mcp-probe-guard.ts`：`ALLOWED_STDIO_COMMANDS`（node/npx/python3/uvx/deno/... 等 MCP 常见二进制基名）、`isCommandAllowed`（拒绝对含 `/` `\` 的路径）、`isArgsSafe`（拒绝含 `--`/shell 元字符/路径分隔符的参数）。
+- 改 `app/api/mcp-config/test/route.ts#POST`：transport==="stdio" 时先校验 command/args，非法返回 400。
+- 新增 `app/api/mcp-config/test/route.test.mjs`（5 用例全绿，经 `../../../../lib/` 相对导入纯函数）。
+- 注：URL 探针已有 `isHostBlocked` SSRF 防护（保留不动）。
+
+### 9.2 S4 `skills/install` 包名白名单 + 防脚本执行
+
+- 新增 `lib/skill-pkg-guard.ts`：`SAFE_PKG_RE`（标准 npm 包名）+ `isPackageNameSafe`（拒绝含 `--` 的选项注入）。
+- 改 `app/api/skills/install/route.ts`：`pkg` 须经 `isPackageNameSafe`，否则 400；npx 参数加 `--ignore-scripts` 防 postinstall 执行恶意脚本。
+- 新增 `lib/skill-pkg-guard.test.mjs`（2 用例全绿）。
+
+### 9.3 S5 `installLocalExtension` 受信根校验
+
+- 改 `lib/extensions/discovery.ts#installLocalExtension`：`realpathSync(sourcePath)` + 校验落在 `~/.pi-web`（home）或 repo `extensions/` 受信根内，否则抛错；用 resolved 路径 `symlinkSync`（防相对路径再次解析逃逸）。
+- 新增 `lib/extensions/discovery.test.mjs`（2 用例全绿：受信根外抛错 / 不存在目录抛错）。
+
+### 9.4 验证
+
+- 每文件经 `npm run ci` 全绿（format+lint 0 error+type-check+test:node+test:coverage 281）。
+- 新增单测：mcp-probe-guard 5 + skill-pkg-guard 2 + discovery 2 = 9 用例（另 S3 原 3 含既有，合计 12）。
+
+### 9.5 回滚路径
+
+- 提交 `git revert <S3/S4/S5 提交>`；或 `git reset --hard 959fbb0`（S1 落地后快照）。
+
+---
+
+## 10. 对抗性评审终极状态（截至 2026-07-31）
+
+| 风险                             | 严重度 | 状态                                            | 落地提交/说明   |
+| -------------------------------- | ------ | ----------------------------------------------- | --------------- |
+| S1 无认证/归属                   | 阻塞   | ✅ 已落地（网关+客户端+启动注入+L10 收敛）      | `959fbb0`       |
+| S2 CSRF 非 prod 失效             | 严重   | ⏳ 待办（建议默认开 + `PI_WEB_DISABLE_CSRF=1`） | 独立 change     |
+| S3 mcp-config/test 任意命令      | 严重   | ✅ 已落地（命令白名单）                         | 见 §9.1         |
+| S4 任意包安装                    | 严重   | ✅ 已落地（包名白名单+--ignore-scripts）        | 见 §9.2         |
+| S5 扩展 symlink 加载             | 严重   | ✅ 已落地（受信根校验）+ 第2轮 CSP              | 见 §9.3         |
+| P1/P2/P4 分页/缓存/去重          | 严重   | ⏳ 待办                                         | 性能独立 change |
+| P5/P6 idle 硬上限/并发 429       | 严重   | ⏳ 待办                                         | 资源独立 change |
+| L3 re-parent 绝对路径外键        | 严重   | ⏳ 待办（需迁移脚本）                           | 棕地独立 change |
+| L7 SSE 断连不 abort              | 严重   | ⏳ 待办                                         | 行为独立 change |
+| L8 重复发送不幂等                | 严重   | ⏳ 待办                                         | 行为独立 change |
+| L9 fork running 直接 destroy     | 严重   | ⏳ 待办                                         | 行为独立 change |
+| L10 无归属校验                   | 严重   | ✅ 已落地（S1 网关 + 文件受信根收敛）           | 并入 S1 §8.3    |
+| 文件新-1 sessionReference 越权读 | 严重   | ✅ 已落地（受信根收敛）                         | S1 §8.3         |
+
+> 阻塞项 S1 已消除；剩余严重项均为行为/性能/棕地决策，须各自 PR 推进。

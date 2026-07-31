@@ -3,6 +3,7 @@ import { execFile } from "child_process";
 import { validateCsrf } from "@/lib/csrf";
 import { safeJsonBody } from "@/lib/api-utils";
 import { isHostBlocked } from "@/lib/net-private";
+import { isCommandAllowed, isArgsSafe } from "@/lib/mcp-probe-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,16 @@ export async function POST(req: Request) {
   const transport = body.transport;
   if (transport !== "stdio" && transport !== "url") {
     return NextResponse.json({ error: "transport must be stdio or url" }, { status: 400 });
+  }
+
+  // S3 加固：stdio 探针命令/参数白名单校验
+  if (transport === "stdio") {
+    if (!isCommandAllowed(body.command ?? "")) {
+      return NextResponse.json({ error: "command not allowed" }, { status: 400 });
+    }
+    if (!isArgsSafe(body.args)) {
+      return NextResponse.json({ error: "args contain unsafe characters" }, { status: 400 });
+    }
   }
 
   try {

@@ -19,7 +19,9 @@ import {
   mkdirSync,
   symlinkSync,
   rmSync,
+  realpathSync,
 } from "fs";
+import { homedir } from "os";
 import { join, resolve, relative, isAbsolute } from "path";
 import type {
   ExtensionManifest,
@@ -246,8 +248,33 @@ export function listExtensionsWithState(): ExtensionListEntry[] {
 
 /** Install a local extension by creating a symlink in ~/.pi-web/extensions/. */
 export function installLocalExtension(sourcePath: string): { id: string; name?: string } {
+  // S5 加固：安装前校验 sourcePath 落在受信根内，且为真实目录（非越界 symlink 链出）。
+  // 受信根：用户 home 下的 ~/.pi-web 与仓库内置 extensions/。
+  const resolved = (() => {
+    try {
+      return realpathSync(sourcePath);
+    } catch {
+      return null;
+    }
+  })();
+  if (!resolved) throw new Error("Source directory does not exist");
+  const trustedRoots = [join(homedir(), ".pi-web"), resolve(process.cwd(), "extensions")];
+  const within = trustedRoots.some((root) => {
+    const r = (() => {
+      try {
+        return realpathSync(root);
+      } catch {
+        return root;
+      }
+    })();
+    return resolved === r || resolved.startsWith(r + "/") || resolved.startsWith(r + "\\");
+  });
+  if (!within) {
+    throw new Error("Source directory must be within the trusted extensions root");
+  }
+
   // Validate source has package.json with piWeb.extensions
-  const pkgPath = join(sourcePath, "package.json");
+  const pkgPath = join(resolved, "package.json");
   if (!existsSync(pkgPath)) throw new Error("Source directory must contain package.json");
   const entries = parseExtensionEntries(pkgPath);
   if (entries.length === 0) throw new Error("package.json must declare piWeb.extensions");
@@ -264,7 +291,7 @@ export function installLocalExtension(sourcePath: string): { id: string; name?: 
       /* not present */
     }
 
-    symlinkSync(sourcePath, targetDir);
+    symlinkSync(resolved, targetDir);
     results.id = entry.id;
   }
 
