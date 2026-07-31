@@ -18,7 +18,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     try {
       ({ session } = await startRpcSession(id, filePath, cwd));
     } catch (error) {
-      return new Response(`Failed to start agent: ${error}`, { status: 500 });
+      // P6：并发超限时返回 429（SSE 路由保持纯文本风格）。
+      const status =
+        error instanceof Error && "statusCode" in error
+          ? (error as { statusCode?: number }).statusCode
+          : undefined;
+      return new Response(`Failed to start agent: ${error}`, {
+        status: typeof status === "number" ? status : 500,
+      });
     }
   }
 

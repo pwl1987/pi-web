@@ -47,6 +47,15 @@ export function getRunningRpcSessionIds(): string[] {
   return [...ids];
 }
 
+/** 当前注册表中存活（_alive）的会话数。用于 P6 并发上限信号量。 */
+export function countAliveSessions(): number {
+  let n = 0;
+  for (const session of getRegistry().values()) {
+    if (session.isAlive()) n += 1;
+  }
+  return n;
+}
+
 // Running-status broadcaster — pushes the current set of running session ids
 // to subscribers whenever the set changes. Listeners live on globalThis so
 // they survive Next.js hot-reload.

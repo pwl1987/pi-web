@@ -256,4 +256,63 @@ describe("AgentSessionWrapper lifecycle (ST1)", () => {
     // 还原 adapter，避免污染其他测试。
     (globalThis as Record<string, unknown>).__piSdkAdapter = prevAdapter;
   });
+
+  it("P5: hard idle limit destroys the wrapper even while a prompt is running", async () => {
+    const { inner } = makeFakeInner({ isStreaming: true });
+    // 注入极短硬上限（100ms），普通 idleTimeoutMs 设长（不触发普通超时）。
+    const wrapper = new AgentSessionWrapper(inner, {
+      idleTimeoutMs: 60_000,
+      hardIdleMaxMs: 100,
+    });
+    wrapper.start();
+
+    // 会话运行中（prompt 永不 resolve，isStreaming 为真），普通 idle 计时器会
+    // 因 promptRunning 无限重排而不 destroy。
+    inner.prompt = vi.fn(() => new Promise<void>(() => {}));
+    await wrapper.send({ type: "prompt", message: "hi" });
+    expect(wrapper.isRunning()).toBe(true);
+
+    // 硬上限 timer 必须兜底销毁，无论是否 running。
+    await vi.advanceTimersByTimeAsync(200);
+    expect(wrapper.isAlive()).toBe(false);
+  });
+
+  it("P6: startRpcSession rejects with SessionLimitError (429) when concurrency limit exceeded", async () => {
+    const { getRegistry } = await import("./session-registry");
+    const { SessionLimitError, startRpcSession } = await import("./rpc-manager");
+    const { registerPiAdapter } = await import("./pi");
+
+    // 注入 MAX 个存活 fake wrapper 占满并发配额。
+    const registry = getRegistry();
+    const prevIds = [...registry.keys()];
+    for (const k of prevIds) registry.delete(k); // 隔离其他用例残留
+    const prevAdapter = (globalThis as Record<string, unknown>).__piSdkAdapter;
+    registerPiAdapter(fakeAdapter as unknown as PiSdkPort);
+
+    const fakeAlive = {
+      sessionId: "",
+      isAlive: () => true,
+      isRunning: () => false,
+      destroy: () => {},
+    };
+    for (let i = 0; i < 8; i += 1) {
+      registry.set(`p6-idle-${i}`, fakeAlive);
+    }
+
+    let thrown: unknown = null;
+    try {
+      await startRpcSession("p6-new", "", "/tmp", undefined);
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeInstanceOf(SessionLimitError);
+    expect((thrown as InstanceType<typeof SessionLimitError>).statusCode).toBe(429);
+    // 超限时不应新建会话（p6-new 不应进入 registry）。
+    expect(registry.has("p6-new")).toBe(false);
+
+    // 还原，避免污染其他测试。
+    for (let i = 0; i < 8; i += 1) registry.delete(`p6-idle-${i}`);
+    (globalThis as Record<string, unknown>).__piSdkAdapter = prevAdapter;
+  });
 });

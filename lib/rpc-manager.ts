@@ -4,7 +4,7 @@ import { getPiAdapter } from "./pi";
 import { createDefaultExtensionTheme } from "./extension-theme";
 import { cacheSessionPath, resolveSessionPath, getSessionHeaderCached } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
-import { getRegistry, getLocks, notifyRunningChange } from "./session-registry";
+import { getRegistry, getLocks, notifyRunningChange, countAliveSessions } from "./session-registry";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type { SlashCommandInfo } from "./pi";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
@@ -72,9 +72,17 @@ type ExtensionBindingOptions = {
  */
 export interface AgentSessionWrapperOptions {
   idleTimeoutMs?: number;
+  /** P5：idle 硬上限覆盖（测试可缩短），默认 HARD_IDLE_MAX_MS。 */
+  hardIdleMaxMs?: number;
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+// P5：idle 硬上限。handleIdleTimeout 在 prompt 运行时无限重排 idle timer，
+// 永不回收；若 prompt 卡死/死循环，wrapper 永不销毁导致资源泄漏。硬上限 timer
+// 无论是否 running 都会兜底 destroy，作为最后防线。12h 默认，可由
+// PI_WEB_HARD_IDLE_MAX_MS 覆盖（人工拍板容量）。
+const HARD_IDLE_MAX_MS = Number(process.env.PI_WEB_HARD_IDLE_MAX_MS ?? 12 * 60 * 60 * 1000);
 
 const CODING_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
@@ -109,9 +117,12 @@ export class AgentSessionWrapper {
   private forceEmptySystemPrompt = false;
   private unsubscribe: (() => void) | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private hardLimitTimer: ReturnType<typeof setTimeout> | null = null;
+  private createdAt = Date.now();
   private onDestroyCallback: (() => void) | null = null;
   private _alive = true;
   private readonly idleTimeoutMs: number;
+  private readonly hardIdleMaxMs: number;
   private readonly defaultExtensionTheme: ReturnType<typeof createDefaultExtensionTheme>;
 
   readonly inner: AgentSessionLike;
@@ -119,6 +130,7 @@ export class AgentSessionWrapper {
   constructor(inner: AgentSessionLike, options?: AgentSessionWrapperOptions) {
     this.inner = inner;
     this.idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.hardIdleMaxMs = options?.hardIdleMaxMs ?? HARD_IDLE_MAX_MS;
     // Extensions written for pi's TUI assume the `theme` argument to
     // `ctx.ui.custom((tui, theme, …) => …)` is a real Theme instance.
     // Without one, `theme.bold(text)` etc. crash inside the extension's
@@ -189,6 +201,12 @@ export class AgentSessionWrapper {
       notifyRunningChange();
     });
     this.resetIdleTimer();
+    // P5：idle 硬上限兜底。即使 prompt 卡死导致 handleIdleTimeout 无限重排，
+    // 此 timer 也会在 HARD_IDLE_MAX_MS 后无条件 destroy，防止 wrapper 永不回收。
+    if (this.hardLimitTimer) clearTimeout(this.hardLimitTimer);
+    this.hardLimitTimer = setTimeout(() => {
+      if (this._alive) this.destroy();
+    }, this.hardIdleMaxMs);
     notifyRunningChange();
   }
 
@@ -645,6 +663,8 @@ export class AgentSessionWrapper {
     if (!this._alive) return;
     this._alive = false;
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.hardLimitTimer) clearTimeout(this.hardLimitTimer);
+    this.hardLimitTimer = null;
     this.unsubscribe?.();
     // Abort an in-flight prompt so the inner SDK stops work on a session the
     // web client has torn down. Fire-and-forget: the prompt's .then/.catch
@@ -1007,6 +1027,24 @@ export class AgentSessionWrapper {
 // ============================================================================
 // Session registry (extracted to session-registry.ts for testability)
 // ============================================================================
+
+// P6：并发上限信号量。进程内常驻的完整 AgentSession 内存/CPU 开销大，无上限时
+// 攻击者枚举不同 id 并发 startRpcSession 可耗尽资源（OOM/外部 LLM 配额打满）。
+// 默认 8 并发，可由 PI_WEB_MAX_CONCURRENT_SESSIONS 覆盖；PI_WEB_DISABLE_CONCURRENCY_LIMIT=1
+// 降级关闭（仿 S1/S2，防本地联调误伤）。超额时抛 SessionLimitError（statusCode=429）。
+const MAX_CONCURRENT_SESSIONS = Number(process.env.PI_WEB_MAX_CONCURRENT_SESSIONS ?? 8);
+const CONCURRENCY_LIMIT_ENABLED = process.env.PI_WEB_DISABLE_CONCURRENCY_LIMIT !== "1";
+
+/** P6：并发超限错误，路由层 errorResponse 识别 statusCode 返回 429。 */
+export class SessionLimitError extends Error {
+  readonly statusCode = 429;
+  constructor(
+    message = `Too many concurrent sessions (max ${MAX_CONCURRENT_SESSIONS}); retry later`,
+  ) {
+    super(message);
+    this.name = "SessionLimitError";
+  }
+}
 // getRegistry, getLocks, getRpcSession, subscribeRunningSessions,
 // notifyRunningChange are imported from ./session-registry.
 // AgentSessionWrapper satisfies SessionHandle structurally.
@@ -1057,6 +1095,14 @@ export async function startRpcSession(
 
   const inflight = locks.get(sessionId);
   if (inflight) return inflight as Promise<{ session: AgentSessionWrapper; realSessionId: string }>;
+
+  // P6：并发上限信号量。existing/inflight 已命中则上方早退（复用不计入新增并发）；
+  // 到此处说明确需新建会话，检查当前存活会话数。注意：此检查在 starting IIFE
+  // 执行前同步进行，避免昂贵的 createAgentSessionServices 已完成才拒绝。
+  // 降级开关 PI_WEB_DISABLE_CONCURRENCY_LIMIT=1 时跳过（本地联调/受信环境）。
+  if (CONCURRENCY_LIMIT_ENABLED && countAliveSessions() >= MAX_CONCURRENT_SESSIONS) {
+    throw new SessionLimitError();
+  }
 
   const starting = (async () => {
     const agentDir = getPiAdapter().agentDir;

@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
  *  In production, returns a generic message; in dev, includes the real error.
  *  Prevents internal error details from leaking to clients. */
 export function errorResponse(error: unknown, status = 500): NextResponse {
+  // P6：识别带 statusCode 的错误（如 SessionLimitError=429），让路由自动返回正确状态码。
+  if (error instanceof Error && "statusCode" in error) {
+    const code = (error as { statusCode?: number }).statusCode;
+    if (typeof code === "number" && code >= 400 && code < 600) status = code;
+  }
   const message =
     process.env.NODE_ENV === "development"
       ? error instanceof Error
