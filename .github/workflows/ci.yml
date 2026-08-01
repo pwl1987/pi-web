@@ -28,9 +28,25 @@ jobs:
       - name: TypeScript type-check
         run: npm run type-check
 
+  build:
+    name: Build (ubuntu-latest)
+    needs: quality
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Next.js build
+        run: npm run build
+
   test:
     name: Test & Coverage (${{ matrix.runner }})
-    needs: quality
+    needs: build
     strategy:
       fail-fast: false
       matrix:

@@ -425,19 +425,20 @@ pi-web 把 [autoplan](https://github.com/lyming99/autoplan)（自动计划生成
 
 ## 文档索引（`docs/`）
 
-| 文档                                  | 主题                                           |
-| ------------------------------------- | ---------------------------------------------- |
-| `ARCHITECTURE-ANALYSIS.md`            | 主架构分析                                     |
-| `ARCHITECTURE-DECOUPLING.md`          | Pi SDK 解耦（`PiSdkPort`）                     |
-| `component-splitting-strategy.md`     | 组件拆分策略                                   |
-| `plugin-and-sessiond-design.md`       | 插件与 sessiond 设计                           |
-| `release.md`                          | Release Checklist（preflight → npm publish）   |
-| `remote-access.zh-CN.md`              | 远程访问                                       |
-| `worktrees.md` / `worktrees.zh-CN.md` | Worktree 行为详解                              |
-| `VENDOR-INTEGRATION.md`               | autoplan/comet 解耦·融合·更新机制              |
-| `vendor-autoplan.md`                  | autoplan 源码级分析（纯 Node 核心 + Electron） |
-| `vendor-comet.md`                     | comet 源码级分析（.mjs CLI + YAML 状态机）     |
-| `plans/`                              | 方案存档目录（按 `<task-slug>.md` 命名）       |
+| 文档                                  | 主题                                                           |
+| ------------------------------------- | -------------------------------------------------------------- |
+| `ARCHITECTURE-ANALYSIS.md`            | 主架构分析                                                     |
+| `ARCHITECTURE-DECOUPLING.md`          | Pi SDK 解耦（`PiSdkPort`）                                     |
+| `component-splitting-strategy.md`     | 组件拆分策略                                                   |
+| `plugin-and-sessiond-design.md`       | 插件与 sessiond 设计                                           |
+| `release.md`                          | Release Checklist（preflight → npm publish）                   |
+| `remote-access.zh-CN.md`              | 远程访问                                                       |
+| `worktrees.md` / `worktrees.zh-CN.md` | Worktree 行为详解                                              |
+| `VENDOR-INTEGRATION.md`               | autoplan/comet 解耦·融合·更新机制                              |
+| `vendor-autoplan.md`                  | autoplan 源码级分析（纯 Node 核心 + Electron）                 |
+| `vendor-comet.md`                     | comet 源码级分析（.mjs CLI + YAML 状态机）                     |
+| `plans/`                              | 方案存档目录（按 `<task-slug>.md` 命名）                       |
+| `PIPELINE-POLICY.md`                  | 合并纪律红线（管线铁律 / 风险分级 LGTM / 契约测试 / 紧急熔断） |
 
 ### 方案保存位置（Plan 讨论模式 · 确认产物）
 
