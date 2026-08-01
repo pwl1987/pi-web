@@ -259,6 +259,7 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
   playDoneSoundRef.current = playDoneSound;
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
+  const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback(() => {
     if (soundEnabledRef.current) {
       playDoneSoundRef.current();
@@ -336,6 +337,12 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     onSystemPromptChange,
     onSessionStatsPanelOpen,
   });
+
+  useEffect(() => {
+    if (!extensionDialog || soundedExtensionDialogIdRef.current === extensionDialog.id) return;
+    soundedExtensionDialogIdRef.current = extensionDialog.id;
+    playDoneSoundRef.current();
+  }, [extensionDialog]);
 
   // ── Search state ──────────────────────────────────────────────────────
   const [searchActive, setSearchActive] = useState(false);

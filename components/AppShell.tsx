@@ -37,6 +37,14 @@ import { useI18n } from "@/hooks/useI18n";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useExtensions } from "@/hooks/useExtensions";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { useResizablePanel } from "@/hooks/useResizablePanel";
+import {
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  getSidebarMaxWidth,
+} from "@/lib/panel-layout";
+import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useAgentRuntime } from "@/lib/agent-runtime-store";
 import {
   usePlanMode,
@@ -66,6 +74,7 @@ export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
+  useViewportHeight();
   const { locale, t } = useI18n();
   const { getActions, getActionDisabledReason, getWorkspacePanels, extensions } = useExtensions();
   const { configured: configuredProviders, loading: providersLoading } = useConfiguredProviders();
@@ -107,6 +116,22 @@ export function AppShell() {
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = usePersistentState<boolean>("sidebar-open", true);
+  const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
+  const {
+    panelRef: sidebarPanelRef,
+    separatorProps: sidebarSeparatorProps,
+    isResizing: sidebarResizing,
+  } = useResizablePanel({
+    ariaLabel: t("sidebar.resizeHandle"),
+    cssVariable: "--sidebar-width",
+    defaultWidth: SIDEBAR_DEFAULT_WIDTH,
+    getMaxWidth: () => getSidebarMaxWidth({ viewportWidth: window.innerWidth }),
+    growthDirection: "right",
+    maxWidth: SIDEBAR_MAX_WIDTH,
+    minWidth: SIDEBAR_MIN_WIDTH,
+    storageKey: "pi-web:sidebar-width",
+    widthRef: sidebarWidthRef,
+  });
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
@@ -743,7 +768,12 @@ export function AppShell() {
   return (
     <>
       <div
-        style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "var(--bg)" }}
+        style={{
+          display: "flex",
+          height: "var(--app-viewport-height, 100dvh)",
+          overflow: "hidden",
+          background: "var(--bg)",
+        }}
       >
         {/* Mobile overlay backdrop */}
         <div
@@ -764,7 +794,8 @@ export function AppShell() {
 
         {/* Left sidebar */}
         <div
-          className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
+          ref={sidebarPanelRef}
+          className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizing ? " sidebar-resizing" : ""}`}
           style={{
             background: "var(--bg-panel)",
             borderRight: "1px solid var(--border)",
@@ -776,6 +807,13 @@ export function AppShell() {
         >
           {sidebarContent}
         </div>
+
+        {!isMobile && sidebarOpen && (
+          <div
+            className={`panel-resize-handle${sidebarResizing ? " is-resizing" : ""}`}
+            {...sidebarSeparatorProps}
+          />
+        )}
 
         {/* Center: chat */}
         <div

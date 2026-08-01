@@ -133,6 +133,16 @@ const nextConfig: NextConfig = {
       headers: [{ key: "Cache-Control", value: "private, no-cache, max-age=0, must-revalidate" }],
     });
 
+    // Service worker + manifest must not be cached so updates ship promptly
+    result.push({
+      source: "/sw.js",
+      headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+    });
+    result.push({
+      source: "/manifest.webmanifest",
+      headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+    });
+
     // Security headers
     // CSP rationale: pi-web is a local-only tool bound to localhost:30141.
     // Next.js App Router requires inline scripts for its bootstrap process

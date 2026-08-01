@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Noto_Sans_Mono } from "next/font/google";
 import { ThemeLangInit } from "@/components/ThemeLangInit";
+import { PwaRegistration } from "@/components/PwaRegistration";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -16,6 +17,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#1a1a1a" },
@@ -25,6 +28,18 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Pi Agent Web",
   description: "Pi Coding Agent Web Interface",
+  applicationName: "Pi Agent Web",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Pi Agent Web",
+  },
+  formatDetection: { telephone: false },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -52,6 +67,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       >
         <ThemeLangInit />
         {children}
+        <PwaRegistration />
       </body>
     </html>
   );

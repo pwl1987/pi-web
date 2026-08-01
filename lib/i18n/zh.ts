@@ -415,6 +415,9 @@ export const zh = {
   "sidebar.create": "创建",
   "sidebar.force": "强制",
   "sidebar.forceRemoveConfirm": "有未提交的更改。强制移除检出?",
+  "sidebar.filterWorktrees": "筛选工作树…",
+  "sidebar.noMatchingWorktrees": "没有匹配的工作树",
+  "sidebar.resizeHandle": "调整侧栏宽度",
   // 会话列表
   "sidebar.loading": "加载中...",
   "sidebar.noSessions": "未找到会话",

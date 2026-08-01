@@ -417,6 +417,9 @@ export const en = {
   "sidebar.create": "Create",
   "sidebar.force": "Force",
   "sidebar.forceRemoveConfirm": "Uncommitted changes. Force remove checkout?",
+  "sidebar.filterWorktrees": "Filter worktrees…",
+  "sidebar.noMatchingWorktrees": "No matching worktrees",
+  "sidebar.resizeHandle": "Resize sidebar",
   // Session list
   "sidebar.loading": "Loading...",
   "sidebar.noSessions": "No sessions found",
