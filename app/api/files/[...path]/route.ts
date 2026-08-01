@@ -20,6 +20,12 @@ import {
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
 import { errorResponse } from "@/lib/api-utils";
 import { IGNORED_NAMES, IGNORED_SUFFIXES, getAttachmentDisposition } from "@/lib/api-shared";
+import {
+  getCachedFileList,
+  setCachedFileList,
+  getCachedFileMeta,
+  setCachedFileMeta,
+} from "@/lib/file-cache";
 
 const FILE_REQUEST_TYPES = ["list", "read", "download", "meta", "preview", "watch"] as const;
 type FileRequestType = (typeof FILE_REQUEST_TYPES)[number];
@@ -349,15 +355,20 @@ export async function GET(
       if (!stat.isFile()) {
         return NextResponse.json({ error: "Not a file" }, { status: 400 });
       }
+      // P4：元信息短 TTL + mtime 校验缓存，避免重复 statSync。
+      const metaHit = getCachedFileMeta(filePath, stat.mtimeMs);
+      if (metaHit) return NextResponse.json(metaHit);
       const imageMime = getImageMime(filePath);
       const audioMime = getAudioMime(filePath);
       const documentMime = getDocumentMime(filePath);
-      return NextResponse.json({
+      const payload = {
         size: stat.size,
         language: getLanguage(filePath),
         mime: imageMime || audioMime || documentMime || "text/plain",
         previewKind: documentPreviewKind(filePath),
-      });
+      };
+      setCachedFileMeta(filePath, stat.mtimeMs, payload);
+      return NextResponse.json(payload);
     }
 
     if (type === "preview") {
@@ -456,6 +467,12 @@ export async function GET(
       return NextResponse.json({ error: "Not a directory" }, { status: 400 });
     }
 
+    // P4：目录列表短 TTL + mtime 校验缓存，避免重复 readdirSync 重扫。
+    const listHit = getCachedFileList(filePath, stat.mtimeMs);
+    if (listHit) {
+      return NextResponse.json({ entries: listHit, path: filePath });
+    }
+
     const names = fs.readdirSync(filePath);
     const entries = names
       .filter((name) => !IGNORED_NAMES.has(name) && !IGNORED_SUFFIXES.some((s) => name.endsWith(s)))
@@ -479,6 +496,9 @@ export async function GET(
         if (a!.isDir !== b!.isDir) return a!.isDir ? -1 : 1;
         return a!.name.localeCompare(b!.name);
       });
+
+    // P4：写入目录列表缓存（带 mtime 校验，下次内容变化即失效）。
+    setCachedFileList(filePath, stat.mtimeMs, entries);
 
     return NextResponse.json({ entries, path: filePath });
   } catch (error) {
