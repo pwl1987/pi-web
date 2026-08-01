@@ -108,9 +108,9 @@
 ### 本仓库已落地状态（2026-08-01，solo 开发）
 
 - GitHub `pwl1987/pi-web` 的 `main` 分支已开启分支保护（经 `gh api` 写入）：
-  - `required_status_checks.strict=true`，强制 `Lint, Format, Type-Check` 与 `Test & Coverage (ubuntu-latest)` 两个 CI check 通过；
+  - `required_status_checks.strict=true`，强制三个 CI check 通过：`Lint, Format, Type-Check` / `Build (ubuntu-latest)` / `Test & Coverage (ubuntu-latest)`；
   - `enforce_admins=true`（owner 亦不可绕过）；
-  - `required_pull_request_reviews.count=1` + `dismiss_stale_reviews=true`（solo 下强制 PR + 自审，作为「合并前先跑 CI」闸门；铁律三的完整双审属多人场景，solo 作自律项）；
+  - **不要求审批**（`required_pull_request_reviews` 已移除）：GitHub 默认禁止作者批准自己的 PR，solo 开发无第二双眼睛，故以「`main` 受保护不可直推 + 强制开 PR + CI 三件套必过」作为实质闸门；铁律三的完整双审属多人团队场景，solo 作自律项；
   - `allow_force_pushes=false` / `allow_deletions=false`。
 - **编译门槛已闭环（2026-08-01）**：`.github/workflows/ci.yml` 已新增 `Build (ubuntu-latest)` job（`npm run build`，位于质量检查之后、测试之前），并已加入 `main` 分支保护的 `required_status_checks`（连同原先两项共三个强制 check）。注意：该 ci.yml 改动需经 PR 合入 `main` 后，`main` 上的 CI 才会实际运行 build——在此之前，针对 `main` 的保护虽已登记 `Build (ubuntu-latest)`，但需该 PR 的流水线先跑通方可合入。
 - 铁律二（增量覆盖率门槛）需接入 Codecov / PR 平台 coverage diff；铁律四（契约测试）为 Review 口径，暂无自动化卡点。
