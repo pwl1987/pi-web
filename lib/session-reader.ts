@@ -2,6 +2,7 @@ import { statSync } from "fs";
 import type { AgentMessage, SessionEntry, SessionInfo, SessionContext } from "./types";
 import type { PiSessionEntry, PiSessionInfo } from "./pi";
 import { getPiAdapter } from "./pi";
+import { toParentKey, ensureReparented } from "./session-reparent";
 import { normalizeToolCalls } from "./normalize";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
@@ -9,14 +10,38 @@ export function getAgentDir(): string {
   return getPiAdapter().agentDir;
 }
 
-export async function listAllSessions(): Promise<SessionInfo[]> {
+// P1：分页选项。SDK SessionManager.listAll() 仍全量扫描（不可在 pi-web 层消除），
+// 但经此切片可避免一次性返回/序列化超大全量结果（会话数 ×10 场景响应膨胀、
+// 前端全量渲染卡顿、JSON 序列化峰值内存）。按 modified 降序（最新优先）。
+export interface ListSessionsOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export async function listAllSessions(): Promise<SessionInfo[]>;
+export async function listAllSessions(opts: ListSessionsOptions): Promise<SessionInfo[]>;
+export async function listAllSessions(opts?: ListSessionsOptions): Promise<SessionInfo[]> {
+  const all = await listAllSessionsUnpaged();
+  if (!opts || (opts.limit == null && opts.offset == null)) return all;
+  const sorted = [...all].sort((a, b) => (b.modified || "").localeCompare(a.modified || ""));
+  const offset = opts.offset && opts.offset > 0 ? opts.offset : 0;
+  if (opts.limit == null) return sorted.slice(offset);
+  return sorted.slice(offset, offset + opts.limit);
+}
+
+async function listAllSessionsUnpaged(): Promise<SessionInfo[]> {
   // In-flight 锁：并发调用方（同请求二次扫描、或并行请求）共享同一次
   // 底层扫描，而非各自触发一次全量 listAll。Promise settle 后清除。
   if (globalThis.__piListAllPromise) return globalThis.__piListAllPromise;
   const run = async (): Promise<SessionInfo[]> => {
     const piSessions: PiSessionInfo[] = await getPiAdapter().SessionManager.listAll();
     const pathToId = new Map<string, string>();
-    for (const s of piSessions) pathToId.set(s.path, s.id);
+    const keyToId = new Map<string, string>();
+    for (const s of piSessions) {
+      pathToId.set(s.path, s.id);
+      // L3：预填相对键 → id 映射，供 resolveParentId 新格式解析
+      keyToId.set(toParentKey(s.cwd, s.id), s.id);
+    }
 
     // Resolve each unique cwd to its project root (main repo shared by all
     // worktrees). resolveProject caches per-cwd, so this is cheap after warmup.
@@ -43,7 +68,7 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
         modified: s.modified instanceof Date ? s.modified.toISOString() : String(s.modified),
         messageCount: s.messageCount,
         firstMessage: s.firstMessage || "(no messages)",
-        parentSessionId: s.parentSessionPath ? pathToId.get(s.parentSessionPath) : undefined,
+        parentSessionId: resolveParentId(s, keyToId, pathToId),
         // ponytail: 识别 plan-mode 注入的 marker `orchestrator:<orchId>`，归一化为
         // orchestratorParentId 供 SessionSidebar 子树渲染。普通 fork 不走此分支
         // (pathToId 已把 pi session 路径解析为 id，marker 不会出现在 byId 中)。
@@ -64,6 +89,9 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
     globalThis.__piListAllPromise = undefined;
   });
   globalThis.__piListAllPromise = promise;
+  // L3：首次全量扫描后触发一次渐进迁移（幂等、去重 guard、降级开关），
+  // 不阻塞本次返回；迁移失败不影响读取。
+  void ensureReparented().catch(() => {});
   return promise;
 }
 
@@ -113,6 +141,30 @@ function getPathCache(): Map<string, { path: string; expiresAt: number }> {
     }, 5 * 60_000).unref();
   }
   return globalThis.__piSessionPathCache;
+}
+
+// ============================================================================
+// L3：parentSessionId 解析兼容「cwd 相对键」新格式 + 旧「绝对路径」格式回退
+//   - 新格式：header.parentSession = `<--encodedCwd-->/<id>.jsonl`（相对键）
+//   - 旧格式：绝对路径（SDK 遗留写入），沿用 pathToId 映射
+//   - orchestrator marker：交由 orchestratorParentId 分支，此处返回 undefined
+//   - 解析失败（旧路径失效/孤儿）返回 undefined，不伪造查无此人的 ID
+// ============================================================================
+export function resolveParentId(
+  info: { parentSessionPath?: string | null },
+  byKey: Map<string, string>,
+  byPath: Map<string, string>,
+): string | undefined {
+  const p = info.parentSessionPath;
+  if (!p) return undefined;
+  if (/^orchestrator:[\w-]+$/.test(p)) return undefined;
+
+  // 新格式：相对键直接按 key 查（id 已写入 header 时由 listAllSessionsUnpaged 预填）
+  if (/^--[^/]+--\/.+\.jsonl$/.test(p)) {
+    return byKey.get(p);
+  }
+  // 旧格式：绝对路径回退 pathToId 映射
+  return byPath.get(p);
 }
 
 export async function resolveSessionPath(sessionId: string): Promise<string | null> {
