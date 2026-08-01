@@ -54,23 +54,33 @@ describe("formatTokenCount", () => {
 // ─── formatResetIn ──────────────────────────────────────────────────────────
 
 describe("formatResetIn", () => {
+  // 冻结系统时间，避免测试内两次 Date.now() 取值间隔跨过分钟边界导致偶发失败。
+  const NOW = 1_750_000_000_000;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns null when resetAt is null/invalid", () => {
     expect(formatResetIn(null)).toBeNull();
     expect(formatResetIn("not-a-date")).toBeNull();
   });
   it("returns null when resetAt is in the past", () => {
-    expect(formatResetIn(new Date(Date.now() - 1000).toISOString())).toBeNull();
+    expect(formatResetIn(new Date(NOW - 1000).toISOString())).toBeNull();
   });
   it("formats a near-future reset as minutes", () => {
-    const iso = new Date(Date.now() + 5 * 60_000).toISOString();
+    const iso = new Date(NOW + 5 * 60_000).toISOString();
     expect(formatResetIn(iso)).toBe("5m");
   });
   it("formats a multi-hour reset as 'XhYm'", () => {
-    const iso = new Date(Date.now() + (3 * 60 + 25) * 60_000).toISOString();
+    const iso = new Date(NOW + (3 * 60 + 25) * 60_000).toISOString();
     expect(formatResetIn(iso)).toBe("3h25m");
   });
   it("formats a full-day reset as 'Xd'", () => {
-    const iso = new Date(Date.now() + 48 * 60 * 60_000).toISOString();
+    const iso = new Date(NOW + 48 * 60 * 60_000).toISOString();
     expect(formatResetIn(iso)).toBe("2d");
   });
 });

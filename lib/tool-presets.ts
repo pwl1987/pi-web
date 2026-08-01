@@ -56,3 +56,12 @@ export function getToolNamesForPreset(preset: ToolPreset): string[] {
   if (preset === "full") return [...PRESET_FULL];
   return [...PRESET_DEFAULT];
 }
+
+/**
+ * Apply a preset's tool-name set to the current tool list, preserving the list
+ * shape and order. Tools named in `activeNames` become active, others inactive.
+ */
+export function applyPresetToTools(tools: ToolEntry[], activeNames: string[]): ToolEntry[] {
+  const active = new Set(activeNames);
+  return tools.map((tool) => ({ ...tool, active: active.has(tool.name) }));
+}

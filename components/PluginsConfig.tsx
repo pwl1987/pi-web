@@ -4,12 +4,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import { useAsync } from "@/hooks/useAsync";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
+import { PluginConfigPage } from "@/components/PluginConfigPage";
+import { ALL_PLUGINS } from "@/lib/recommended-plugins";
+import { PLUGIN_CONFIG_DESCRIPTORS } from "@/lib/plugin-config-descriptors";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { EnvProvisionButton } from "@/components/EnvProvisionButton";
+import { ConfigListRow, ModalButton } from "@/components/ui/ConfigModal";
+import { errorBoxStylePre12 } from "@/lib/styles";
 
 type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
 
 type PluginScope = PluginPackageInfo["scope"];
 type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
+
+// Complement relationship derived from lib/recommended-plugins.ts, surfaced in
+// the package detail view so users can see which plugins are designed to work
+// together (e.g. pi-rtk complements context-mode).
+type ComplementInfo = {
+  complements: Array<{ name: string; installed: boolean }>;
+  complementedBy: Array<{ name: string; installed: boolean }>;
+};
 
 function shortenPath(path: string): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
@@ -33,14 +49,13 @@ function resourceSummary(pkg: PluginPackageInfo, t: TranslateFn): string {
 function versionSummary(pkg: PluginPackageInfo, t: TranslateFn): string {
   const parts = [];
   if (pkg.version) parts.push(t("plugins.installedVersion", { version: pkg.version }));
-  if (pkg.configuredVersion) parts.push(t("plugins.configuredVersion", { version: pkg.configuredVersion }));
+  if (pkg.configuredVersion)
+    parts.push(t("plugins.configuredVersion", { version: pkg.configuredVersion }));
   return parts.length ? parts.join(" · ") : t("plugins.unknown");
 }
 
 function installLocation(scope: PluginScope, cwd: string): string {
-  return scope === "project"
-    ? `${shortenPath(cwd)}/.pi/agent/{npm,git}`
-    : "~/.pi/agent/{npm,git}";
+  return scope === "project" ? `${shortenPath(cwd)}/.pi/agent/{npm,git}` : "~/.pi/agent/{npm,git}";
 }
 
 function findInstalledPackage(
@@ -50,9 +65,11 @@ function findInstalledPackage(
 ): PluginPackageInfo | undefined {
   const trimmed = source.trim();
   const withoutNpmPrefix = trimmed.startsWith("npm:") ? trimmed.slice(4) : trimmed;
-  return packages.find((pkg) => pkg.scope === scope && pkg.source === trimmed)
-    ?? packages.find((pkg) => pkg.scope === scope && pkg.source === `npm:${withoutNpmPrefix}`)
-    ?? packages.find((pkg) => pkg.scope === scope && pkg.source.endsWith(trimmed));
+  return (
+    packages.find((pkg) => pkg.scope === scope && pkg.source === trimmed) ??
+    packages.find((pkg) => pkg.scope === scope && pkg.source === `npm:${withoutNpmPrefix}`) ??
+    packages.find((pkg) => pkg.scope === scope && pkg.source.endsWith(trimmed))
+  );
 }
 
 function statusColor(status: PluginPackageInfo["status"]): string {
@@ -70,12 +87,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
     prompt: t("plugins.groupPrompts"),
     theme: t("plugins.groupThemes"),
   };
-  const groups = ([
-    "extension",
-    "skill",
-    "prompt",
-    "theme",
-  ] as const)
+  const groups = (["extension", "skill", "prompt", "theme"] as const)
     .map((kind) => ({
       kind,
       label: groupLabels[kind],
@@ -175,6 +187,34 @@ function ScopeTag({ scope }: { scope: PluginScope }) {
   );
 }
 
+function ComplementPill({
+  name,
+  installed,
+  t,
+}: {
+  name: string;
+  installed: boolean;
+  t: TranslateFn;
+}) {
+  return (
+    <span
+      title={`${name} — ${installed ? t("plugins.relationInstalled") : t("plugins.relationNotInstalled")}`}
+      style={{
+        fontSize: 10,
+        padding: "1px 6px",
+        borderRadius: 3,
+        background: installed ? "rgba(16,163,74,0.14)" : "rgba(120,120,120,0.12)",
+        color: installed ? "#16a34a" : "var(--text-dim)",
+        fontFamily: "var(--font-mono)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {name}
+      {installed ? " ✓" : ""}
+    </span>
+  );
+}
+
 function buttonStyle(disabled?: boolean, danger?: boolean): React.CSSProperties {
   return {
     padding: "6px 12px",
@@ -193,17 +233,20 @@ function Toggle({
   loading,
   onToggle,
   label,
+  disabled,
 }: {
   enabled: boolean;
   loading: boolean;
   onToggle: () => void;
   label: string;
+  disabled?: boolean;
 }) {
+  const isDisabled = Boolean(disabled) || loading;
   return (
     <button
       type="button"
       onClick={onToggle}
-      disabled={loading}
+      disabled={isDisabled}
       title={label}
       aria-label={label}
       aria-pressed={enabled}
@@ -214,12 +257,12 @@ function Toggle({
         borderRadius: 11,
         border: "none",
         padding: 0,
-        cursor: loading ? "wait" : "pointer",
+        cursor: isDisabled ? "not-allowed" : "pointer",
         background: enabled ? "var(--accent)" : "var(--border)",
         position: "relative",
         transition: "background 0.18s",
         outline: "none",
-        opacity: loading ? 0.65 : 1,
+        opacity: isDisabled ? 0.5 : 1,
       }}
     >
       <span
@@ -302,14 +345,26 @@ function AddPluginPanel({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
-  const examples = ["npm:@scope/pi-plugin", "git:https://github.com/user/repo", "/absolute/path/to/plugin"];
+  const examples = [
+    "npm:@scope/pi-plugin",
+    "git:https://github.com/user/repo",
+    "/absolute/path/to/plugin",
+  ];
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 660, minHeight: "100%" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 18,
+        maxWidth: 660,
+        minHeight: "100%",
+      }}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
           {t("plugins.addPlugin")}
@@ -320,7 +375,10 @@ function AddPluginPanel({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <label htmlFor="plugin-source" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+        <label
+          htmlFor="plugin-source"
+          style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}
+        >
           {t("plugins.source")}
         </label>
         <input
@@ -402,11 +460,7 @@ function AddPluginPanel({
         </div>
       </div>
 
-      {actionError && (
-        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "pre-wrap" }}>
-          {actionError}
-        </div>
-      )}
+      {actionError && <div style={errorBoxStylePre12}>{actionError}</div>}
     </div>
   );
 }
@@ -420,6 +474,9 @@ function PackageDetail({
   sessionId,
   onAction,
   onReloadSession,
+  onConfigure,
+  complement,
+  masterEnabled,
 }: {
   pkg: PluginPackageInfo;
   cwd: string;
@@ -429,23 +486,51 @@ function PackageDetail({
   sessionId: string | null;
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onReloadSession: () => void;
+  onConfigure: (pkg: PluginPackageInfo) => void;
+  complement?: ComplementInfo;
+  masterEnabled: boolean;
 }) {
   const { t } = useI18n();
   const key = packageKey(pkg);
   const busy = busyKey?.endsWith(key) ?? false;
   const reloadBusy = busyKey === "reload";
   const enabled = !pkg.disabled;
+  const pinned = Boolean(pkg.pinned);
+  const hasConfig = Boolean(PLUGIN_CONFIG_DESCRIPTORS[pkg.source]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, minWidth: 0, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          minWidth: 0,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 180, flex: 1 }}>
           <Toggle
             enabled={enabled}
             loading={busy || reloadBusy}
             onToggle={() => onAction(pkg.disabled ? "enable" : "disable", pkg)}
             label={pkg.disabled ? t("plugins.enablePackage") : t("plugins.disablePackage")}
+            disabled={!masterEnabled}
           />
+          {!masterEnabled && (
+            <span
+              style={{
+                fontSize: 10,
+                padding: "1px 5px",
+                borderRadius: 3,
+                background: "rgba(120,120,120,0.12)",
+                color: "var(--text-dim)",
+              }}
+            >
+              {t("plugins.masterDisabledNote")}
+            </span>
+          )}
           <ScopeTag scope={pkg.scope} />
           {pkg.disabled ? (
             <span
@@ -459,17 +544,34 @@ function PackageDetail({
             >
               {t("plugins.disabled")}
             </span>
-          ) : pkg.filtered && (
+          ) : (
+            pkg.filtered && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "1px 5px",
+                  borderRadius: 3,
+                  background: "rgba(245,158,11,0.12)",
+                  color: "#d97706",
+                }}
+              >
+                {t("plugins.filtered")}
+              </span>
+            )
+          )}
+          {pinned && (
             <span
+              title={t("plugins.pinnedNote")}
               style={{
                 fontSize: 10,
                 padding: "1px 5px",
                 borderRadius: 3,
-                background: "rgba(245,158,11,0.12)",
-                color: "#d97706",
+                background: "rgba(16,163,74,0.14)",
+                color: "#16a34a",
+                fontWeight: 600,
               }}
             >
-              {t("plugins.filtered")}
+              {t("plugins.pinned")}
             </span>
           )}
           <span
@@ -487,6 +589,11 @@ function PackageDetail({
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {hasConfig && (
+            <button onClick={() => onConfigure(pkg)} style={buttonStyle(busy || reloadBusy)}>
+              {t("plugins.configure")}
+            </button>
+          )}
           <button
             onClick={() => onAction("update", pkg)}
             disabled={busy || reloadBusy}
@@ -504,8 +611,9 @@ function PackageDetail({
           </button>
           <button
             onClick={() => onAction("remove", pkg)}
-            disabled={busy || reloadBusy}
-            style={buttonStyle(busy || reloadBusy, true)}
+            disabled={busy || reloadBusy || pinned}
+            style={buttonStyle(busy || reloadBusy || pinned, true)}
+            title={pinned ? t("plugins.pinnedNote") : undefined}
           >
             {busyKey === `remove:${key}` ? t("plugins.removing") : t("plugins.remove")}
           </button>
@@ -522,11 +630,21 @@ function PackageDetail({
         }}
       >
         <div style={{ color: "var(--text-dim)" }}>{t("plugins.status")}</div>
-        <div style={{ color: statusColor(pkg.status), textTransform: "capitalize" }}>{pkg.status}</div>
+        <div style={{ color: statusColor(pkg.status), textTransform: "capitalize" }}>
+          {pkg.status}
+        </div>
         <div style={{ color: "var(--text-dim)" }}>{t("plugins.version")}</div>
-        <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{versionSummary(pkg, t)}</div>
+        <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          {versionSummary(pkg, t)}
+        </div>
         <div style={{ color: "var(--text-dim)" }}>{t("plugins.package")}</div>
-        <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
+            overflowWrap: "anywhere",
+          }}
+        >
           {pkg.packageName ?? t("plugins.unknown")}
         </div>
         <div style={{ color: "var(--text-dim)" }}>{t("plugins.resources")}</div>
@@ -542,9 +660,35 @@ function PackageDetail({
           {pkg.installedPath ? shortenPath(pkg.installedPath) : t("plugins.notFound")}
         </div>
         <div style={{ color: "var(--text-dim)" }}>{t("plugins.cwd")}</div>
-        <div style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+        <div
+          style={{
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+            overflowWrap: "anywhere",
+          }}
+        >
           {shortenPath(cwd)}
         </div>
+        {complement?.complements.length ? (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("plugins.complements")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {complement.complements.map((c) => (
+                <ComplementPill key={c.name} name={c.name} installed={c.installed} t={t} />
+              ))}
+            </div>
+          </>
+        ) : null}
+        {complement?.complementedBy.length ? (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("plugins.complementedBy")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {complement.complementedBy.map((c) => (
+                <ComplementPill key={c.name} name={c.name} installed={c.installed} t={t} />
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -554,16 +698,23 @@ function PackageDetail({
         <ResourceList pkg={pkg} />
       </div>
 
-      {actionMessage && (
-        <div style={{ fontSize: 12, color: "#16a34a" }}>
-          {actionMessage}
-        </div>
-      )}
-      {actionError && (
-        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "pre-wrap" }}>
-          {actionError}
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t("env.title")}</div>
+        <EnvProvisionButton
+          capability={{
+            kind: "plugin",
+            id: pkg.source,
+            label: pkg.source,
+            source: pkg.source,
+            cwd,
+          }}
+          cwd={cwd}
+          compact
+        />
+      </div>
+
+      {actionMessage && <div style={{ fontSize: 12, color: "#16a34a" }}>{actionMessage}</div>}
+      {actionError && <div style={errorBoxStylePre12}>{actionError}</div>}
     </div>
   );
 }
@@ -582,15 +733,35 @@ export function PluginsConfig({
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [data, setData] = useState<PluginsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, run } = useAsync(undefined, { initialLoading: true });
   const [selected, setSelected] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
+  const [configuring, setConfiguring] = useState<PluginPackageInfo | null>(null);
   const [installSource, setInstallSource] = useState("");
   const [installScope, setInstallScope] = useState<PluginScope>("global");
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  // 插件总开关（全局启停）状态。
+  const [masterEnabled, setMasterEnabled] = useState(true);
+  const [masterBusy, setMasterBusy] = useState(false);
+  const [masterError, setMasterError] = useState<string | null>(null);
+
+  const loadMaster = useCallback(async () => {
+    try {
+      const { ok, data: res } = await csrfFetchJson<{ enabled: boolean }>("/api/plugins/master", {
+        method: "GET",
+      });
+      if (ok) setMasterEnabled(res.enabled);
+    } catch {
+      // 读取失败则维持默认（开启），不影响主流程。
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMaster();
+  }, [loadMaster]);
 
   const packages = useMemo(() => data?.packages ?? [], [data?.packages]);
   const selectedPackage = packages.find((pkg) => packageKey(pkg) === selected) ?? null;
@@ -601,63 +772,112 @@ export function PluginsConfig({
       .filter((group) => group.packages.length > 0);
   }, [packages]);
 
-  const loadPlugins = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/plugins?cwd=${encodeURIComponent(cwd)}`);
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
-      setData(next);
-      setAddMode((current) => next.packages.length === 0 || current);
-      setSelected((current) => {
-        if (current && next.packages.some((pkg) => packageKey(pkg) === current)) return current;
-        return next.packages[0] ? packageKey(next.packages[0]) : null;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
+  // Map each installed package source to its complement relationship, derived
+  // from the recommended-plugins declarations. `installed` lets the UI show
+  // whether the complement is actually present (green ✓) or merely declared.
+  const complementInfo = useMemo(() => {
+    const installedNames = new Set(packages.map((p) => p.source.replace(/^npm:/, "")));
+    const info = new Map<string, ComplementInfo>();
+    for (const p of ALL_PLUGINS) {
+      const complements = (p.complements ?? []).map((name) => ({
+        name,
+        installed: installedNames.has(name),
+      }));
+      const complementedBy = ALL_PLUGINS.filter((q) => q.complements?.includes(p.name)).map(
+        (q) => ({ name: q.name, installed: installedNames.has(q.name) }),
+      );
+      if (complements.length || complementedBy.length) {
+        info.set(p.source, { complements, complementedBy });
+      }
     }
+    return info;
+  }, [packages]);
+
+  const loadPlugins = useCallback(async () => {
+    const {
+      ok,
+      status,
+      data: next,
+    } = await csrfFetchJson<PluginsResponse & { error?: string }>(
+      `/api/plugins?cwd=${encodeURIComponent(cwd)}`,
+      { method: "GET" },
+    );
+    if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
+    setData(next);
+    setAddMode((current) => next.packages.length === 0 || current);
+    setSelected((current) => {
+      if (current && next.packages.some((pkg) => packageKey(pkg) === current)) return current;
+      return next.packages[0] ? packageKey(next.packages[0]) : null;
+    });
   }, [cwd]);
 
   useEffect(() => {
-    void loadPlugins();
-  }, [loadPlugins]);
+    void run(loadPlugins);
+  }, [loadPlugins, run]);
 
-  const runAction = useCallback(async (action: PluginAction, pkg: PluginPackageInfo) => {
-    const key = packageKey(pkg);
-    setBusyKey(`${action}:${key}`);
+  const toggleMaster = useCallback(async () => {
+    setMasterBusy(true);
+    setMasterError(null);
     setActionError(null);
-    setActionMessage(null);
     try {
-      const res = await fetch("/api/plugins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, source: pkg.source, scope: pkg.scope, cwd }),
+      const {
+        ok,
+        status,
+        data: res,
+      } = await csrfFetchJson<{ enabled: boolean; error?: string }>("/api/plugins/master", {
+        method: "PUT",
+        body: { enabled: !masterEnabled, cwd },
       });
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
-      setData(next);
-      if (action === "remove") {
-        setSelected(next.packages[0] ? packageKey(next.packages[0]) : null);
-        if (next.packages.length === 0) setAddMode(true);
-        setActionMessage(t("plugins.packageRemoved"));
-      } else {
-        const messages: Record<Exclude<PluginAction, "remove">, string> = {
-          install: t("plugins.packageInstalled"),
-          update: t("plugins.packageUpdated"),
-          disable: t("plugins.packageDisabledMsg"),
-          enable: t("plugins.packageEnabled"),
-        };
-        setActionMessage(messages[action]);
-      }
+      if (!ok || res.error) throw new Error(res.error ?? `HTTP ${status}`);
+      setMasterEnabled(res.enabled);
+      setActionMessage(t("plugins.masterSaved"));
+      // 重新加载插件列表以反映禁用/启用后的真实状态。
+      await loadPlugins();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setMasterError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      setMasterBusy(false);
     }
-  }, [cwd, t]);
+  }, [cwd, loadPlugins, masterEnabled, t]);
+
+  const runAction = useCallback(
+    async (action: PluginAction, pkg: PluginPackageInfo) => {
+      const key = packageKey(pkg);
+      setBusyKey(`${action}:${key}`);
+      setActionError(null);
+      setActionMessage(null);
+      try {
+        const {
+          ok,
+          status,
+          data: next,
+        } = await csrfFetchJson<PluginsResponse & { error?: string }>("/api/plugins", {
+          method: "POST",
+          body: { action, source: pkg.source, scope: pkg.scope, cwd },
+        });
+        if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
+        setData(next);
+        if (action === "remove") {
+          setSelected(next.packages[0] ? packageKey(next.packages[0]) : null);
+          if (next.packages.length === 0) setAddMode(true);
+          setActionMessage(t("plugins.packageRemoved"));
+        } else {
+          const messages: Record<Exclude<PluginAction, "remove">, string> = {
+            install: t("plugins.packageInstalled"),
+            update: t("plugins.packageUpdated"),
+            disable: t("plugins.packageDisabledMsg"),
+            enable: t("plugins.packageEnabled"),
+          };
+          setActionMessage(messages[action]);
+        }
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [cwd, t],
+  );
 
   const installPlugin = useCallback(async () => {
     const source = installSource.trim();
@@ -667,13 +887,15 @@ export function PluginsConfig({
     setActionError(null);
     setActionMessage(null);
     try {
-      const res = await fetch("/api/plugins", {
+      const {
+        ok,
+        status,
+        data: next,
+      } = await csrfFetchJson<PluginsResponse & { error?: string }>("/api/plugins", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "install", source, scope: installScope, cwd }),
+        body: { action: "install", source, scope: installScope, cwd },
       });
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
+      if (!ok || next.error) throw new Error(next.error ?? `HTTP ${status}`);
       setData(next);
       const installed = findInstalledPackage(next.packages, source, installScope);
       setSelected(installed ? packageKey(installed) : key);
@@ -763,6 +985,39 @@ export function PluginsConfig({
               {shortenPath(cwd)}
             </code>
           </div>
+          <div
+            title={t("plugins.masterHint")}
+            style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 2,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: masterEnabled ? "var(--text)" : "var(--text-muted)",
+                }}
+              >
+                {t("plugins.masterSwitch")}
+              </span>
+              <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                {masterEnabled ? t("plugins.masterOn") : t("plugins.masterOff")}
+              </span>
+              {masterError && <span style={{ fontSize: 10, color: "#ef4444" }}>{masterError}</span>}
+            </div>
+            <Toggle
+              enabled={masterEnabled}
+              loading={masterBusy}
+              onToggle={toggleMaster}
+              label={masterEnabled ? t("plugins.masterOff") : t("plugins.masterOn")}
+            />
+          </div>
           <button
             onClick={onClose}
             style={{
@@ -779,7 +1034,14 @@ export function PluginsConfig({
           </button>
         </div>
 
-        <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               width: isMobile ? "100%" : 245,
@@ -798,9 +1060,7 @@ export function PluginsConfig({
                   {t("plugins.loading")}
                 </div>
               ) : error ? (
-                <div style={{ padding: "10px 8px", fontSize: 11, color: "#ef4444" }}>
-                  {error}
-                </div>
+                <div style={{ padding: "10px 8px", fontSize: 11, color: "#ef4444" }}>{error}</div>
               ) : packages.length === 0 ? (
                 <div style={{ padding: "10px 8px", fontSize: 11, color: "var(--text-dim)" }}>
                   {t("plugins.noPluginsConfigured")}
@@ -817,45 +1077,35 @@ export function PluginsConfig({
                         textTransform: "uppercase",
                       }}
                     >
-                      {group.scope === "project" ? t("plugins.scopeProject") : t("plugins.scopeGlobal")}
+                      {group.scope === "project"
+                        ? t("plugins.scopeProject")
+                        : t("plugins.scopeGlobal")}
                     </div>
                     {group.packages.map((pkg) => {
                       const key = packageKey(pkg);
                       const isSelected = !addMode && selected === key;
                       return (
-                        <div
+                        <ConfigListRow
                           key={key}
+                          selected={isSelected}
                           onClick={() => {
                             setSelected(key);
                             setAddMode(false);
                             setActionError(null);
                             setActionMessage(null);
                           }}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 7,
-                            padding: "8px 8px",
-                            borderRadius: 5,
-                            cursor: "pointer",
-                            background: isSelected ? "var(--bg-selected)" : "none",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = "none";
-                          }}
+                          leading={
+                            <span
+                              style={{
+                                flexShrink: 0,
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                background: statusColor(pkg.status),
+                              }}
+                            />
+                          }
                         >
-                          <span
-                            style={{
-                              flexShrink: 0,
-                              width: 7,
-                              height: 7,
-                              borderRadius: "50%",
-                              background: statusColor(pkg.status),
-                            }}
-                          />
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div
                               style={{
@@ -897,61 +1147,53 @@ export function PluginsConfig({
                               </div>
                             )}
                           </div>
-                        </div>
+                        </ConfigListRow>
                       );
                     })}
                   </div>
                 ))
               )}
             </div>
-            <div style={{ padding: "8px 6px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
-              <button
-                type="button"
+            <div
+              style={{ padding: "8px 6px", borderTop: "1px solid var(--border)", flexShrink: 0 }}
+            >
+              <ConfigListRow
+                selected={addMode}
                 onClick={() => {
                   setAddMode(true);
                   setActionError(null);
                   setActionMessage(null);
                 }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "7px 8px",
-                  borderRadius: 5,
-                  border: "none",
-                  width: "100%",
-                  cursor: "pointer",
-                  background: addMode ? "var(--bg-selected)" : "none",
-                  color: addMode ? "var(--accent)" : "var(--text-dim)",
-                  fontSize: 12,
-                }}
-                onMouseEnter={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "var(--bg-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!addMode) e.currentTarget.style.background = "none";
-                }}
+                style={{ padding: "7px 8px" }}
+                leading={
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                }
               >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
                 {t("plugins.addPlugin")}
-              </button>
+              </ConfigListRow>
             </div>
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-            {addMode ? (
+            {configuring ? (
+              <PluginConfigPage
+                source={configuring.source}
+                name={configuring.packageName ?? configuring.source}
+                onClose={() => setConfiguring(null)}
+              />
+            ) : addMode ? (
               <AddPluginPanel
                 cwd={cwd}
                 source={installSource}
@@ -973,6 +1215,9 @@ export function PluginsConfig({
                 sessionId={sessionId}
                 onAction={runAction}
                 onReloadSession={reloadSession}
+                onConfigure={setConfiguring}
+                complement={complementInfo.get(selectedPackage.source)}
+                masterEnabled={masterEnabled}
               />
             ) : (
               <div
@@ -1002,11 +1247,23 @@ export function PluginsConfig({
             flexShrink: 0,
           }}
         >
-          <div style={{ minWidth: 0, flex: 1, fontSize: 11, color: "var(--text-dim)", overflow: "hidden" }}>
+          <div
+            style={{
+              minWidth: 0,
+              flex: 1,
+              fontSize: 11,
+              color: "var(--text-dim)",
+              overflow: "hidden",
+            }}
+          >
             {data?.diagnostics.length ? (
               <span
-                title={data.diagnostics.map((d) => `${d.type}: ${d.source ? `${d.source}: ` : ""}${d.message}`).join("\n")}
-                style={{ color: data.diagnostics.some((d) => d.type === "error") ? "#ef4444" : "#d97706" }}
+                title={data.diagnostics
+                  .map((d) => `${d.type}: ${d.source ? `${d.source}: ` : ""}${d.message}`)
+                  .join("\n")}
+                style={{
+                  color: data.diagnostics.some((d) => d.type === "error") ? "#ef4444" : "#d97706",
+                }}
               >
                 {data.diagnostics.length === 1
                   ? t("plugins.oneDiagnostic", { count: data.diagnostics.length })
@@ -1014,21 +1271,27 @@ export function PluginsConfig({
               </span>
             ) : (
               <span>
-                {data ? t("plugins.totals", {
-                  extensions: data.totals.extensions,
-                  skills: data.totals.skills,
-                  prompts: data.totals.prompts,
-                  themes: data.totals.themes,
-                }) : ""}
+                {data
+                  ? t("plugins.totals", {
+                      extensions: data.totals.extensions,
+                      skills: data.totals.skills,
+                      prompts: data.totals.prompts,
+                      themes: data.totals.themes,
+                    })
+                  : ""}
               </span>
             )}
           </div>
-          <button onClick={() => void loadPlugins()} disabled={loading || busyKey !== null} style={buttonStyle(loading || busyKey !== null)}>
+          <ModalButton
+            variant="secondary"
+            onClick={() => void loadPlugins()}
+            disabled={loading || busyKey !== null}
+          >
             {t("plugins.refresh")}
-          </button>
-          <button onClick={onClose} style={buttonStyle(false)}>
+          </ModalButton>
+          <ModalButton variant="secondary" onClick={onClose}>
             {t("plugins.close")}
-          </button>
+          </ModalButton>
         </div>
       </div>
     </div>

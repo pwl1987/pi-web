@@ -36,8 +36,8 @@ Pi Agent Web 是一个 **Next.js（App Router）全栈应用**，本质是为命
 **关键设计原则（来自 AGENTS.md 与源码）：**
 
 - **两种会话访问路径**：
-  - *会话浏览（只读）*：直接通过 SDK 的 `SessionManager` 读取磁盘上的 `.jsonl` 文件，不创建 `AgentSession`（见 `lib/session-reader.ts`、`app/api/sessions/**`）。
-  - *发送消息（交互）*：`lib/rpc-manager.ts` 的 `startRpcSession()` 在 **Next.js 进程内** 创建一个 `AgentSession`，并通过 `AgentSessionWrapper` 包裹，供后续命令与 SSE 复用。
+  - _会话浏览（只读）_：直接通过 SDK 的 `SessionManager` 读取磁盘上的 `.jsonl` 文件，不创建 `AgentSession`（见 `lib/session-reader.ts`、`app/api/sessions/**`）。
+  - _发送消息（交互）_：`lib/rpc-manager.ts` 的 `startRpcSession()` 在 **Next.js 进程内** 创建一个 `AgentSession`，并通过 `AgentSessionWrapper` 包裹，供后续命令与 SSE 复用。
 - **`globalThis` 跨热重载存活**：Session 注册表、运行态、路径缓存、扩展注册表都挂在 `globalThis` 上，使 Next.js dev 热更新不会丢失内存中的会话状态（`session-registry.ts`、`agent-runtime-store.ts`、`session-reader.ts`、`extensions/registry.ts`）。
 - **SDK 不可进入客户端 bundle**：`@earendil-works/pi-coding-agent` 与 `pi-ai` 被 `next.config.ts` 列为 `serverExternalPackages`，只在 `app/api/**` 与 `lib/rpc-manager.ts` 中通过服务端导入。
 
@@ -45,20 +45,20 @@ Pi Agent Web 是一个 **Next.js（App Router）全栈应用**，本质是为命
 
 ## 2. 技术栈
 
-| 维度 | 选型 |
-|------|------|
-| 框架 | Next.js 16（App Router，`force-dynamic` 的 SSE 路由）、React 19 |
-| 语言 | TypeScript 5（`strict`，路径别名 `@/*` → 仓库根） |
-| 样式 | Tailwind CSS 4（`@tailwindcss/postcss`），大量内联 style + CSS 变量（`--bg`、`--text`、`--accent` 等），支持明暗主题 |
-| 流式通信 | 原生 `EventSource`（SSE）+ `ReadableStream` 服务端推送 |
-| Markdown 渲染 | `react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex` + `rehype-raw` + `rehype-sanitize`；代码高亮 `react-syntax-highlighter` |
-| 其他渲染 | `mermaid`（图）、`katex`、`mammoth`（docx 解析） |
-| 智能体内核 | `@earendil-works/pi-coding-agent` `^0.80.3`、`@earendil-works/pi-ai` `^0.80.3` |
-| 图标 | `@lobehub/icons` |
-| 测试 | 两类：`node --test --experimental-strip-types lib/*.test.mjs`（直接 import `.ts`，Node 22+ 原生去类型）+ `vitest run`（React 组件测试，jsdom） |
-| 扩展系统 | 浏览器侧可信 ES module（动态 `import`，`webpackIgnore`），React 实例经 `window.React`/`window.ReactDOM` 共享 |
-| 国际化 | 自研零依赖 i18n（`lib/i18n`，`useSyncExternalStore` + localStorage） |
-| 发布脚本 | `bin/pi-web.js`（CLI `bin: pi-web`，支持 `--port`/`-H` 及 `install`/`uninstall` 注册 systemd/launchd 自启） |
+| 维度          | 选型                                                                                                                                           |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 框架          | Next.js 16（App Router，`force-dynamic` 的 SSE 路由）、React 19                                                                                |
+| 语言          | TypeScript 5（`strict`，路径别名 `@/*` → 仓库根）                                                                                              |
+| 样式          | Tailwind CSS 4（`@tailwindcss/postcss`），大量内联 style + CSS 变量（`--bg`、`--text`、`--accent` 等），支持明暗主题                           |
+| 流式通信      | 原生 `EventSource`（SSE）+ `ReadableStream` 服务端推送                                                                                         |
+| Markdown 渲染 | `react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex` + `rehype-raw` + `rehype-sanitize`；代码高亮 `react-syntax-highlighter`       |
+| 其他渲染      | `mermaid`（图）、`katex`、`mammoth`（docx 解析）                                                                                               |
+| 智能体内核    | `@earendil-works/pi-coding-agent` `^0.80.3`、`@earendil-works/pi-ai` `^0.80.3`                                                                 |
+| 图标          | `@lobehub/icons`                                                                                                                               |
+| 测试          | 两类：`node --test --experimental-strip-types lib/*.test.mjs`（直接 import `.ts`，Node 22+ 原生去类型）+ `vitest run`（React 组件测试，jsdom） |
+| 扩展系统      | 浏览器侧可信 ES module（动态 `import`，`webpackIgnore`），React 实例经 `window.React`/`window.ReactDOM` 共享                                   |
+| 国际化        | 自研零依赖 i18n（`lib/i18n`，`useSyncExternalStore` + localStorage）                                                                           |
+| 发布脚本      | `bin/pi-web.js`（CLI `bin: pi-web`，支持 `--port`/`-H` 及 `install`/`uninstall` 注册 systemd/launchd 自启）                                    |
 
 ---
 
@@ -122,23 +122,23 @@ pi-web/
 
 ### 4.2 API 路由（`app/api`，均按域分组）
 
-| 路由 | 方法 | 作用 |
-|------|------|------|
-| `/api/sessions` | GET | 列出所有会话 + 当前运行中的 id（`listAllSessions()`） |
-| `/api/sessions/[id]` | GET/PATCH/DELETE | 读取（含 `?includeState` 拉取实时 agentState）/改名/删 |
-| `/api/sessions/[id]/context` | GET | 指定 `leafId` 的分支上下文（`buildSessionContext`） |
-| `/api/sessions/[id]/export` | GET | 导出 HTML |
-| `/api/agent/new` | POST | 新建会话（`cwd`/`modelId`/`toolNames`/`thinkingLevel`），返回真实 sessionId |
-| `/api/agent/[id]` | GET/POST | GET 取状态；POST 透传任意命令（prompt/fork/set_model/compact…） |
-| `/api/agent/[id]/events` | GET | **SSE** 推送该会话的实时事件流 |
-| `/api/agent/running/events` | GET | SSE 推送“当前运行中会话 id”集合变化 |
-| `/api/auth/**` | GET/POST | API Key 状态、OAuth/设备码、登出 |
-| `/api/models` `/api/models-config/**` | GET/PUT/POST | 模型列表、`models.json` 读写与测试 |
-| `/api/cwd` `/api/default-cwd` `/api/worktrees` | — | 工作目录校验/创建、git worktree |
-| `/api/files/[...path]` `/api/file-index` | GET | 只读文件预览、@ 自动补全索引 |
-| `/api/plugins` `/api/skills/**` `/api/subagents` `/api/agents-md` | GET/POST | 能力包/技能/子代理管理 |
-| `/api/extensions/**` | — | 浏览器侧 UI 扩展的 manifest 与资源 |
-| `/api/token-usage/**` 等 | — | 配额用量等 |
+| 路由                                                              | 方法             | 作用                                                                        |
+| ----------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------- |
+| `/api/sessions`                                                   | GET              | 列出所有会话 + 当前运行中的 id（`listAllSessions()`）                       |
+| `/api/sessions/[id]`                                              | GET/PATCH/DELETE | 读取（含 `?includeState` 拉取实时 agentState）/改名/删                      |
+| `/api/sessions/[id]/context`                                      | GET              | 指定 `leafId` 的分支上下文（`buildSessionContext`）                         |
+| `/api/sessions/[id]/export`                                       | GET              | 导出 HTML                                                                   |
+| `/api/agent/new`                                                  | POST             | 新建会话（`cwd`/`modelId`/`toolNames`/`thinkingLevel`），返回真实 sessionId |
+| `/api/agent/[id]`                                                 | GET/POST         | GET 取状态；POST 透传任意命令（prompt/fork/set_model/compact…）             |
+| `/api/agent/[id]/events`                                          | GET              | **SSE** 推送该会话的实时事件流                                              |
+| `/api/agent/running/events`                                       | GET              | SSE 推送“当前运行中会话 id”集合变化                                         |
+| `/api/auth/**`                                                    | GET/POST         | API Key 状态、OAuth/设备码、登出                                            |
+| `/api/models` `/api/models-config/**`                             | GET/PUT/POST     | 模型列表、`models.json` 读写与测试                                          |
+| `/api/cwd` `/api/default-cwd` `/api/worktrees`                    | —                | 工作目录校验/创建、git worktree                                             |
+| `/api/files/[...path]` `/api/file-index`                          | GET              | 只读文件预览、@ 自动补全索引                                                |
+| `/api/plugins` `/api/skills/**` `/api/subagents` `/api/agents-md` | GET/POST         | 能力包/技能/子代理管理                                                      |
+| `/api/extensions/**`                                              | —                | 浏览器侧 UI 扩展的 manifest 与资源                                          |
+| `/api/token-usage/**` 等                                          | —                | 配额用量等                                                                  |
 
 所有 `/api/agent/**` 的写命令统一由 `lib/agent-client.ts` 的 `sendAgentCommand()` 封装：`POST /api/agent/<id>` → 返回 `{ success, data }` 或 `{ error }`。
 
@@ -147,6 +147,7 @@ pi-web/
 ## 5. 核心模块功能描述
 
 ### 5.1 `lib/rpc-manager.ts` — 智能体会话中枢 ★
+
 - `AgentSessionWrapper`：包裹 SDK 的 `AgentSession`，暴露统一的 `send(command)` 接口（`prompt`/`abort`/`get_state`/`set_model`/`fork`/`navigate_tree`/`compact`/`set_tools`/`get_commands`/`reload`/扩展 UI 交互等）。
 - 职责：订阅 SDK 事件并 `emit`、维护空闲计时器（**10 分钟**无活动自动 `destroy`）、桥接 **扩展 UI 上下文**（把 `select`/`confirm`/`input`/`editor`/`custom` 等请求转发到浏览器端弹窗）。
 - `startRpcSession(id, file, cwd, toolNames?)`：用 `globalThis.__piStartLocks` 合并并发启动，避免重复创建；创建后写入 sidecar（`recordActiveSession`）并触发懒加载的扩展绑定。
@@ -154,32 +155,39 @@ pi-web/
 - **工具全关时强制空 systemPrompt**：`toolNames=[]` 时 `setForceEmptySystemPrompt(true)`。
 
 ### 5.2 `lib/session-registry.ts` — 会话注册表与运行态广播 ★
+
 - 维护 `globalThis.__piSessions`（id→`SessionHandle`）与 `__piStartLocks`。
 - `notifyRunningChange()`：在运行会话集合变化时广播给 `subscribeRunningSessions` 的订阅者（驱动侧边栏实时高亮）。
 
 ### 5.3 `lib/session-reader.ts` — 只读会话读取 ★
+
 - `listAllSessions()`：遍历 `SessionManager.listAll()`，补充 `projectRoot`/`worktreeBranch`（经 `resolveProject`），并填充路径缓存。
 - `buildSessionContext(entries, leafId?)`：从分支叶子回溯到根，构建 UI 消息列表；保留 compact/branch_summary 为内联摘要，从而**完整展示**被压缩的历史（与 SDK 仅给模型上下文不同）。
 - 路径缓存 `globalThis.__piSessionPathCache`（60s TTL），`resolveSessionPath` 在缓存失效时回退到全量扫描。
 
 ### 5.4 `lib/session-state-store.ts` — 重启恢复 sidecar
+
 - 写入 `~/.pi/agent/pi-web-state.json`，记录最近 20 个活跃会话 + `toolsDisabled` 标志 + 固定目录。
 - 进程首次访问注册表时 `maybeRestore()` → `restoreActiveSessions()` 预热最近 5 个会话（fire-and-forget，失败不阻塞启动）。
 
 ### 5.5 `hooks/useAgentSession.ts` — 前端会话状态机 ★
+
 - 单一巨型 hook，封装：加载会话/上下文、SSE 连接与重连（5s 连接超时 + 断线自动重连）、事件处理（`handleAgentEvent` 解析 `agent_start`/`message_update`/`tool_execution_*`/`compaction_*`/`extension_ui_request` 等）、发送消息、abort、fork、分支导航、模型/思考/工具切换、压缩、slash 命令、通知（notice）、扩展对话框、滚动跟随与“用户主动滚动意图”判定、以及**对账机制**（每 15s 或页面可见/网络恢复时，用 `GET /api/agent/[id]` 与 SSE 对齐，防止丢事件导致永久“流式”假象）。
 - 通过 `getAgentRuntimeStore().update(...)` 把运行时状态（running/phase/tools/stats/contextUsage）同步到全局 store，供 AppShell 与扩展面板消费。
 
 ### 5.6 `lib/agent-runtime-store.ts` 与 `lib/extensions/registry.ts` — 全局 store
+
 - 两者均采用 `useSyncExternalStore` + `globalThis` 单例模式。
 - `AgentRuntimeStore`：让 ChatWindow 之外的组件（顶部栏、扩展面板）观察当前会话运行状态。
 - `ExtensionRegistry`：持有已加载 UI 扩展的 `actions`/`panels`/`labels` 贡献，按 `extensionId:localId` 限定 id，每次 `register` 自增 version 触发重渲染。
 
 ### 5.7 扩展系统 `lib/extensions/`
+
 - **浏览器侧 UI 扩展**（≠ SDK 插件）：可信 ES module，三类贡献：`actions`（Cmd+K 命令面板）、`workspacePanels`（右侧标签）、`workspaceLabels`（会话列表内联元数据）。
 - `discovery.ts` 服务端扫描 `extensions/`（内置）与 `~/.pi-web/extensions/`（本地）；`hooks/useExtensions.ts` 在挂载时 `fetch manifest → import(/* webpackIgnore */ url) → registry.register()`；AppShell 把 `window.React/ReactDOM` 暴露出来以保证扩展共享同一 React 实例。
 
 ### 5.8 其他 lib 要点
+
 - `normalize.ts`：把文件的 `{id,name,arguments}` 归一化为 `{toolCallId,toolName,input}`，文件加载与流式两条路径共用。
 - `tool-presets.ts`：PRESET_NONE/DEFAULT/FULL 与 `getPresetFromTools`/`toolsToToolNames`，支撑工具开关 UI。
 - `i18n/`：扁平点号键（`namespace.subkey`）+ `{var}` 插值；翻译键需同时在 `en.ts` 与 `zh.ts` 添加。
@@ -190,16 +198,16 @@ pi-web/
 
 本项目**没有引入 Redux/Zustand 等集中式状态库**，而是按作用域分层，统一采用 `useSyncExternalStore` 的“外部 store”模式，并把需要跨热重载存活的单例挂在 `globalThis`：
 
-| 状态 | 存储位置 | 消费者 | 机制 |
-|------|----------|--------|------|
-| 当前会话、消息、流式、工具、模型、思考级别、分支、通知、扩展 UI 对话框 | `useAgentSession` 内部 `useState`/`useReducer`/`useRef` | ChatWindow 子树 | React 局部状态 |
-| 会话运行时（running/phase/tools/stats/contextUsage） | `agent-runtime-store`（globalThis） | AppShell、扩展面板、InspectorPanel | `useSyncExternalStore` |
-| 已加载会话注册表 + 运行集合 | `session-registry`（globalThis） | 侧边栏、running/events SSE | 直接读写 + 订阅 |
-| 会话路径→文件路径缓存 | `session-reader` 路径缓存（globalThis，60s TTL） | 所有读会话的 API | 直接读写 |
-| UI 扩展贡献 | `extensions/registry`（globalThis） | 命令面板、右栏、会话列表 | `useSyncExternalStore` |
-| 主题 / 语言 | `localStorage` + `<html>` 属性 | 全应用 | `useTheme`/`useI18n`（useSyncExternalStore） |
-| 文件标签、右栏开关、侧栏开关等 UI 偏好 | `usePersistentState`（localStorage） | AppShell | React 状态 + 持久化 |
-| 重启恢复所需的“哪些会话开着 + toolsDisabled” | `pi-web-state.json` sidecar | `rpc-manager` 启动预热 | 同步文件读写 |
+| 状态                                                                   | 存储位置                                                | 消费者                             | 机制                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------- | -------------------------------------------- |
+| 当前会话、消息、流式、工具、模型、思考级别、分支、通知、扩展 UI 对话框 | `useAgentSession` 内部 `useState`/`useReducer`/`useRef` | ChatWindow 子树                    | React 局部状态                               |
+| 会话运行时（running/phase/tools/stats/contextUsage）                   | `agent-runtime-store`（globalThis）                     | AppShell、扩展面板、InspectorPanel | `useSyncExternalStore`                       |
+| 已加载会话注册表 + 运行集合                                            | `session-registry`（globalThis）                        | 侧边栏、running/events SSE         | 直接读写 + 订阅                              |
+| 会话路径→文件路径缓存                                                  | `session-reader` 路径缓存（globalThis，60s TTL）        | 所有读会话的 API                   | 直接读写                                     |
+| UI 扩展贡献                                                            | `extensions/registry`（globalThis）                     | 命令面板、右栏、会话列表           | `useSyncExternalStore`                       |
+| 主题 / 语言                                                            | `localStorage` + `<html>` 属性                          | 全应用                             | `useTheme`/`useI18n`（useSyncExternalStore） |
+| 文件标签、右栏开关、侧栏开关等 UI 偏好                                 | `usePersistentState`（localStorage）                    | AppShell                           | React 状态 + 持久化                          |
+| 重启恢复所需的“哪些会话开着 + toolsDisabled”                           | `pi-web-state.json` sidecar                             | `rpc-manager` 启动预热             | 同步文件读写                                 |
 
 **要点**：`ChatWindow` 以 `session.id`（或新会话的 `new:<cwd>`）作为 React `key`，只有当会话身份真正变化时才重挂载；轻量刷新（如插件重载 `pluginsRefreshKey`、模型改动 `modelsRefreshKey`）走 `useEffect` 就地重取，避免重建 1600 行的 `useAgentSession`。
 
@@ -208,6 +216,7 @@ pi-web/
 ## 7. 数据流向
 
 ### 7.1 启动 / 会话列表
+
 ```
 浏览器 GET /api/sessions
   → lib/session-reader.listAllSessions()
@@ -217,6 +226,7 @@ pi-web/
 ```
 
 ### 7.2 发送一条消息（交互主链路）
+
 ```
 ChatInput.handleSend
   → useAgentSession.handleSend
@@ -236,6 +246,7 @@ ChatInput.handleSend
 ```
 
 ### 7.3 实时事件流（SSE）
+
 ```
 服务端 /api/agent/[id]/events
   → startRpcSession(id)（必要时）
@@ -247,10 +258,12 @@ ChatInput.handleSend
 ```
 
 ### 7.4 会话分支（两种）
+
 - **Fork（新建独立 .jsonl 文件）**：`send("fork", {entryId})` 在 wrapper 内 `SessionManager.create/open` 生成新文件并返回 `newSessionId`，随后 **`this.destroy()`**；UI 用 `onSessionForked` 更新选中并改写 URL `?session=`。
 - **会话内分支（navigate_tree）**：同一文件内切换 leaf，触发 `GET /api/sessions/[id]/context?leafId=` 重建消息列表，不新建文件。
 
 ### 7.5 重启恢复
+
 ```
 进程首次访问 getRegistry()
   → process exit/SIGINT/SIGTERM 注册清理
@@ -282,4 +295,4 @@ ChatInput.handleSend
 
 ---
 
-*本分析基于仓库当前工作区快照（含未提交改动：token-usage、extension-theme、useConfiguredProviders 等新增文件），可作为建立项目整体认知的入口文档。*
+_本分析基于仓库当前工作区快照（含未提交改动：token-usage、extension-theme、useConfiguredProviders 等新增文件），可作为建立项目整体认知的入口文档。_

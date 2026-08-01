@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import {
@@ -18,32 +18,66 @@ import {
   getImageMime,
 } from "@/lib/file-types";
 import { isFilePathReferencedBySession } from "@/lib/session-file-references";
-
-const IGNORED_NAMES = new Set([
-  "node_modules", ".git", ".next", "dist", "build", "__pycache__",
-  ".turbo", ".cache", "coverage", ".pytest_cache", ".mypy_cache",
-  "target", "vendor", ".DS_Store", ".git",
-]);
-
-const IGNORED_SUFFIXES = [".pyc"];
+import { errorResponse } from "@/lib/api-utils";
+import { IGNORED_NAMES, IGNORED_SUFFIXES, getAttachmentDisposition } from "@/lib/api-shared";
+import {
+  getCachedFileList,
+  setCachedFileList,
+  getCachedFileMeta,
+  setCachedFileMeta,
+} from "@/lib/file-cache";
 
 const FILE_REQUEST_TYPES = ["list", "read", "download", "meta", "preview", "watch"] as const;
-type FileRequestType = typeof FILE_REQUEST_TYPES[number];
+type FileRequestType = (typeof FILE_REQUEST_TYPES)[number];
 const FILE_REQUEST_TYPE_SET = new Set<string>(FILE_REQUEST_TYPES);
 
 const EXT_TO_LANGUAGE: Record<string, string> = {
-  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-  mjs: "javascript", cjs: "javascript", py: "python", rb: "ruby",
-  go: "go", rs: "rust", java: "java", kt: "kotlin", swift: "swift",
-  c: "c", cpp: "cpp", h: "c", hpp: "cpp", cs: "csharp",
-  html: "html", htm: "html", css: "css", scss: "css", less: "css",
-  json: "json", jsonl: "json", yaml: "yaml", yml: "yaml",
-  toml: "toml", xml: "xml", md: "markdown", mdx: "markdown",
-  sh: "bash", bash: "bash", zsh: "bash", fish: "bash",
-  sql: "sql", graphql: "graphql", gql: "graphql",
-  dockerfile: "dockerfile", tf: "hcl", hcl: "hcl",
-  env: "bash", gitignore: "bash", txt: "text",
-  pdf: "pdf", docx: "word",
+  ts: "typescript",
+  tsx: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  swift: "swift",
+  c: "c",
+  cpp: "cpp",
+  h: "c",
+  hpp: "cpp",
+  cs: "csharp",
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "css",
+  less: "css",
+  json: "json",
+  jsonl: "json",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  xml: "xml",
+  md: "markdown",
+  mdx: "markdown",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  fish: "bash",
+  sql: "sql",
+  graphql: "graphql",
+  gql: "graphql",
+  dockerfile: "dockerfile",
+  tf: "hcl",
+  hcl: "hcl",
+  env: "bash",
+  gitignore: "bash",
+  txt: "text",
+  pdf: "pdf",
+  docx: "word",
 };
 
 function getLanguage(filePath: string): string {
@@ -67,7 +101,10 @@ function parseFileRequestType(value: string): FileRequestType | null {
   return FILE_REQUEST_TYPE_SET.has(value) ? (value as FileRequestType) : null;
 }
 
-function createFileBodyStream(filePath: string, range?: { start: number; end: number }): ReadableStream<Uint8Array> {
+function createFileBodyStream(
+  filePath: string,
+  range?: { start: number; end: number },
+): ReadableStream<Uint8Array> {
   const fileStream = fs.createReadStream(filePath, range);
   let closed = false;
 
@@ -108,20 +145,18 @@ function createFileBodyStream(filePath: string, range?: { start: number; end: nu
   });
 }
 
-function encodeHeaderValue(value: string): string {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (ch) =>
-    `%${ch.charCodeAt(0).toString(16).toUpperCase()}`
-  );
-}
-
 function getContentDisposition(filePath: string, asDownload = false): string {
-  const disposition = asDownload ? "attachment" : "inline";
   const fileName = path.basename(filePath);
-  const fallback = fileName.replace(/[^\x20-\x7E]|["\\;\r\n]/g, "_") || "download";
-  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(fileName)}`;
+  return getAttachmentDisposition(fileName, asDownload ? "attachment" : "inline");
 }
 
-function streamFile(filePath: string, stat: fs.Stats, contentType: string, rangeHeader: string | null, asDownload = false): Response {
+function streamFile(
+  filePath: string,
+  stat: fs.Stats,
+  contentType: string,
+  rangeHeader: string | null,
+  asDownload = false,
+): Response {
   const headers = {
     "Content-Type": contentType,
     "Cache-Control": "no-cache",
@@ -157,7 +192,13 @@ function streamFile(filePath: string, stat: fs.Stats, contentType: string, range
     end = stat.size - 1;
   }
 
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || start >= stat.size) {
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    start < 0 ||
+    end < start ||
+    start >= stat.size
+  ) {
     return new Response(null, {
       status: 416,
       headers: {
@@ -239,7 +280,7 @@ ${bodyHtml}
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
   try {
     const { path: segments } = await params;
@@ -252,11 +293,14 @@ export async function GET(
     const sessionId = request.nextUrl.searchParams.get("sessionId");
 
     const allowedRoots = await getAllowedFileRoots();
+    // L10/文件新-1：会话引用旁路也须落在 allowedRoots 内。
+    // 原实现允许「会话引用过的任意绝对路径」读取，绕过项目根，可被注入恶意
+    // 引用的 jsonl 用于越权读 /etc/shadow 等。收敛为：引用文件同样必须受信根允许。
     const allowedByRoot = isFilePathAllowed(filePath, allowedRoots);
     const allowedBySessionReference =
-      !allowedByRoot &&
       type !== "list" &&
-      await isFilePathReferencedBySession(filePath, sessionId);
+      isFilePathAllowed(filePath, allowedRoots) &&
+      (await isFilePathReferencedBySession(filePath, sessionId));
     if (!allowedByRoot && !allowedBySessionReference) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
@@ -299,7 +343,11 @@ export async function GET(
       if (!stat.isFile()) {
         return NextResponse.json({ error: "Not a file" }, { status: 400 });
       }
-      const mime = getImageMime(filePath) || getAudioMime(filePath) || getDocumentMime(filePath) || "application/octet-stream";
+      const mime =
+        getImageMime(filePath) ||
+        getAudioMime(filePath) ||
+        getDocumentMime(filePath) ||
+        "application/octet-stream";
       return streamFile(filePath, stat, mime, request.headers.get("range"), true);
     }
 
@@ -307,15 +355,20 @@ export async function GET(
       if (!stat.isFile()) {
         return NextResponse.json({ error: "Not a file" }, { status: 400 });
       }
+      // P4：元信息短 TTL + mtime 校验缓存，避免重复 statSync。
+      const metaHit = getCachedFileMeta(filePath, stat.mtimeMs);
+      if (metaHit) return NextResponse.json(metaHit);
       const imageMime = getImageMime(filePath);
       const audioMime = getAudioMime(filePath);
       const documentMime = getDocumentMime(filePath);
-      return NextResponse.json({
+      const payload = {
         size: stat.size,
         language: getLanguage(filePath),
         mime: imageMime || audioMime || documentMime || "text/plain",
         previewKind: documentPreviewKind(filePath),
-      });
+      };
+      setCachedFileMeta(filePath, stat.mtimeMs, payload);
+      return NextResponse.json(payload);
     }
 
     if (type === "preview") {
@@ -323,7 +376,10 @@ export async function GET(
         return NextResponse.json({ error: "Not a file" }, { status: 400 });
       }
       if (getFileExt(filePath) !== "docx") {
-        return NextResponse.json({ error: "Preview not available for this file type" }, { status: 400 });
+        return NextResponse.json(
+          { error: "Preview not available for this file type" },
+          { status: 400 },
+        );
       }
       if (stat.size > DOCX_PREVIEW_MAX_BYTES) {
         return NextResponse.json({ error: "DOCX too large for preview (>10MB)" }, { status: 413 });
@@ -335,14 +391,15 @@ export async function GET(
         {
           externalFileAccess: false,
           convertImage: mammoth.images.dataUri,
-        }
+        },
       );
       const html = wrapDocxPreviewHtml(result.value, path.basename(filePath));
       return new Response(html, {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-cache",
-          "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+          "Content-Security-Policy":
+            "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
           "Referrer-Policy": "no-referrer",
           "X-Content-Type-Options": "nosniff",
         },
@@ -376,7 +433,11 @@ export async function GET(
               }
             });
             watcher.on("error", () => {
-              try { controller.close(); } catch { /* ignore */ }
+              try {
+                controller.close();
+              } catch {
+                /* ignore */
+              }
             });
           } catch {
             send("error", { message: "Failed to watch file" });
@@ -384,7 +445,11 @@ export async function GET(
           }
         },
         cancel() {
-          try { watcher?.close(); } catch { /* ignore */ }
+          try {
+            watcher?.close();
+          } catch {
+            /* ignore */
+          }
         },
       });
       return new Response(stream, {
@@ -400,6 +465,12 @@ export async function GET(
     // type === "list"
     if (!stat.isDirectory()) {
       return NextResponse.json({ error: "Not a directory" }, { status: 400 });
+    }
+
+    // P4：目录列表短 TTL + mtime 校验缓存，避免重复 readdirSync 重扫。
+    const listHit = getCachedFileList(filePath, stat.mtimeMs);
+    if (listHit) {
+      return NextResponse.json({ entries: listHit, path: filePath });
     }
 
     const names = fs.readdirSync(filePath);
@@ -426,8 +497,11 @@ export async function GET(
         return a!.name.localeCompare(b!.name);
       });
 
+    // P4：写入目录列表缓存（带 mtime 校验，下次内容变化即失效）。
+    setCachedFileList(filePath, stat.mtimeMs, entries);
+
     return NextResponse.json({ entries, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -1,4 +1,6 @@
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage, ModelRegistry } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +14,13 @@ export async function GET() {
 
   // Deduplicate by provider, skip OAuth-only providers and custom providers (source=models_json_key)
   const seen = new Set<string>();
-  const result: {
+  const result: Array<{
     id: string;
     displayName: string;
     configured: boolean;
     source?: string;
     modelCount: number;
-  }[] = [];
+  }> = [];
 
   for (const m of all) {
     if (seen.has(m.provider)) continue;

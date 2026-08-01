@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listExtensionsWithState } from "@/lib/extensions/discovery";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,6 @@ export async function GET() {
     const extensions = listExtensionsWithState();
     return NextResponse.json({ extensions });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

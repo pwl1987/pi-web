@@ -15,7 +15,8 @@ export interface SessionHandle {
 
 declare global {
   var __piSessions: Map<string, SessionHandle> | undefined;
-  var __piStartLocks: Map<string, Promise<{ session: SessionHandle; realSessionId: string }>> | undefined;
+  var __piStartLocks:
+    Map<string, Promise<{ session: SessionHandle; realSessionId: string }>> | undefined;
   var __piRunningListeners: Set<(ids: string[]) => void> | undefined;
 }
 
@@ -26,7 +27,10 @@ export function getRegistry(): Map<string, SessionHandle> {
   return globalThis.__piSessions;
 }
 
-export function getLocks(): Map<string, Promise<{ session: SessionHandle; realSessionId: string }>> {
+export function getLocks(): Map<
+  string,
+  Promise<{ session: SessionHandle; realSessionId: string }>
+> {
   if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
   return globalThis.__piStartLocks;
 }
@@ -43,6 +47,15 @@ export function getRunningRpcSessionIds(): string[] {
   return [...ids];
 }
 
+/** 当前注册表中存活（_alive）的会话数。用于 P6 并发上限信号量。 */
+export function countAliveSessions(): number {
+  let n = 0;
+  for (const session of getRegistry().values()) {
+    if (session.isAlive()) n += 1;
+  }
+  return n;
+}
+
 // Running-status broadcaster — pushes the current set of running session ids
 // to subscribers whenever the set changes. Listeners live on globalThis so
 // they survive Next.js hot-reload.
@@ -55,7 +68,9 @@ function getRunningListeners(): Set<(ids: string[]) => void> {
 export function subscribeRunningSessions(listener: (ids: string[]) => void): () => void {
   const listeners = getRunningListeners();
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 let lastRunningSnapshot = "";
@@ -70,7 +85,11 @@ export function notifyRunningChange(): void {
   if (snapshot === lastRunningSnapshot) return;
   lastRunningSnapshot = snapshot;
   for (const listener of getRunningListeners()) {
-    try { listener(ids); } catch { /* ignore listener errors */ }
+    try {
+      listener(ids);
+    } catch {
+      /* ignore listener errors */
+    }
   }
 }
 

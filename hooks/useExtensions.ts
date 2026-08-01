@@ -42,7 +42,9 @@ async function loadExtensions(): Promise<void> {
       const mod = await import(/* webpackIgnore: true */ entry.module);
       const ext = mod.default as unknown;
       if (!isValidExtension(ext)) {
-        console.warn(`[extensions] Skipping "${entry.id}": invalid module (missing apiVersion/activate)`);
+        console.warn(
+          `[extensions] Skipping "${entry.id}": invalid module (missing apiVersion/activate)`,
+        );
         continue;
       }
       registry.register(ext as PiWebExtension, { id: entry.id, source: entry.source });
@@ -54,7 +56,8 @@ async function loadExtensions(): Promise<void> {
 
 function isValidExtension(value: unknown): value is PiWebExtension {
   return (
-    typeof value === "object" && value !== null &&
+    typeof value === "object" &&
+    value !== null &&
     (value as PiWebExtension).apiVersion === 1 &&
     typeof (value as PiWebExtension).name === "string" &&
     typeof (value as PiWebExtension).activate === "function"
@@ -90,7 +93,10 @@ export function useExtensions() {
     [registry],
   );
 
-  const getWorkspacePanels = useCallback((): QualifiedPanel[] => registry.getWorkspacePanels(), [registry]);
+  const getWorkspacePanels = useCallback(
+    (): QualifiedPanel[] => registry.getWorkspacePanels(),
+    [registry],
+  );
 
   const getWorkspaceLabelItems = useCallback(
     (ctx: WorkspaceLabelContext) => registry.getWorkspaceLabelItems(ctx),

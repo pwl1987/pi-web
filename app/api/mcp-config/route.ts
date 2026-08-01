@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { join } from "path";
 import { readJsonFile, writeJsonFileAtomic, ensureParentDir, getAgentDir } from "@/lib/config-file";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { validateMcpServersDetailed } from "@/lib/config-validators";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +59,9 @@ export async function GET() {
       lifecycle: entry.lifecycle ?? "lazy",
       auth: entry.auth ?? false,
       idleTimeout: entry.idleTimeout,
+      requestTimeoutMs: entry.requestTimeoutMs,
+      env: entry.env,
+      headers: entry.headers,
       toolCount: cache.servers?.[name]?.tools?.length ?? 0,
       resourceCount: cache.servers?.[name]?.resources?.length ?? 0,
     }));
@@ -66,17 +72,25 @@ export async function GET() {
       configPath: mcpConfigPath(),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PUT /api/mcp-config — write full config (add/update/remove servers + settings).
 // body: { mcpServers: Record<string, McpServerEntry>, settings?: Record<string, unknown> }
 export async function PUT(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as { mcpServers?: unknown; settings?: unknown };
-    if (typeof body.mcpServers !== "object" || body.mcpServers === null) {
-      return NextResponse.json({ error: "mcpServers object required" }, { status: 400 });
+    const [body, parseError] = await safeJsonBody<{ mcpServers?: unknown; settings?: unknown }>(
+      req,
+    );
+    if (parseError) return parseError;
+
+    const serversError = validateMcpServersDetailed(body.mcpServers);
+    if (serversError.length > 0) {
+      return NextResponse.json({ errors: serversError }, { status: 400 });
     }
 
     // Merge with existing config (preserve imports if present).
@@ -94,6 +108,6 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

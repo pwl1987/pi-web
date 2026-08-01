@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "fs";
 import { addWorktree, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
+import { isValidGitRefName } from "@/lib/git-ref";
 import { allowFileRoot, getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
 async function checkCwdAllowed(cwd: string): Promise<NextResponse | null> {
   const allowedRoots = await getAllowedFileRoots();
-  if (!isFilePathAllowed(cwd, allowedRoots)) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  }
+  if (!isFilePathAllowed(cwd, allowedRoots)) return errorResponse("Access denied", 403);
   return null;
 }
 
@@ -17,9 +18,7 @@ async function checkCwdAllowed(cwd: string): Promise<NextResponse | null> {
 export async function GET(req: Request) {
   try {
     const cwd = new URL(req.url).searchParams.get("cwd");
-    if (!cwd) {
-      return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-    }
+    if (!cwd) return errorResponse("cwd is required", 400);
     const denied = await checkCwdAllowed(cwd);
     if (denied) return denied;
 
@@ -44,44 +43,48 @@ export async function GET(req: Request) {
       worktrees,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // POST /api/worktrees  body: { cwd, branch }  →  { path, branch }
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as { cwd?: string; branch?: string };
-    if (!body.cwd || typeof body.cwd !== "string") {
-      return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-    }
-    if (!body.branch || typeof body.branch !== "string") {
-      return NextResponse.json({ error: "branch is required" }, { status: 400 });
-    }
+    const [body, parseError] = await safeJsonBody<{ cwd?: string; branch?: string }>(req);
+    if (parseError) return parseError;
+    if (!body.cwd || typeof body.cwd !== "string") return errorResponse("cwd is required", 400);
+    if (!body.branch || typeof body.branch !== "string")
+      return errorResponse("branch is required", 400);
+    const branch = body.branch.trim();
+    // 防御：分支名走保守白名单，拒绝空白 / 穿越 / 非法字符，防止命令注入式 ref。
+    if (!isValidGitRefName(branch)) return errorResponse("Invalid branch name", 400);
     const denied = await checkCwdAllowed(body.cwd);
     if (denied) return denied;
-    if (!existsSync(body.cwd)) {
-      return NextResponse.json({ error: `Directory does not exist: ${body.cwd}` }, { status: 400 });
-    }
+    if (!existsSync(body.cwd)) return errorResponse(`Directory does not exist: ${body.cwd}`, 400);
 
-    const result = await addWorktree(body.cwd, body.branch);
+    const result = await addWorktree(body.cwd, branch);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 400 });
+    return errorResponse(message, 400);
   }
 }
 
 // DELETE /api/worktrees  body: { cwd, path, force? }
 export async function DELETE(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as { cwd?: string; path?: string; force?: boolean };
-    if (!body.cwd || typeof body.cwd !== "string") {
-      return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-    }
-    if (!body.path || typeof body.path !== "string") {
-      return NextResponse.json({ error: "path is required" }, { status: 400 });
-    }
+    const [body, parseError] = await safeJsonBody<{ cwd?: string; path?: string; force?: boolean }>(
+      req,
+    );
+    if (parseError) return parseError;
+    if (!body.cwd || typeof body.cwd !== "string") return errorResponse("cwd is required", 400);
+    if (!body.path || typeof body.path !== "string") return errorResponse("path is required", 400);
     const denied = await checkCwdAllowed(body.cwd);
     if (denied) return denied;
 

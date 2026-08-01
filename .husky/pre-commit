@@ -1,0 +1,4 @@
+npx lint-staged
+npm run type-check
+npm run test:node
+npx vitest run

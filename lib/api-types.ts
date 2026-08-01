@@ -40,6 +40,8 @@ export interface PluginPackageInfo {
   counts: PluginResourceCounts;
   resources: PluginResourceInfo[];
   status: "loaded" | "installed" | "missing" | "disabled";
+  /** Part of the non-uninstallable system-default set (see PINNED_PLUGINS). */
+  pinned?: boolean;
 }
 
 export interface PluginsResponse {

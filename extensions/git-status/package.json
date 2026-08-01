@@ -5,7 +5,10 @@
   "description": "Git status panel, command, and branch label for pi-web",
   "piWeb": {
     "extensions": [
-      { "id": "git-status", "module": "index.js" }
+      {
+        "id": "git-status",
+        "module": "index.js"
+      }
     ]
   }
 }

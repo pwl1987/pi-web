@@ -106,10 +106,7 @@ export interface TokenUsageInfo {
  * - resetAt: `reset_at`, `resetAt`, `reset_time`, `reset`
  *   Accepted as ISO string or epoch seconds.
  */
-export function parseTokenPlanRemains(
-  raw: unknown,
-  providerId: string,
-): TokenUsageInfo | null {
+export function parseTokenPlanRemains(raw: unknown, providerId: string): TokenUsageInfo | null {
   if (!isPlainObject(raw)) return null;
 
   // ── MiniMax envelope: model_remains[] + base_resp.status_code ─────────────
@@ -172,10 +169,7 @@ export function parseTokenPlanRemains(
  * Skips individual entries that lack a recognizable total so a partial /
  * per-model response (e.g. one entry left out) doesn't tank the indicator.
  */
-function aggregateModelRemains(
-  entries: unknown[],
-  providerId: string,
-): TokenUsageInfo | null {
+function aggregateModelRemains(entries: unknown[], providerId: string): TokenUsageInfo | null {
   let used = 0;
   let total = 0;
   let sawAnyTotal = false;

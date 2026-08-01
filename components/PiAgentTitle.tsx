@@ -12,7 +12,9 @@ export function PiAgentTitle() {
   const [scrambling, setScrambling] = useState(false);
   const revertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const target = showVersion ? `${process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}p${process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}` : "Pi Agent Web";
+  const target = showVersion
+    ? `${process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}p${process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}`
+    : "Pi Agent Web";
   const display = useScramble(target, scrambling);
 
   // Scramble animation duration: charCount × 4 frames/char × frame interval (~16.67ms) + 100ms buffer
@@ -21,12 +23,18 @@ export function PiAgentTitle() {
   const VERSION_CHAR_COUNT = 6;
   const TITLE_CHAR_COUNT = 8;
 
-  const triggerScramble = useCallback((toVersion: boolean) => {
-    setShowVersion(toVersion);
-    setScrambling(true);
-    const charCount = toVersion ? VERSION_CHAR_COUNT : TITLE_CHAR_COUNT;
-    setTimeout(() => setScrambling(false), charCount * 4 * SCRAMBLE_FRAME_MS + SCRAMBLE_BUFFER_MS);
-  }, []);
+  const triggerScramble = useCallback(
+    (toVersion: boolean) => {
+      setShowVersion(toVersion);
+      setScrambling(true);
+      const charCount = toVersion ? VERSION_CHAR_COUNT : TITLE_CHAR_COUNT;
+      setTimeout(
+        () => setScrambling(false),
+        charCount * 4 * SCRAMBLE_FRAME_MS + SCRAMBLE_BUFFER_MS,
+      );
+    },
+    [SCRAMBLE_FRAME_MS, SCRAMBLE_BUFFER_MS, VERSION_CHAR_COUNT, TITLE_CHAR_COUNT],
+  );
 
   const handleClick = useCallback(() => {
     if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
@@ -41,14 +49,24 @@ export function PiAgentTitle() {
     });
   }, [triggerScramble]);
 
-  useEffect(() => () => { if (revertTimerRef.current) clearTimeout(revertTimerRef.current); }, []);
+  useEffect(
+    () => () => {
+      if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
+    },
+    [],
+  );
 
   return (
     <button
       onClick={handleClick}
       style={{
-        background: "none", border: "none", padding: 0, cursor: "default",
-        fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em",
+        background: "none",
+        border: "none",
+        padding: 0,
+        cursor: "default",
+        fontWeight: 700,
+        fontSize: 15,
+        letterSpacing: "-0.01em",
         color: showVersion ? "var(--accent)" : "var(--text)",
         fontFamily: "var(--font-mono)",
         minWidth: "6ch",

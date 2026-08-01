@@ -1,8 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { type NextRequest, NextResponse } from "next/server";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { getPiAdapter } from "@/lib/pi";
+
+const { getAgentDir } = getPiAdapter();
+import { ensureParentDir } from "@/lib/config-file";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { validateCsrf } from "@/lib/csrf";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +37,15 @@ export async function GET(req: NextRequest) {
   const level = req.nextUrl.searchParams.get("level");
   const cwd = req.nextUrl.searchParams.get("cwd") ?? undefined;
 
-  if (!FILE_NAMES[file]) {
-    return NextResponse.json({ error: "file must be 'agents', 'system', or 'append'" }, { status: 400 });
-  }
-  if (level !== "user" && level !== "project") {
-    return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
+  if (!FILE_NAMES[file]) return errorResponse("file must be 'agents', 'system', or 'append'", 400);
+  if (level !== "user" && level !== "project")
+    return errorResponse("level must be 'user' or 'project'", 400);
+  // For project-level reads, validate cwd is within allowed roots — otherwise
+  // an attacker could read AGENTS.md/SYSTEM.md/APPEND_SYSTEM.md from any path.
+  if (level === "project" && cwd) {
+    const resolvedCwd = resolve(cwd);
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isFilePathAllowed(resolvedCwd, allowedRoots)) return errorResponse("forbidden", 403);
   }
   try {
     const filePath = resolvePath(file, level, cwd);
@@ -46,40 +55,43 @@ export async function GET(req: NextRequest) {
     const content = readFileSync(filePath, "utf8");
     return NextResponse.json({ content, exists: true, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PUT /api/agents-md — write content
 const MAX_AGENTS_MD_SIZE = 1_000_000; // 1MB limit
 export async function PUT(req: NextRequest) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as { file?: string; level?: string; cwd?: string; content?: string };
+    const [body, parseError] = await safeJsonBody<{
+      file?: string;
+      level?: string;
+      cwd?: string;
+      content?: string;
+    }>(req);
+    if (parseError) return parseError;
     const file = (body.file ?? "agents") as PromptFile;
-    if (!FILE_NAMES[file]) {
-      return NextResponse.json({ error: "file must be 'agents', 'system', or 'append'" }, { status: 400 });
-    }
-    if (body.level !== "user" && body.level !== "project") {
-      return NextResponse.json({ error: "level must be 'user' or 'project'" }, { status: 400 });
-    }
+    if (!FILE_NAMES[file])
+      return errorResponse("file must be 'agents', 'system', or 'append'", 400);
+    if (body.level !== "user" && body.level !== "project")
+      return errorResponse("level must be 'user' or 'project'", 400);
     // Limit content size
     const content = body.content ?? "";
-    if (content.length > MAX_AGENTS_MD_SIZE) {
-      return NextResponse.json({ error: "content too large" }, { status: 413 });
-    }
+    if (content.length > MAX_AGENTS_MD_SIZE) return errorResponse("content too large", 413);
     // For project-level writes, validate cwd is within allowed roots
     if (body.level === "project" && body.cwd) {
       const resolvedCwd = resolve(body.cwd);
       const allowedRoots = await getAllowedFileRoots();
-      if (!isFilePathAllowed(resolvedCwd, allowedRoots)) {
-        return NextResponse.json({ error: "forbidden" }, { status: 403 });
-      }
+      if (!isFilePathAllowed(resolvedCwd, allowedRoots)) return errorResponse("forbidden", 403);
     }
     const filePath = resolvePath(file, body.level, body.cwd);
-    mkdirSync(join(filePath, ".."), { recursive: true });
+    ensureParentDir(filePath);
     writeFileSync(filePath, content, "utf8");
     return NextResponse.json({ success: true, path: filePath });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

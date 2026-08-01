@@ -1,44 +1,98 @@
-import { SessionManager, buildSessionContext as piBuildSessionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { statSync } from "fs";
 import type { AgentMessage, SessionEntry, SessionInfo, SessionContext } from "./types";
-import type { SessionEntry as PiSessionEntry, SessionInfo as PiSessionInfo } from "@earendil-works/pi-coding-agent";
+import type { PiSessionEntry, PiSessionInfo } from "./pi";
+import { getPiAdapter } from "./pi";
+import { toParentKey, ensureReparented } from "./session-reparent";
 import { normalizeToolCalls } from "./normalize";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
-export { getAgentDir };
+export function getAgentDir(): string {
+  return getPiAdapter().agentDir;
+}
 
-export async function listAllSessions(): Promise<SessionInfo[]> {
-  const piSessions: PiSessionInfo[] = await SessionManager.listAll();
-  const pathToId = new Map<string, string>();
-  for (const s of piSessions) pathToId.set(s.path, s.id);
+// P1：分页选项。SDK SessionManager.listAll() 仍全量扫描（不可在 pi-web 层消除），
+// 但经此切片可避免一次性返回/序列化超大全量结果（会话数 ×10 场景响应膨胀、
+// 前端全量渲染卡顿、JSON 序列化峰值内存）。按 modified 降序（最新优先）。
+export interface ListSessionsOptions {
+  limit?: number;
+  offset?: number;
+}
 
-  // Resolve each unique cwd to its project root (main repo shared by all
-  // worktrees). resolveProject caches per-cwd, so this is cheap after warmup.
-  const uniqueCwds = [...new Set(piSessions.map((s) => s.cwd).filter(Boolean))];
-  const projectByCwd = new Map<string, ProjectInfo>();
-  await Promise.all(uniqueCwds.map(async (cwd) => {
-    projectByCwd.set(cwd, await resolveProject(cwd));
-  }));
+export async function listAllSessions(): Promise<SessionInfo[]>;
+export async function listAllSessions(opts: ListSessionsOptions): Promise<SessionInfo[]>;
+export async function listAllSessions(opts?: ListSessionsOptions): Promise<SessionInfo[]> {
+  const all = await listAllSessionsUnpaged();
+  if (!opts || (opts.limit == null && opts.offset == null)) return all;
+  const sorted = [...all].sort((a, b) => (b.modified || "").localeCompare(a.modified || ""));
+  const offset = opts.offset && opts.offset > 0 ? opts.offset : 0;
+  if (opts.limit == null) return sorted.slice(offset);
+  return sorted.slice(offset, offset + opts.limit);
+}
 
-  const cache = getPathCache();
-  const ttl = Date.now() + PATH_CACHE_TTL_MS;
-  return piSessions.map((s) => {
-    // Populate path cache so resolveSessionPath works without a full scan
-    cache.set(s.id, { path: s.path, expiresAt: ttl });
-    const project = s.cwd ? projectByCwd.get(s.cwd) : undefined;
-    return {
-      path: s.path,
-      id: s.id,
-      cwd: s.cwd,
-      name: s.name,
-      created: s.created instanceof Date ? s.created.toISOString() : String(s.created),
-      modified: s.modified instanceof Date ? s.modified.toISOString() : String(s.modified),
-      messageCount: s.messageCount,
-      firstMessage: s.firstMessage || "(no messages)",
-      parentSessionId: s.parentSessionPath ? pathToId.get(s.parentSessionPath) : undefined,
-      projectRoot: project?.projectRoot ?? s.cwd,
-      ...(project?.isWorktree && project.branch ? { worktreeBranch: project.branch } : {}),
-    };
+async function listAllSessionsUnpaged(): Promise<SessionInfo[]> {
+  // In-flight 锁：并发调用方（同请求二次扫描、或并行请求）共享同一次
+  // 底层扫描，而非各自触发一次全量 listAll。Promise settle 后清除。
+  if (globalThis.__piListAllPromise) return globalThis.__piListAllPromise;
+  const run = async (): Promise<SessionInfo[]> => {
+    const piSessions: PiSessionInfo[] = await getPiAdapter().SessionManager.listAll();
+    const pathToId = new Map<string, string>();
+    const keyToId = new Map<string, string>();
+    for (const s of piSessions) {
+      pathToId.set(s.path, s.id);
+      // L3：预填相对键 → id 映射，供 resolveParentId 新格式解析
+      keyToId.set(toParentKey(s.cwd, s.id), s.id);
+    }
+
+    // Resolve each unique cwd to its project root (main repo shared by all
+    // worktrees). resolveProject caches per-cwd, so this is cheap after warmup.
+    const uniqueCwds = [...new Set(piSessions.map((s) => s.cwd).filter(Boolean))];
+    const projectByCwd = new Map<string, ProjectInfo>();
+    await Promise.all(
+      uniqueCwds.map(async (cwd) => {
+        projectByCwd.set(cwd, await resolveProject(cwd));
+      }),
+    );
+
+    const cache = getPathCache();
+    const ttl = Date.now() + PATH_CACHE_TTL_MS;
+    return piSessions.map((s) => {
+      // Populate path cache so resolveSessionPath works without a full scan
+      cache.set(s.id, { path: s.path, expiresAt: ttl });
+      const project = s.cwd ? projectByCwd.get(s.cwd) : undefined;
+      return {
+        path: s.path,
+        id: s.id,
+        cwd: s.cwd,
+        name: s.name,
+        created: s.created instanceof Date ? s.created.toISOString() : String(s.created),
+        modified: s.modified instanceof Date ? s.modified.toISOString() : String(s.modified),
+        messageCount: s.messageCount,
+        firstMessage: s.firstMessage || "(no messages)",
+        parentSessionId: resolveParentId(s, keyToId, pathToId),
+        // ponytail: 识别 plan-mode 注入的 marker `orchestrator:<orchId>`，归一化为
+        // orchestratorParentId 供 SessionSidebar 子树渲染。普通 fork 不走此分支
+        // (pathToId 已把 pi session 路径解析为 id，marker 不会出现在 byId 中)。
+        orchestratorParentId: (() => {
+          const p = s.parentSessionPath;
+          if (!p) return undefined;
+          const m = /^orchestrator:([\w-]+)$/.exec(p);
+          return m ? m[1] : undefined;
+        })(),
+        // 同源推断 isPlanMode：SessionItem 据此渲染固定 plan 角标，不依赖 name 前缀。
+        isPlanMode: /^orchestrator:[\w-]+$/.test(s.parentSessionPath ?? ""),
+        projectRoot: project?.projectRoot ?? s.cwd,
+        ...(project?.isWorktree && project.branch ? { worktreeBranch: project.branch } : {}),
+      };
+    });
+  };
+  const promise = run().finally(() => {
+    globalThis.__piListAllPromise = undefined;
   });
+  globalThis.__piListAllPromise = promise;
+  // L3：首次全量扫描后触发一次渐进迁移（幂等、去重 guard、降级开关），
+  // 不阻塞本次返回；迁移失败不影响读取。
+  void ensureReparented().catch(() => {});
+  return promise;
 }
 
 // ============================================================================
@@ -46,15 +100,71 @@ export async function listAllSessions(): Promise<SessionInfo[]> {
 // Stored in globalThis for hot-reload safety. Entries expire after PATH_CACHE_TTL_MS
 // so a session file created/moved on disk is discovered without a full restart.
 // ============================================================================
-declare global {
-  var __piSessionPathCache: Map<string, { path: string; expiresAt: number }> | undefined;
-}
-
 const PATH_CACHE_TTL_MS = 60_000;
 
+// ===========================================================================
+// Session data cache: filePath → 完整会话快照，以文件 mtime 校验。
+// 存于 globalThis 以兼容热重载。命中 mtime 时跳过整文件
+// readFileSync + JSONL 解析 + tree 构建，消除每次切 leaf / 刷新 / 并发
+// 请求都全量重读的开销。LRU 上限防止长进程内存只增不减。
+// ===========================================================================
+const SESSION_CACHE_MAX = 200;
+
+interface CachedSessionSnapshot {
+  mtimeMs: number;
+  entries: SessionEntry[];
+  header: Record<string, unknown> | null;
+  leafId: string | null;
+  tree: unknown[];
+  sessionName: string;
+}
+
+declare global {
+  var __piSessionPathCache: Map<string, { path: string; expiresAt: number }> | undefined;
+  /** 完整会话快照缓存（mtime LRU）：filePath → entries + header + leafId + tree + name */
+  var __piSessionDataCache: Map<string, CachedSessionSnapshot> | undefined;
+  /** @deprecated 已迁移至 __piSessionDataCache；保留声明避免旧热重载引用丢失 */
+  var __piSessionEntriesCache:
+    Map<string, { mtimeMs: number; entries: SessionEntry[] }> | undefined;
+  var __piListAllPromise: Promise<SessionInfo[]> | undefined;
+}
+
 function getPathCache(): Map<string, { path: string; expiresAt: number }> {
-  if (!globalThis.__piSessionPathCache) globalThis.__piSessionPathCache = new Map();
+  if (!globalThis.__piSessionPathCache) {
+    globalThis.__piSessionPathCache = new Map();
+    // 定期清理过期条目，防止长运行进程缓存只增不减
+    setInterval(() => {
+      const now = Date.now();
+      for (const [key, val] of globalThis.__piSessionPathCache || []) {
+        if (now >= val.expiresAt) globalThis.__piSessionPathCache?.delete(key);
+      }
+    }, 5 * 60_000).unref();
+  }
   return globalThis.__piSessionPathCache;
+}
+
+// ============================================================================
+// L3：parentSessionId 解析兼容「cwd 相对键」新格式 + 旧「绝对路径」格式回退
+//   - 新格式：header.parentSession = `<--encodedCwd-->/<id>.jsonl`（相对键）
+//   - 旧格式：绝对路径（SDK 遗留写入），沿用 pathToId 映射
+//   - orchestrator marker：交由 orchestratorParentId 分支，此处返回 undefined
+//   - 解析失败（旧路径失效/孤儿）返回 undefined，不伪造查无此人的 ID
+// ============================================================================
+export function resolveParentId(
+  info: { parentSessionPath?: string | null },
+  byKey: Map<string, string>,
+  byPath: Map<string, string>,
+): string | undefined {
+  const p = info.parentSessionPath;
+  if (!p) return undefined;
+  if (/^orchestrator:[\w-]+$/.test(p)) return undefined;
+
+  // 新格式：相对键直接按 key 查（id 已写入 header 时由 listAllSessionsUnpaged 预填）
+  if (/^--[^/]+--\/.+\.jsonl$/.test(p)) {
+    return byKey.get(p);
+  }
+  // 旧格式：绝对路径回退 pathToId 映射
+  return byPath.get(p);
 }
 
 export async function resolveSessionPath(sessionId: string): Promise<string | null> {
@@ -79,17 +189,106 @@ export function invalidateSessionPathCache(sessionId: string): void {
   getPathCache().delete(sessionId);
 }
 
-export function getSessionEntries(filePath: string): SessionEntry[] {
-  const entries = SessionManager.open(filePath).getEntries();
-  return entries as unknown as SessionEntry[];
+function getDataCache(): Map<string, CachedSessionSnapshot> {
+  // 复用 globalThis key 兼容热重载；旧 key __piSessionEntriesCache
+  // 类型变更自动冷起。
+  if (!globalThis.__piSessionDataCache) globalThis.__piSessionDataCache = new Map();
+  return globalThis.__piSessionDataCache;
 }
 
-export function buildSessionContext(entries: SessionEntry[], leafId?: string | null): SessionContext {
+/** 以 mtime LRU 缓存打开会话，返回完整快照（entries + header + leafId + tree + sessionName）。 */
+export function openSessionCached(filePath: string): CachedSessionSnapshot {
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(filePath).mtimeMs;
+  } catch {
+    // 文件暂缺 → 跳过缓存，让 SessionManager.open 抛出真实错误。
+    return snapshotFromManager(getPiAdapter().SessionManager.open(filePath), -1);
+  }
+
+  const cache = getDataCache();
+  const cached = cache.get(filePath);
+  if (cached && cached.mtimeMs === mtimeMs) {
+    // LRU touch：移到最近使用位。
+    cache.delete(filePath);
+    cache.set(filePath, cached);
+    return cached;
+  }
+
+  const snapshot = snapshotFromManager(getPiAdapter().SessionManager.open(filePath), mtimeMs);
+  cache.set(filePath, snapshot);
+  if (cache.size > SESSION_CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  return snapshot;
+}
+
+/** 轻量级：仅读取 header，复用同一 mtime LRU 缓存。 */
+export function getSessionHeaderCached(filePath: string): Record<string, unknown> | null {
+  try {
+    const mtimeMs = statSync(filePath).mtimeMs;
+    const cache = getDataCache();
+    const cached = cache.get(filePath);
+    if (cached && cached.mtimeMs === mtimeMs) return cached.header;
+  } catch {
+    // stat 失败 → 文件暂缺，fallback 直接打开（让 SessionManager 抛真实错误）。
+  }
+  // 缓存未命中或 stat 失败 → 开完整快照。
+  return openSessionCached(filePath).header;
+}
+
+/**
+ * 从 SessionManager 实例提取快照。
+ * 参数类型用 SDK 返回值的 duck-type（含 getEntries/getHeader/getLeafId/getTree/getSessionName）
+ * 避免直接依赖 SDK 内部类型。
+ */
+function snapshotFromManager(
+  sm: {
+    getEntries(): any;
+    getHeader(): any;
+    getLeafId(): any;
+    getTree(): any;
+    getSessionName(): any;
+  },
+  mtimeMs: number,
+): CachedSessionSnapshot {
+  return {
+    mtimeMs,
+    entries: sm.getEntries() as unknown as SessionEntry[],
+    header: sm.getHeader() as Record<string, unknown> | null,
+    leafId: sm.getLeafId() as string | null,
+    tree: sm.getTree() as unknown[],
+    sessionName: sm.getSessionName() as string,
+  };
+}
+
+/** 写操作后主动失效缓存，确保下次读取拿到最新数据。 */
+export function invalidateSessionDataCache(filePath: string): void {
+  getDataCache().delete(filePath);
+}
+
+/**
+ * @deprecated 使用 openSessionCached 获取完整快照；
+ * 此函数保留为别名以兼容 contexts 路由等仅需 entries 的调用方。
+ */
+export function getSessionEntries(filePath: string): SessionEntry[] {
+  return openSessionCached(filePath).entries;
+}
+
+export function buildSessionContext(
+  entries: SessionEntry[],
+  leafId?: string | null,
+): SessionContext {
   const byId = new Map<string, SessionEntry>();
   for (const e of entries) byId.set(e.id, e);
 
   const piEntries = entries as unknown as PiSessionEntry[];
-  const piCtx = piBuildSessionContext(piEntries, leafId, byId as unknown as Map<string, PiSessionEntry>);
+  const piCtx = getPiAdapter().buildSessionContext(
+    piEntries,
+    leafId,
+    byId as unknown as Map<string, PiSessionEntry>,
+  ) as SessionContext;
 
   // Build entryIds: parallel array to messages[], mapping each message back to its entry id.
   // Needed for fork and navigate_tree calls from the UI.
@@ -105,10 +304,15 @@ export function buildSessionContext(entries: SessionEntry[], leafId?: string | n
 
   // Walk path from target leaf to root
   const path: SessionEntry[] = [];
+  const visited = new Set<string>();
   let cur: SessionEntry | undefined = targetLeaf;
-  while (cur) {
+  let depth = 0;
+  while (cur && depth < 10000) {
+    if (visited.has(cur.id)) break; // 新-4：防御损坏/恶意 jsonl 中的 parentId 环导致死循环
+    visited.add(cur.id);
     path.unshift(cur);
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    depth++;
   }
 
   // Build UI history from the FULL branch path (root to leaf), without trimming.

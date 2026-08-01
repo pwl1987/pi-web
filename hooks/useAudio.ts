@@ -20,7 +20,9 @@ const listeners = new Set<() => void>();
 
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
-  return () => { listeners.delete(cb); };
+  return () => {
+    listeners.delete(cb);
+  };
 }
 
 function getSnapshot(): boolean {
@@ -33,7 +35,11 @@ function getServerSnapshot(): boolean {
 
 function setSoundEnabled(next: boolean): void {
   soundEnabled = next;
-  try { localStorage.setItem(STORAGE_KEY, String(next)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, String(next));
+  } catch {
+    /* ignore */
+  }
   listeners.forEach((cb) => cb());
 }
 
@@ -79,7 +85,9 @@ function playTone(ctx: AudioContext) {
 export function useAudio() {
   const enabled = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const enabledRef = useRef(enabled);
-  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const unlockAudio = useCallback((force = false) => {
     if (!force && !enabledRef.current) return;
@@ -106,11 +114,20 @@ export function useAudio() {
       }
     };
     if (ctx.state === "suspended") {
-      ctx.resume().then(play).catch(() => {});
+      ctx
+        .resume()
+        .then(play)
+        .catch(() => {});
       return;
     }
     play();
   }, []);
 
-  return { soundEnabled: enabled, onSoundToggle: toggle, playDoneSound: playDone, unlockAudio, soundEnabledRef: enabledRef };
+  return {
+    soundEnabled: enabled,
+    onSoundToggle: toggle,
+    playDoneSound: playDone,
+    unlockAudio,
+    soundEnabledRef: enabledRef,
+  };
 }

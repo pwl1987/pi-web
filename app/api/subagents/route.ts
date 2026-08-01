@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir, userInfo } from "os";
+import { errorResponse } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,9 @@ export async function GET() {
         try {
           const status = JSON.parse(readFileSync(statusFile, "utf8")) as AsyncStatus;
           active.push({ ...status, runId });
-        } catch { /* skip corrupt */ }
+        } catch {
+          /* skip corrupt */
+        }
       }
     }
 
@@ -73,9 +76,13 @@ export async function GET() {
       for (const file of readdirSync(resultsDir)) {
         if (!file.endsWith(".json")) continue;
         try {
-          const result = JSON.parse(readFileSync(join(resultsDir, file), "utf8")) as CompletedResult;
+          const result = JSON.parse(
+            readFileSync(join(resultsDir, file), "utf8"),
+          ) as CompletedResult;
           completed.push(result);
-        } catch { /* skip corrupt */ }
+        } catch {
+          /* skip corrupt */
+        }
       }
     }
 
@@ -85,6 +92,6 @@ export async function GET() {
 
     return NextResponse.json({ active, completed });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

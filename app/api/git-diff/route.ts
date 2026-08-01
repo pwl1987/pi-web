@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync } from "fs";
+import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { errorResponse } from "@/lib/api-utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,9 +39,11 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const cwd = searchParams.get("cwd");
-    if (!cwd || !existsSync(cwd)) {
-      return NextResponse.json({ error: "Invalid cwd" }, { status: 400 });
-    }
+    if (!cwd || !existsSync(cwd)) return errorResponse("Invalid cwd", 400);
+    // Restrict to allowed roots — without this, the endpoint could probe the git
+    // state (branch, diff counts) of any directory on the host.
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isFilePathAllowed(cwd, allowedRoots)) return errorResponse("forbidden", 403);
 
     // Check it's a git repo.
     try {
@@ -61,26 +65,32 @@ export async function GET(req: Request) {
     try {
       branch = await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
       if (branch === "HEAD") branch = null; // detached
-    } catch { /* detached or error */ }
+    } catch {
+      /* detached or error */
+    }
 
     // Unstaged changes (worktree vs index).
     let unstaged = { added: 0, deleted: 0 };
     try {
-      unstaged = sumNumstat(await git(cwd, ["diff", "--numstat"]));
-    } catch { /* no changes or error */ }
+      unstaged = sumNumstat(await git(cwd, ["diff", "--numstat", "--", "."]));
+    } catch {
+      /* no changes or error */
+    }
 
     // Staged changes (index vs HEAD).
     let staged = { added: 0, deleted: 0 };
     try {
-      staged = sumNumstat(await git(cwd, ["diff", "--cached", "--numstat"]));
-    } catch { /* no changes or error */ }
+      staged = sumNumstat(await git(cwd, ["diff", "--cached", "--numstat", "--", "."]));
+    } catch {
+      /* no changes or error */
+    }
 
     // File counts from porcelain status.
     let modified = 0;
     let stagedCount = 0;
     let untracked = 0;
     try {
-      const status = await git(cwd, ["status", "--porcelain"]);
+      const status = await git(cwd, ["status", "--porcelain", "--", "."]);
       for (const line of status.split("\n")) {
         if (line.length < 2) continue;
         const x = line[0];
@@ -91,7 +101,9 @@ export async function GET(req: Request) {
           if (y !== " " && y !== "?") modified++;
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return NextResponse.json({
       isGit: true,
@@ -103,6 +115,6 @@ export async function GET(req: Request) {
       untracked,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

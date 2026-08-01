@@ -7,6 +7,9 @@ import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
+import { errorResponse } from "@/lib/api-utils";
+import { getAttachmentDisposition } from "@/lib/api-shared";
+import { getPiAdapter } from "@/lib/pi";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,22 +25,11 @@ type ExportHtmlModule = {
 
 async function getPiPackageDir(): Promise<string | null> {
   try {
-    const { getPackageDir } = (await import("@earendil-works/pi-coding-agent")) as PiCodingAgentModule;
+    const { getPackageDir } = getPiAdapter();
     return getPackageDir();
   } catch {
     return null;
   }
-}
-
-function encodeHeaderValue(value: string): string {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (ch) =>
-    `%${ch.charCodeAt(0).toString(16).toUpperCase()}`
-  );
-}
-
-function getAttachmentDisposition(fileName: string): string {
-  const fallback = fileName.replace(/[^\x20-\x7E]|["\\;\r\n]/g, "_") || "session.html";
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(fileName)}`;
 }
 
 async function getPiCliPath(): Promise<string | null> {
@@ -49,9 +41,11 @@ async function getPiCliPath(): Promise<string | null> {
   }
 
   try {
-    const resolver = (import.meta as ImportMeta & {
-      resolve?: (specifier: string) => string | Promise<string>;
-    }).resolve;
+    const resolver = (
+      import.meta as ImportMeta & {
+        resolve?: (specifier: string) => string | Promise<string>;
+      }
+    ).resolve;
     if (typeof resolver === "function") {
       const indexUrl = await resolver("@earendil-works/pi-coding-agent");
       candidates.add(join(dirname(fileURLToPath(indexUrl)), "cli.js"));
@@ -61,14 +55,7 @@ async function getPiCliPath(): Promise<string | null> {
   }
 
   candidates.add(
-    join(
-      process.cwd(),
-      "node_modules",
-      "@earendil-works",
-      "pi-coding-agent",
-      "dist",
-      "cli.js"
-    )
+    join(process.cwd(), "node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli.js"),
   );
 
   for (const candidate of candidates) {
@@ -156,7 +143,7 @@ function patchExportHtml(html: string): string {
               stack.push(node.children[i]);
             }
           }
-        }`
+        }`,
   );
 
   html = replaceRequired(
@@ -174,7 +161,7 @@ function patchExportHtml(html: string): string {
             for (let i = node.children.length - 1; i >= 0; i--) {
               stack.push(node.children[i]);
             }
-          }`
+          }`,
   );
 
   html = replaceRequired(
@@ -207,7 +194,7 @@ function patchExportHtml(html: string): string {
             }
             containsActive.set(node, has);
           }
-        }`
+        }`,
   );
 
   return html;
@@ -232,22 +219,19 @@ async function exportSession(filePath: string, outputPath: string): Promise<void
   const packageDir = await getPiPackageDir();
   if (!packageDir) throw new Error("pi CLI not found");
 
-  const exporterUrl = pathToFileURL(join(packageDir, "dist", "core", "export-html", "index.js")).href;
+  const exporterUrl = pathToFileURL(
+    join(packageDir, "dist", "core", "export-html", "index.js"),
+  ).href;
   const { exportFromFile } = (await import(exporterUrl)) as ExportHtmlModule;
   await exportFromFile(filePath, outputPath);
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   try {
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
     const tempDir = join(tmpdir(), "pi-web-export");
     mkdirSync(tempDir, { recursive: true });
@@ -272,6 +256,6 @@ export async function GET(
       rmSync(outputPath, { force: true });
     }
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

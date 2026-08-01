@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import type { SkillSearchResult } from "@/lib/api-types";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -83,15 +85,21 @@ function parseInstallCount(installs: string): number {
   if (!match) return 0;
   const value = Number(match[1]);
   if (!Number.isFinite(value)) return 0;
-  const multiplier = match[2] === "B" ? 1_000_000_000 : match[2] === "M" ? 1_000_000 : match[2] === "K" ? 1_000 : 1;
+  const multiplier =
+    match[2] === "B" ? 1_000_000_000 : match[2] === "M" ? 1_000_000 : match[2] === "K" ? 1_000 : 1;
   return value * multiplier;
 }
 
 // POST /api/skills/search  body: { query: string, limit?: number }
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const { query, limit: rawLimit } = await req.json() as { query?: string; limit?: unknown };
-    if (!query?.trim()) return NextResponse.json({ error: "query required" }, { status: 400 });
+    const [body, parseError] = await safeJsonBody<{ query?: string; limit?: unknown }>(req);
+    if (parseError) return parseError;
+    const { query, limit: rawLimit } = body;
+    if (!query?.trim()) return errorResponse("query required", 400);
     const limit = parseLimit(rawLimit);
 
     try {
@@ -111,6 +119,6 @@ export async function POST(req: Request) {
     const raw = (err.stdout ?? "") + (err.stderr ?? "");
     const results = raw ? parseSearchOutput(raw) : [];
     if (results.length > 0) return NextResponse.json({ results });
-    return NextResponse.json({ error: err.message ?? String(e) }, { status: 500 });
+    return errorResponse(err.message ?? e);
   }
 }

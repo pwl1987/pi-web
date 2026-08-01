@@ -112,9 +112,7 @@ export function useTokenUsage(opts: UseTokenUsageOptions): TokenUsageState {
     prevProviderRef.current = provider;
     // Only reset if we have something to clear — avoids a needless INITIAL
     // setState when the state is already pristine.
-    setState((prev) =>
-      prev.info || prev.reason || prev.error ? INITIAL : prev,
-    );
+    setState((prev) => (prev.info || prev.reason || prev.error ? INITIAL : prev));
   }, [provider]);
 
   useEffect(() => {
@@ -146,7 +144,13 @@ export function useTokenUsage(opts: UseTokenUsageOptions): TokenUsageState {
         if (res.status === 404) {
           // Provider isn't supported — that's not an error worth surfacing.
           errorStreak = 0;
-          setState({ info: null, reason: "unsupported", error: null, fetchedAt: Date.now(), settled: true });
+          setState({
+            info: null,
+            reason: "unsupported",
+            error: null,
+            fetchedAt: Date.now(),
+            settled: true,
+          });
           scheduleNext();
           return;
         }
@@ -159,7 +163,13 @@ export function useTokenUsage(opts: UseTokenUsageOptions): TokenUsageState {
 
         if (body.ok) {
           errorStreak = 0;
-          setState({ info: body.info, reason: null, error: null, fetchedAt: Date.now(), settled: true });
+          setState({
+            info: body.info,
+            reason: null,
+            error: null,
+            fetchedAt: Date.now(),
+            settled: true,
+          });
         } else {
           const reason = body.reason ?? "error";
           // not_configured / unsupported are stable "nothing to show" — no
@@ -197,16 +207,18 @@ export function useTokenUsage(opts: UseTokenUsageOptions): TokenUsageState {
       // Lets a persistently-failing/slow provider rest instead of dragging
       // every minute. Visibility/online handlers still force an immediate
       // refresh when the user returns, so backoff never feels stale.
-      const backoff = errorStreak > 0
-        ? Math.min(intervalMs * 2 ** errorStreak, BACKOFF_MAX_MS)
-        : intervalMs;
+      const backoff =
+        errorStreak > 0 ? Math.min(intervalMs * 2 ** errorStreak, BACKOFF_MAX_MS) : intervalMs;
       // Pause when tab is hidden — saves a network round trip on inactive tabs.
       const delay = document.hidden ? Math.min(backoff, 15_000) : backoff;
       timer = setTimeout(tick, delay);
     };
 
     const onVisible = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
       if (!document.hidden) {
         // Returning to the tab resets backoff — the user is here and wants
         // fresh data now.
@@ -215,7 +227,10 @@ export function useTokenUsage(opts: UseTokenUsageOptions): TokenUsageState {
       }
     };
     const onOnline = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
       errorStreak = 0;
       void tick();
     };
@@ -229,17 +244,27 @@ export function useTokenUsage(opts: UseTokenUsageOptions): TokenUsageState {
     // requestIdleCallback (if available) defers even further when the main
     // thread is busy; otherwise setTimeout is the fallback.
     const scheduleFirst = (cb: () => void, ms: number) => {
-      const ric = typeof window !== "undefined"
-        ? (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
-        : undefined;
+      const ric =
+        typeof window !== "undefined"
+          ? (
+              window as unknown as {
+                requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+              }
+            ).requestIdleCallback
+          : undefined;
       if (typeof ric === "function") {
         const handle = ric(cb, { timeout: ms + 500 });
-        return () => (window as unknown as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback?.(handle);
+        return () =>
+          (window as unknown as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback?.(
+            handle,
+          );
       }
       const h = setTimeout(cb, ms);
       return () => clearTimeout(h);
     };
-    const cancelFirst = scheduleFirst(() => { void tick(); }, INITIAL_FETCH_DELAY_MS);
+    const cancelFirst = scheduleFirst(() => {
+      void tick();
+    }, INITIAL_FETCH_DELAY_MS);
 
     return () => {
       alive = false;

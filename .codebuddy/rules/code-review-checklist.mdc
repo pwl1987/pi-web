@@ -1,0 +1,50 @@
+---
+alwaysApply: false
+---
+# Pi Web 代码审查清单
+
+针对 `@agegr/pi-web` (Next.js 16 App Router 全栈应用) 的增量审查清单。重点核对本次重构（phases 3–7/8）暴露出的关键不变量与易错点。每次审查新增/更新代码时，逐条核对。
+
+## 1. 导入边界（最高优先级）
+- 客户端代码（`app/**`、`components/**`、`hooks/**`）**严禁**导入 `@earendil-works/pi-coding-agent` / `@earendil-works/pi-ai`。它们仅在 `app/api/**` 和 `lib/rpc-manager.ts` 使用（已在 `next.config.ts` 的 `serverExternalPackages`）。
+- `lib/` 内模块互引用用**相对路径**；`app/components/hooks` 用 `@/*` 别名。
+- 路径别名 `@/*` → 仓库根（见 `tsconfig.json`）。
+
+## 2. AgentSession 生命周期（服务端）
+- `globalThis.__piSessions` 以 id 索引 `AgentSessionWrapper`，`globalThis` 跨 Next.js 热重载存活，普通 module-level Map 不行。
+- **Fork 必须立即 `destroy()` wrapper**：SDK `fork()` 原地改写 `inner.sessionId`，不销毁会让后续 fork 链错乱（`lib/rpc-manager.ts`）。
+- `prompt` 的 `.then/.catch` 必须加 `_alive` 守卫，已销毁后 resolve 不得再发事件。
+- `destroy()` 必须中止 in-flight 的 prompt。
+- 空闲超时（`lib/rpc-manager.ts` 的 `handleIdleTimeout`）在 prompt 运行中**只续期不销毁**。
+- 并发 `startRpcSession()` 通过 `globalThis.__piStartLocks` 合并单一启动 Promise。
+
+## 3. SSE 与对账（客户端）
+- `useAgentSession.ts`：SSE 为主通道，运行期每 15s + `visibilitychange`/`online` 时 `GET /api/agent/[id]` 对账。
+- 用**单调递增 runId** 守卫：旧 run 的延迟 SSE/对账响应必须忽略，防止复活已结束的流式气泡。
+- SSE 断线重连用 `reconnectTimerRef` 去重，卸载时清理定时器（防止热重载后定时器泄漏）。
+
+## 4. Content-Disposition 一致性（易错）
+- 所有文件下载/预览响应应走统一的 [lib/api-shared.ts](mdc:lib/api-shared.ts) `getAttachmentDisposition`，用 `JSON.stringify(fallback)` 正确加引号（RFC 6266）。
+- **已知缺陷**：`app/api/files/[...path]/route.ts` 的 fallback 未加引号（`filename=my file.txt` 裸值非法），待统一到 `getAttachmentDisposition`（加 `disposition` 参数支持 `inline`）。
+- `encodeHeaderValue()` 用于 `filename*`；fallback 文件名用 `JSON.stringify` 加双引号。
+
+## 5. 会话文件改写
+- 会话 `.jsonl` 可整体重写（pi 自身迁移时也如此），但大文件/含特殊行尾时优先用 [lib/session-reparent.ts](mdc:lib/session-reparent.ts) `reparentSessionHeader` 仅改写首行 `parentSession`，逐字节保留其余内容。
+- `parentSession` header 仅作显示元数据，对聊天内容无影响；删除会话时可级联重定父。
+
+## 6. 类型与字段归一化
+- `lib/types.ts` 集中共享 UI 类型（`AttachedImage`、`ChatInputHandle`、`SessionInfo` 等）。
+- `lib/normalize.ts` 的 `normalizeToolCalls()` 在**文件加载路径**（`session-reader.ts`）与**流式处理路径**（`ChatWindow.handleAgentEvent`）两条路径均须调用。
+- `agent-runtime-store.ts` 的 `ContextUsage` 统一用 `lib/pi-types.ts` 的 `ContextUsage`（不要自造 `ContextUsageInfo`）。
+
+## 7. 测试与质量门禁
+- 纯逻辑抽成 `lib/*-helpers.ts` 等，用 `node --test --experimental-strip-types`（`*.test.mjs`）或 `vitest`（组件/hooks，默认 node 环境，需 jsdom 的文件加 `// @vitest-environment jsdom`）。
+- 提交前必跑：`node_modules/.bin/tsc --noEmit`、新增单测、`npx eslint <变更文件>`。
+- **严禁开发期跑 `next build`**（污染 `.next/` 破坏 `npm run dev`）。
+
+## 8. 本次审查遗留项（已全部修复）
+- **P2（已修复）**：`app/api/files/[...path]/route.ts` 原 fallback 未加引号；现复用 [lib/api-shared.ts](mdc:lib/api-shared.ts) 的 `getAttachmentDisposition`（含 `disposition: "attachment" | "inline"` 参数），RFC 6266 合规。
+- **P3（已修复）**：`app/api/sessions/[id]/route.ts` GET `includeState` 的 5s `setTimeout` 已 `timer.unref?.()`，正常返回不再挂起事件循环。
+- **P3（已修复 + 顺带堵 bug）**：客户端现在消费 `timedOut`——挂载逻辑在 `timedOut && running` 时乐观连接 SSE；`reconcileAgentState` 读到 `timedOut` 直接 return 重试，避免 `state:null` 被误判为非忙而提前 `finishPromptWithoutStream` 错误结束流式气泡。
+- **P3（已修复）**：AppShell 顶部 session 信息按钮已统一到 [components/TopBarButton.tsx](mdc:components/TopBarButton.tsx)（`.topbar-panel-btn-session` 修饰类去掉右侧分隔线）。
+- **附加加固**：`/api/agent/[id]` GET 也加上与 sessions 路由一致的 5s 超时 + `timedOut` 返回（超时/异常均降级为 `{ running:true, state:null, timedOut:true }`），使 reconcile 轮询路径也具备超时防护，不再被 `get_state` 挂死。

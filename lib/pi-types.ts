@@ -5,6 +5,19 @@ import type {
   SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 
+// Re-export the SDK classes the ACL surfaces as named accessors, so business
+// modules reference them via this module instead of importing the SDK directly.
+export type {
+  AgentSessionEvent,
+  AuthStorage as SdkAuthStorage,
+  DefaultPackageManager as SdkDefaultPackageManager,
+  DefaultResourceLoader as SdkDefaultResourceLoader,
+  ModelRegistry as SdkModelRegistry,
+  SessionManager as SdkSessionManager,
+  SettingsManager as SdkSettingsManager,
+  Theme as SdkTheme,
+} from "@earendil-works/pi-coding-agent";
+
 export interface ContextUsage {
   percent: number | null;
   contextWindow: number;
@@ -93,7 +106,11 @@ export interface ExtensionUiContextLike {
   setWorkingVisible(visible: boolean): void;
   setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }): void;
   setHiddenThinkingLabel(label?: string): void;
-  setWidget(key: string, content: string[] | ((...args: never[]) => unknown) | undefined, options?: WidgetOptionsLike): void;
+  setWidget(
+    key: string,
+    content: string[] | ((...args: never[]) => unknown) | undefined,
+    options?: WidgetOptionsLike,
+  ): void;
   setFooter(factory: unknown): void;
   setHeader(factory: unknown): void;
   setTitle(title: string): void;
@@ -131,11 +148,14 @@ export interface AgentSessionLike {
   readonly bindExtensions?: unknown;
   reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
   subscribe(listener: (event: AgentSessionEvent) => void): () => void;
-  prompt(text: string, options?: {
-    images?: Array<{ type: "image"; data: string; mimeType: string }>;
-    streamingBehavior?: "steer" | "followUp";
-    source?: "interactive" | "rpc";
-  }): Promise<void>;
+  prompt(
+    text: string,
+    options?: {
+      images?: Array<{ type: "image"; data: string; mimeType: string }>;
+      streamingBehavior?: "steer" | "followUp";
+      source?: "interactive" | "rpc";
+    },
+  ): Promise<void>;
   abort(): Promise<void>;
   setModel(model: ModelLike): Promise<void>;
   navigateTree(targetId: string, options?: { summarize?: boolean }): Promise<NavigateTreeResult>;
@@ -146,8 +166,14 @@ export interface AgentSessionLike {
   getLastAssistantText(): string | undefined;
   setAutoCompactionEnabled(enabled: boolean): void;
   setAutoRetryEnabled(enabled: boolean): void;
-  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
-  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
+  steer(
+    text: string,
+    images?: Array<{ type: "image"; data: string; mimeType: string }>,
+  ): Promise<void>;
+  followUp(
+    text: string,
+    images?: Array<{ type: "image"; data: string; mimeType: string }>,
+  ): Promise<void>;
   readonly pendingMessageCount: number;
   getSteeringMessages(): readonly string[];
   getFollowUpMessages(): readonly string[];

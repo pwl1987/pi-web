@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { csrfFetchJson } from "@/lib/csrf-fetch";
+import { useAsync } from "@/hooks/useAsync";
+import { useSave } from "@/hooks/useSave";
+import { SaveButton } from "@/components/ui/ConfigModal";
+import { btnStyle, errorBoxStyle, loadingBoxStyle, inputStyle, selectStyle } from "@/lib/styles";
 
 interface WebSearchData {
   providers: Record<string, boolean>;
@@ -13,81 +18,88 @@ interface WebSearchData {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  openai: "OpenAI", brave: "Brave", tavily: "Tavily", exa: "Exa",
-  perplexity: "Perplexity", parallel: "Parallel", gemini: "Gemini",
+  openai: "OpenAI",
+  brave: "Brave",
+  tavily: "Tavily",
+  exa: "Exa",
+  perplexity: "Perplexity",
+  parallel: "Parallel",
+  gemini: "Gemini",
 };
 
 export function WebSearchConfigPanel() {
   const { t } = useI18n();
   const [data, setData] = useState<WebSearchData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, setError, run } = useAsync(undefined, { initialLoading: true });
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saving, savedOk: saved, startSave, endSave } = useSave();
 
   const reload = useCallback(async () => {
-    try {
-      const res = await fetch("/api/web-search-config");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as WebSearchData;
-      setData(d);
-      setKeyInputs({});
-      setShowKeys({});
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    const { ok, status, data } = await csrfFetchJson<WebSearchData>("/api/web-search-config", {
+      method: "GET",
+    });
+    if (!ok) throw new Error(`HTTP ${status}`);
+    setData(data);
+    setKeyInputs({});
+    setShowKeys({});
   }, []);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void run(reload);
+  }, [reload, run]);
 
   const handleSave = useCallback(async () => {
     if (!data) return;
-    setSaving(true);
-    setSaved(false);
+    startSave();
     try {
       const apiKeys: Record<string, string> = {};
       for (const [provider, key] of Object.entries(keyInputs)) {
         if (key.trim()) apiKeys[`${provider}ApiKey`] = key.trim();
       }
-      await fetch("/api/web-search-config", {
+      await csrfFetchJson("/api/web-search-config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           provider: data.provider,
           workflow: data.workflow,
           curatorTimeoutSeconds: data.curatorTimeoutSeconds,
           webSearchEnabled: data.webSearchEnabled,
           apiKeys,
-        }),
+        },
       });
-      setSaved(true);
+      endSave(true);
       void reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
+      endSave(false);
     }
-  }, [data, keyInputs, reload]);
+  }, [data, keyInputs, reload, startSave, endSave, setError]);
 
-  if (loading) return <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 12 }}>{t("common.loading")}</div>;
-  if (error) return <div style={{ padding: 16, color: "#f87171", fontSize: 12 }}>{error}</div>;
+  if (loading) return <div style={loadingBoxStyle}>{t("common.loading")}</div>;
+  if (error) return <div style={errorBoxStyle}>{error}</div>;
   if (!data) return null;
 
   return (
-    <div style={{ padding: 12, fontSize: 12, height: "100%", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+    <div style={{ padding: 12, fontSize: 12, height: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{t("webSearch.title")}</h3>
-        <button onClick={() => void reload()} style={btnStyle}>{t("common.refresh")}</button>
+        <button onClick={() => void reload()} style={btnStyle}>
+          {t("common.refresh")}
+        </button>
       </div>
 
       {/* Default provider */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+        <label
+          style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}
+        >
           {t("webSearch.defaultProvider")}
         </label>
         <select
@@ -98,7 +110,8 @@ export function WebSearchConfigPanel() {
           <option value="auto">auto</option>
           {Object.entries(PROVIDER_LABELS).map(([key, label]) => (
             <option key={key} value={key} disabled={!data.providers[key]}>
-              {label}{data.providers[key] ? "" : ` (${t("webSearch.notConfigured")})`}
+              {label}
+              {data.providers[key] ? "" : ` (${t("webSearch.notConfigured")})`}
             </option>
           ))}
         </select>
@@ -106,7 +119,9 @@ export function WebSearchConfigPanel() {
 
       {/* Workflow */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+        <label
+          style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}
+        >
           {t("webSearch.workflow")}
         </label>
         <select
@@ -123,7 +138,8 @@ export function WebSearchConfigPanel() {
       {/* Toggle */}
       <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
         <input
-          type="checkbox" checked={data.webSearchEnabled}
+          type="checkbox"
+          checked={data.webSearchEnabled}
           onChange={(e) => setData({ ...data, webSearchEnabled: e.target.checked })}
         />
         <span>{t("webSearch.enabled")}</span>
@@ -131,7 +147,9 @@ export function WebSearchConfigPanel() {
 
       {/* Provider API keys */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>{t("webSearch.apiKeys")}</div>
+        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
+          {t("webSearch.apiKeys")}
+        </div>
         {Object.entries(PROVIDER_LABELS).map(([key, label]) => {
           const configured = data.providers[key];
           return (
@@ -139,7 +157,9 @@ export function WebSearchConfigPanel() {
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                 <span style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{label}</span>
                 {configured && <span style={badgeStyle("var(--accent)")}>✓</span>}
-                {key === "parallel" && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>(env)</span>}
+                {key === "parallel" && (
+                  <span style={{ fontSize: 10, color: "var(--text-dim)" }}>(env)</span>
+                )}
               </div>
               {key !== "parallel" && (
                 <div style={{ display: "flex", gap: 4 }}>
@@ -148,7 +168,7 @@ export function WebSearchConfigPanel() {
                     placeholder={configured ? "••••••••" : t("webSearch.enterKey")}
                     value={keyInputs[key] ?? ""}
                     onChange={(e) => setKeyInputs({ ...keyInputs, [key]: e.target.value })}
-                    style={inputStyle}
+                    style={{ ...inputStyle, flex: 1 }}
                   />
                   <button
                     onClick={() => setShowKeys({ ...showKeys, [key]: !showKeys[key] })}
@@ -164,14 +184,23 @@ export function WebSearchConfigPanel() {
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={() => void handleSave()} disabled={saving} style={btnStyle}>
-          {saving ? t("common.saving") : t("common.save")}
-        </button>
-        {saved && <span style={{ fontSize: 11, color: "var(--accent)" }}>✓ {t("common.saved")}</span>}
+        <SaveButton
+          onSave={() => void handleSave()}
+          saving={saving}
+          savedOk={saved}
+          disabled={!data}
+        />
       </div>
 
       {data.configPath && (
-        <div style={{ marginTop: 12, fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 10,
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
           {data.configPath}
         </div>
       )}
@@ -179,20 +208,6 @@ export function WebSearchConfigPanel() {
   );
 }
 
-const btnStyle: React.CSSProperties = {
-  background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 6,
-  padding: "5px 12px", fontSize: 11, color: "var(--text)", cursor: "pointer",
-};
-const inputStyle: React.CSSProperties = {
-  flex: 1, padding: "5px 8px", fontSize: 11,
-  background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5,
-  color: "var(--text)",
-};
-const selectStyle: React.CSSProperties = {
-  width: "100%", padding: "5px 8px", fontSize: 11,
-  background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5,
-  color: "var(--text)",
-};
 function badgeStyle(color: string): React.CSSProperties {
   return { fontSize: 10, fontWeight: 700, color };
 }

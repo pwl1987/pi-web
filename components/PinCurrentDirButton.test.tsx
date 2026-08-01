@@ -28,12 +28,16 @@ describe("PinCurrentDirButton", () => {
   });
 
   it("renders the pin affordance when cwd is set and not pinned", () => {
-    render(<PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={false} onPinnedChange={() => {}} />);
+    render(
+      <PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={false} onPinnedChange={() => {}} />,
+    );
     expect(screen.getByRole("button", { name: /pin this directory/i })).toBeInTheDocument();
   });
 
   it("renders the unpin affordance when already pinned", () => {
-    render(<PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={true} onPinnedChange={() => {}} />);
+    render(
+      <PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={true} onPinnedChange={() => {}} />,
+    );
     expect(screen.getByRole("button", { name: /unpin this directory/i })).toBeInTheDocument();
   });
 
@@ -45,7 +49,13 @@ describe("PinCurrentDirButton", () => {
   it("click on pin POSTs /api/pinned-dirs and emits the bus", async () => {
     mockFetchSequence([{ body: { pinnedDir: { path: "/Users/me/projects/x", pinnedAt: 0 } } }]);
     const onPinnedChange = vi.fn();
-    render(<PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={false} onPinnedChange={onPinnedChange} />);
+    render(
+      <PinCurrentDirButton
+        cwd="/Users/me/projects/x"
+        isPinned={false}
+        onPinnedChange={onPinnedChange}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /pin this directory/i }));
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
@@ -62,7 +72,13 @@ describe("PinCurrentDirButton", () => {
   it("click on unpin DELETEs /api/pinned-dirs and emits the bus", async () => {
     mockFetchSequence([{ body: { removed: true } }]);
     const onPinnedChange = vi.fn();
-    render(<PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={true} onPinnedChange={onPinnedChange} />);
+    render(
+      <PinCurrentDirButton
+        cwd="/Users/me/projects/x"
+        isPinned={true}
+        onPinnedChange={onPinnedChange}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /unpin this directory/i }));
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
@@ -78,7 +94,13 @@ describe("PinCurrentDirButton", () => {
   it("rolls back optimistic toggle when the API rejects", async () => {
     mockFetchSequence([{ body: { error: "boom" }, status: 500 }]);
     const onPinnedChange = vi.fn();
-    render(<PinCurrentDirButton cwd="/Users/me/projects/x" isPinned={false} onPinnedChange={onPinnedChange} />);
+    render(
+      <PinCurrentDirButton
+        cwd="/Users/me/projects/x"
+        isPinned={false}
+        onPinnedChange={onPinnedChange}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /pin this directory/i }));
     await waitFor(() => {
       // Two onPinnedChange calls: optimistic true (then rollback false).

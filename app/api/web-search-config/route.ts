@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 import { join } from "path";
 import { homedir } from "os";
 import { readJsonFile, writeJsonFileAtomic, ensureParentDir } from "@/lib/config-file";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
 // Provider config keys that store API keys — never returned in GET responses.
 const API_KEY_FIELDS = [
-  "openaiApiKey", "braveApiKey", "tavilyApiKey", "exaApiKey",
-  "perplexityApiKey", "geminiApiKey", "cloudflareApiKey",
+  "openaiApiKey",
+  "braveApiKey",
+  "tavilyApiKey",
+  "exaApiKey",
+  "perplexityApiKey",
+  "geminiApiKey",
+  "cloudflareApiKey",
 ] as const;
 
 interface WebSearchConfig {
@@ -55,33 +62,38 @@ export async function GET() {
       configPath: configPath(),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // PUT /api/web-search-config — update config. API keys are set only if provided.
 export async function PUT(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as {
+    const [body, parseError] = await safeJsonBody<{
       provider?: string;
       workflow?: string;
       curatorTimeoutSeconds?: number;
       webSearchEnabled?: boolean;
       apiKeys?: Record<string, string>;
-    };
+    }>(req);
+    if (parseError) return parseError;
 
     const existing = readJsonFile<WebSearchConfig>(configPath(), {});
     const updated: WebSearchConfig = { ...existing };
 
     if (body.provider !== undefined) updated.provider = body.provider;
     if (body.workflow !== undefined) updated.workflow = body.workflow;
-    if (body.curatorTimeoutSeconds !== undefined) updated.curatorTimeoutSeconds = body.curatorTimeoutSeconds;
+    if (body.curatorTimeoutSeconds !== undefined)
+      updated.curatorTimeoutSeconds = body.curatorTimeoutSeconds;
     if (body.webSearchEnabled !== undefined) {
       updated.webSearch = { ...(updated.webSearch ?? {}), enabled: body.webSearchEnabled };
     }
     if (body.apiKeys) {
       for (const [key, value] of Object.entries(body.apiKeys)) {
-        if (API_KEY_FIELDS.includes(key as typeof API_KEY_FIELDS[number])) {
+        if (API_KEY_FIELDS.includes(key as (typeof API_KEY_FIELDS)[number])) {
           if (value) (updated as Record<string, unknown>)[key] = value;
           else delete (updated as Record<string, unknown>)[key];
         }
@@ -93,6 +105,6 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

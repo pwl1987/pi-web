@@ -1,11 +1,14 @@
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { validateCsrf } from "@/lib/csrf";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  _req: Request,
-  { params }: { params: Promise<{ provider: string }> }
-) {
+export async function POST(req: Request, { params }: { params: Promise<{ provider: string }> }) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { provider } = await params;
   const authStorage = AuthStorage.create();
   const providers = authStorage.getOAuthProviders();

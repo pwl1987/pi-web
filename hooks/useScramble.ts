@@ -32,7 +32,7 @@ export function useScramble(target: string, running: boolean): string {
             if (i < resolved) return char;
             return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
           })
-          .join("")
+          .join(""),
       );
 
       if (iterRef.current < totalFrames) {
@@ -43,7 +43,9 @@ export function useScramble(target: string, running: boolean): string {
     };
 
     frameRef.current = requestAnimationFrame(step);
-    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    };
   }, [target, running]);
 
   return display;

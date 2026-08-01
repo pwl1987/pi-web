@@ -7,8 +7,7 @@ export interface SplitDiffCell {
 }
 
 export type SplitDiffRow =
-  | { type: "hunk"; text: string }
-  | { type: "line"; left: SplitDiffCell; right: SplitDiffCell };
+  { type: "hunk"; text: string } | { type: "line"; left: SplitDiffCell; right: SplitDiffCell };
 
 export interface SplitDiffFile {
   oldPath?: string;

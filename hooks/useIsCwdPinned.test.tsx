@@ -13,10 +13,7 @@ describe("useIsCwdPinned", () => {
 
   it("returns false initially, then true when the cwd is in the list", async () => {
     mockFetchAlways({
-      pinnedDirs: [
-        { path: "/Users/me/projects/x" },
-        { path: "/other" },
-      ],
+      pinnedDirs: [{ path: "/Users/me/projects/x" }, { path: "/other" }],
     });
     const { result } = renderHook(() => useIsCwdPinned("/Users/me/projects/x"));
     expect(result.current).toBe(false);
@@ -37,7 +34,7 @@ describe("useIsCwdPinned", () => {
 
   it("re-checks when the pinned-dirs bus emits", async () => {
     // First fetch: cwd not pinned.
-    let mockBody = { pinnedDirs: [] as { path: string }[] };
+    let mockBody = { pinnedDirs: [] as Array<{ path: string }> };
     globalThis.fetch = vi.fn().mockImplementation(async () => ({
       ok: true,
       status: 200,

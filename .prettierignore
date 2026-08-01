@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+*.min.js
+*.map
+pnpm-lock.yaml
+package-lock.json
+coverage
+
+# IDE / agent session artifacts (not project source)
+.codebuddy
+.zcode

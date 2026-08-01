@@ -1,6 +1,11 @@
 "use client";
 
-import { useTokenUsage, formatTokenCount, formatResetIn, type TokenUsageBreakdownRow } from "@/hooks/useTokenUsage";
+import {
+  useTokenUsage,
+  formatTokenCount,
+  formatResetIn,
+  type TokenUsageBreakdownRow,
+} from "@/hooks/useTokenUsage";
 import { useI18n } from "@/hooks/useI18n";
 
 export interface TokenUsageIndicatorConfig {
@@ -46,9 +51,7 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
     const pct = info.usedPercent;
     const pctStr = pct != null ? `${pct}%` : "";
 
-    const pillText = totalStr
-      ? `${usedStr}/${totalStr}${pctStr ? `·${pctStr}` : ""}`
-      : usedStr;
+    const pillText = totalStr ? `${usedStr}/${totalStr}${pctStr ? `·${pctStr}` : ""}` : usedStr;
 
     let tooltip: string;
     if (info.total != null) {
@@ -84,7 +87,9 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
         title={tooltip}
         aria-label={tooltip}
         style={{
-          display: "inline-flex", alignItems: "center", gap: 4,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           padding: "0 8px",
           color,
           fontSize: 11,
@@ -94,7 +99,17 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
         }}
       >
         {showIcon && (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />
           </svg>
@@ -114,7 +129,9 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
         aria-label={t("tokenUsage.configureHintTitle", { provider: displayName })}
         onClick={onConfigure}
         style={{
-          display: "inline-flex", alignItems: "center", gap: 4,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           padding: "0 8px",
           height: 22,
           background: "transparent",
@@ -127,7 +144,17 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
         }}
       >
         {showIcon && (
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
@@ -144,7 +171,9 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
         title={error ?? t("tokenUsage.error")}
         aria-label={t("tokenUsage.error")}
         style={{
-          display: "inline-flex", alignItems: "center", gap: 4,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           padding: "0 8px",
           color: "var(--text-dim)",
           fontSize: 11,
@@ -152,7 +181,16 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
         }}
       >
         {showIcon && (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             <line x1="12" y1="9" x2="12" y2="13" />
             <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -171,7 +209,10 @@ export function TokenUsageIndicator({ config, showIcon = true, onConfigure }: Pr
  * one line per row to the tooltip so the user can see "general 37% left,
  * video 100% left" without clicking anything.
  */
-function appendBreakdownTooltip(base: string, info: { breakdown?: TokenUsageBreakdownRow[] }): string {
+function appendBreakdownTooltip(
+  base: string,
+  info: { breakdown?: TokenUsageBreakdownRow[] },
+): string {
   if (!info.breakdown || info.breakdown.length === 0) return base;
   const lines = info.breakdown.map((row) => {
     const name = row.model_name ?? "?";

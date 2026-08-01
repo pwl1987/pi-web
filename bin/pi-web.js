@@ -32,15 +32,42 @@ try {
 
 const { values: cliArgs, positionals } = parseArgs({
   options: {
-    port:     { type: "string", short: "p" },
+    port: { type: "string", short: "p" },
     hostname: { type: "string", short: "H" },
+    host: { type: "string" },
   },
   allowPositionals: true,
   strict: false,
 });
 
-const port     = cliArgs.port     ?? process.env.PORT     ?? "30141";
-const hostname = cliArgs.hostname ?? process.env.HOSTNAME ?? null;
+const port = cliArgs.port ?? process.env.PORT ?? "30141";
+
+/**
+ * Resolve the bind hostname for the dev/start server.
+ *
+ * Precedence (highest first):
+ *   1. CLI flag: --host <addr>  (or the legacy -H/--hostname <addr>)
+ *   2. PI_WEB_HOST environment variable
+ *   3. "127.0.0.1" (loopback only — safe default for an unauthenticated local tool)
+ *
+ * NOTE: the shell-set `HOSTNAME` env var is intentionally NOT consulted.
+ * Many shells export HOSTNAME=<machine-name>, which is not a bind address —
+ * using it as a default would either fail to bind or, worse, expose the
+ * unauthenticated server on a public interface.
+ *
+ * @param {{ hostname?: string; host?: string }} cli - parsed CLI values
+ * @param {NodeJS.ProcessEnv} env - environment (typically process.env)
+ * @returns {string} the address to bind
+ */
+function resolveHostname(cli, env) {
+  const flag = cli.hostname ?? cli.host;
+  if (flag) return flag;
+  const envHost = env.PI_WEB_HOST;
+  if (envHost) return envHost;
+  return "127.0.0.1";
+}
+
+const hostname = resolveHostname(cliArgs, process.env);
 const subcommand = positionals[0]; // "install" | "uninstall" | undefined (= start)
 
 // ============================================================================
@@ -62,7 +89,9 @@ function binAbsPath() {
 /** Run a shell command, throwing on failure with a readable message. */
 function run(cmd, opts) {
   try {
-    return execSync(cmd, { stdio: "pipe", ...opts }).toString().trim();
+    return execSync(cmd, { stdio: "pipe", ...opts })
+      .toString()
+      .trim();
   } catch (e) {
     const stderr = e.stderr ? e.stderr.toString().trim() : e.message;
     throw new Error(`Command failed: ${cmd}\n${stderr}`);
@@ -114,8 +143,16 @@ function installLinux(port) {
 }
 
 function uninstallLinux() {
-  try { run(`systemctl --user stop ${SERVICE_NAME}`); } catch { /* not running */ }
-  try { run(`systemctl --user disable ${SERVICE_NAME}`); } catch { /* not enabled */ }
+  try {
+    run(`systemctl --user stop ${SERVICE_NAME}`);
+  } catch {
+    /* not running */
+  }
+  try {
+    run(`systemctl --user disable ${SERVICE_NAME}`);
+  } catch {
+    /* not enabled */
+  }
 
   const unitFile = path.join(os.homedir(), ".config", "systemd", "user", `${SERVICE_NAME}.service`);
   if (fs.existsSync(unitFile)) {
@@ -136,7 +173,7 @@ function installMac(port) {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0">',
-    '<dict>',
+    "<dict>",
     `  <key>Label</key><string>${LABEL}</string>`,
     "  <key>ProgramArguments</key>",
     "  <array>",
@@ -157,7 +194,11 @@ function installMac(port) {
   fs.writeFileSync(plistFile, plist, "utf8");
   console.log(`Written ${plistFile}`);
 
-  try { run(`launchctl unload ${plistFile}`); } catch { /* not loaded */ }
+  try {
+    run(`launchctl unload ${plistFile}`);
+  } catch {
+    /* not loaded */
+  }
   run(`launchctl load ${plistFile}`);
   console.log(`\n✓ pi-web installed. Auto-starts on login, restarts on crash.`);
   console.log(`  Status:  launchctl list | grep ${LABEL}`);
@@ -167,7 +208,11 @@ function installMac(port) {
 
 function uninstallMac() {
   const plistFile = path.join(os.homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
-  try { run(`launchctl unload ${plistFile}`); } catch { /* not loaded */ }
+  try {
+    run(`launchctl unload ${plistFile}`);
+  } catch {
+    /* not loaded */
+  }
   if (fs.existsSync(plistFile)) {
     fs.unlinkSync(plistFile);
     console.log(`Removed ${plistFile}`);
@@ -181,13 +226,18 @@ function uninstallMac() {
 
 if (subcommand === "install") {
   if (!fs.existsSync(nextDir)) {
-    console.error("Build artifacts not found. Run `pi-web` once first (or `npm run build`), then `pi-web install`.");
+    console.error(
+      "Build artifacts not found. Run `pi-web` once first (or `npm run build`), then `pi-web install`.",
+    );
     process.exit(1);
   }
   try {
     if (process.platform === "darwin") installMac(port);
     else if (process.platform === "linux") installLinux(port);
-    else { console.error(`Auto-start is not supported on ${process.platform}.`); process.exit(1); }
+    else {
+      console.error(`Auto-start is not supported on ${process.platform}.`);
+      process.exit(1);
+    }
   } catch (e) {
     console.error(e.message);
     process.exit(1);
@@ -199,7 +249,10 @@ if (subcommand === "uninstall") {
   try {
     if (process.platform === "darwin") uninstallMac();
     else if (process.platform === "linux") uninstallLinux();
-    else { console.error(`Auto-start is not supported on ${process.platform}.`); process.exit(1); }
+    else {
+      console.error(`Auto-start is not supported on ${process.platform}.`);
+      process.exit(1);
+    }
   } catch (e) {
     console.error(e.message);
     process.exit(1);
@@ -208,45 +261,111 @@ if (subcommand === "uninstall") {
 }
 
 // Default: start the server (original behavior, unchanged)
-if (!fs.existsSync(nextDir)) {
-  console.error("Build artifacts not found. Please report this issue.");
-  process.exit(1);
+// Guarded by import.meta.url === main so importing this module for tests
+// does not spawn a server.
+const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(__filename);
+
+if (isMain) {
+  startServer();
 }
 
-const nextArgs = ["start", "-p", port];
-if (hostname) nextArgs.push("-H", hostname);
-
-// Always run next's JS entry with node directly — avoids .bin symlink issues
-// and path-with-spaces problems on Windows when shell: true is used.
-const child = spawn(process.execPath, [nextBin, ...nextArgs], {
-  cwd: pkgDir,
-  stdio: ["inherit", "pipe", "inherit"],
-  env: { ...process.env },
-});
-
-let browserOpened = false;
-const url = `http://${hostname ?? "localhost"}:${port}`;
-
-child.stdout.on("data", (chunk) => {
-  const text = chunk.toString();
-  process.stdout.write(text);
-  if (!browserOpened && text.includes("Ready")) {
-    browserOpened = true;
-    const isWindows = process.platform === "win32";
-    const isMac = process.platform === "darwin";
-    const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
-    const opener = spawn(openCmd, [url], {
-      shell: isWindows,
-      stdio: "ignore",
-      detached: true,
-    });
-
-    opener.on("error", (error) => {
-      console.warn(`Could not open browser automatically: ${error.message}`);
-    });
-
-    opener.unref();
+function startServer() {
+  if (!fs.existsSync(nextDir)) {
+    console.error("Build artifacts not found. Please report this issue.");
+    process.exit(1);
   }
-});
 
-child.on("exit", (code) => process.exit(code ?? 0));
+  // S1 访问网关：生成/复用访问令牌，把哈希注入 next 子进程 env，
+  // 明文仅打印终端 + 自动打开的浏览器 URL。降级开关可跳过。
+  let accessTokenHash = process.env.PI_WEB_ACCESS_TOKEN_HASH || "";
+  let accessTokenPlain = "";
+  if (process.env.PI_WEB_DISABLE_AUTH !== "1") {
+    try {
+      const genScript = path.join(pkgDir, "scripts", "gen-access-token.mjs");
+      const out = execSync(`"${process.execPath}" "${genScript}"`, {
+        cwd: pkgDir,
+        env: process.env,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim();
+      const parsed = JSON.parse(out);
+      accessTokenHash = parsed.hash;
+      accessTokenPlain = parsed.plain || "";
+    } catch {
+      // 生成失败 → 不注入哈希；middleware 对「未配置哈希」采取 D2 强制拒绝。
+      accessTokenHash = "";
+    }
+  }
+
+  // Security warning when binding to anything other than loopback.
+  // pi-web has no authentication; non-loopback binding exposes the agent,
+  // filesystem, and API keys to anyone who can reach the host.
+  const isLoopback = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+  if (!isLoopback && process.env.PI_WEB_DISABLE_AUTH !== "1") {
+    console.warn(
+      `\n⚠️  WARNING: pi-web is binding to "${hostname}" (non-loopback).\n` +
+        `   pi-web has NO authentication. Anyone on this network can read your\n` +
+        `   files, dispatch agent commands, and access your API keys.\n` +
+        `   Only continue if you trust the network. Use 127.0.0.1 (the default)\n` +
+        `   for single-user local use.\n`,
+    );
+  }
+
+  const nextArgs = ["start", "-p", port];
+  if (hostname) nextArgs.push("-H", hostname);
+
+  // Always run next's JS entry with node directly — avoids .bin symlink issues
+  // and path-with-spaces problems on Windows when shell: true is used.
+  const childEnv = { ...process.env };
+  if (accessTokenHash) childEnv.PI_WEB_ACCESS_TOKEN_HASH = accessTokenHash;
+  const child = spawn(process.execPath, [nextBin, ...nextArgs], {
+    cwd: pkgDir,
+    stdio: ["inherit", "pipe", "inherit"],
+    env: childEnv,
+  });
+
+  let browserOpened = false;
+  const url = `http://${hostname}:${port}`;
+
+  child.stdout.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    if (!browserOpened && text.includes("Ready")) {
+      browserOpened = true;
+      // S1：把明文令牌注入自动打开的浏览器 URL（仅本机启动终端可控）。
+      const openUrl =
+        accessTokenPlain && process.env.PI_WEB_DISABLE_AUTH !== "1"
+          ? `${url}/?token=${accessTokenPlain}`
+          : url;
+      const isWindows = process.platform === "win32";
+      const isMac = process.platform === "darwin";
+      const openCmd = isWindows ? "start" : isMac ? "open" : "xdg-open";
+      const opener = spawn(openCmd, [openUrl], {
+        shell: isWindows,
+        stdio: "ignore",
+        detached: true,
+      });
+
+      opener.on("error", (error) => {
+        console.warn(`Could not open browser automatically: ${error.message}`);
+      });
+
+      opener.unref();
+
+      if (accessTokenPlain && process.env.PI_WEB_DISABLE_AUTH !== "1") {
+        console.log(
+          `\n🔑 pi-web 访问令牌（已自动注入浏览器，仅本次启动有效）：\n` +
+            `   ${accessTokenPlain}\n` +
+            `   若需在其它浏览器/隐身窗口访问，请手动带上 ?token= 或 Authorization: Bearer。\n`,
+        );
+      }
+    }
+  });
+
+  child.on("exit", (code) => process.exit(code ?? 0));
+}
+
+// Exports for unit tests (bin/hostname.test.mjs). Only reachable when imported
+// as a module; the start path above is guarded by isMain.
+module.exports = { resolveHostname };

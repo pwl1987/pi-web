@@ -1,4 +1,6 @@
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { getPiAdapter } from "@/lib/pi";
+
+const { AuthStorage } = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,7 @@ export async function GET() {
           usesCallbackServer: p.usesCallbackServer ?? false,
           loggedIn,
         };
-      })
+      }),
   );
 
   return Response.json({ providers: result });

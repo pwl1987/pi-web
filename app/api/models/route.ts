@@ -1,6 +1,8 @@
 import { stat } from "fs/promises";
-import { createAgentSessionServices, getAgentDir, type SettingsManager } from "@earendil-works/pi-coding-agent";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import type { SdkSettingsManager } from "@/lib/pi";
+import { getPiAdapter } from "@/lib/pi";
+
+const pi = getPiAdapter();
 
 export const dynamic = "force-dynamic";
 
@@ -8,11 +10,13 @@ const modelNameCollator = new Intl.Collator(undefined, { numeric: true, sensitiv
 
 function compareModelEntries(
   a: { id: string; name: string; provider: string },
-  b: { id: string; name: string; provider: string }
+  b: { id: string; name: string; provider: string },
 ): number {
-  return modelNameCollator.compare(a.name || a.id, b.name || b.id)
-    || modelNameCollator.compare(a.provider, b.provider)
-    || modelNameCollator.compare(a.id, b.id);
+  return (
+    modelNameCollator.compare(a.name || a.id, b.name || b.id) ||
+    modelNameCollator.compare(a.provider, b.provider) ||
+    modelNameCollator.compare(a.id, b.id)
+  );
 }
 
 const THINKING_SUFFIXES = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
@@ -38,7 +42,7 @@ function filterByExactEnabledModels<T extends { id: string; provider: string }>(
 
 export async function GET(req: Request) {
   const nameMap = new Map<string, string>();
-  let modelList: { id: string; name: string; provider: string }[] = [];
+  let modelList: Array<{ id: string; name: string; provider: string }> = [];
   let defaultModel: { provider: string; modelId: string } | null = null;
   const thinkingLevels: Record<string, string[]> = {};
   const thinkingLevelMaps: Record<string, Record<string, string | null>> = {};
@@ -55,22 +59,24 @@ export async function GET(req: Request) {
   }
 
   try {
-    const agentDir = getAgentDir();
-    const services = await createAgentSessionServices({ cwd, agentDir });
+    const agentDir = pi.agentDir;
+    const services = await pi.createAgentSessionServices({ cwd, agentDir });
     const registry = services.modelRegistry;
     const available = registry.getAvailable();
-    const settings: SettingsManager = services.settingsManager;
+    const settings: SdkSettingsManager = services.settingsManager;
     const enabledModels = settings.getEnabledModels();
     const visible = filterByExactEnabledModels(available, enabledModels);
-    modelList = visible.map((m: { id: string; name: string; provider: string }) => ({
-      id: m.id,
-      name: m.name,
-      provider: m.provider,
-    })).sort(compareModelEntries);
+    modelList = visible
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        provider: m.provider,
+      }))
+      .sort(compareModelEntries);
     for (const m of visible) {
       const key = `${m.provider}:${m.id}`;
       nameMap.set(key, m.name);
-      thinkingLevels[key] = getSupportedThinkingLevels(m);
+      thinkingLevels[key] = pi.getSupportedThinkingLevels(m);
       if (m.thinkingLevelMap) thinkingLevelMaps[key] = m.thinkingLevelMap;
     }
 
@@ -79,7 +85,15 @@ export async function GET(req: Request) {
     if (provider && modelId && visible.some((m) => m.provider === provider && m.id === modelId)) {
       defaultModel = { provider, modelId };
     }
-  } catch { /* return empty */ }
+  } catch {
+    /* return empty */
+  }
 
-  return Response.json({ models: Object.fromEntries(nameMap), modelList, defaultModel, thinkingLevels, thinkingLevelMaps });
+  return Response.json({
+    models: Object.fromEntries(nameMap),
+    modelList,
+    defaultModel,
+    thinkingLevels,
+    thinkingLevelMaps,
+  });
 }

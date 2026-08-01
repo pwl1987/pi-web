@@ -47,7 +47,7 @@ export type AssistantContentBlock = TextContent | ImageContent | ThinkingContent
 
 export interface UserMessage {
   role: "user";
-  content: string | (TextContent | ImageContent)[];
+  content: string | Array<TextContent | ImageContent>;
   timestamp?: number;
 }
 
@@ -78,7 +78,7 @@ export interface ToolResultMessage {
   role: "toolResult";
   toolCallId: string;
   toolName?: string;
-  content: (TextContent | ImageContent)[];
+  content: Array<TextContent | ImageContent>;
   isError?: boolean;
   details?: unknown;
   timestamp?: number;
@@ -87,7 +87,7 @@ export interface ToolResultMessage {
 export interface CustomMessage {
   role: "custom";
   customType: string;
-  content: string | (TextContent | ImageContent)[];
+  content: string | Array<TextContent | ImageContent>;
   display: boolean;
   details?: unknown;
   timestamp?: number;
@@ -232,7 +232,7 @@ export interface CustomEntry extends SessionEntryBase {
 export interface CustomMessageEntry extends SessionEntryBase {
   type: "custom_message";
   customType: string;
-  content: string | (TextContent | ImageContent)[];
+  content: string | Array<TextContent | ImageContent>;
   details?: unknown;
   display: boolean;
 }
@@ -278,6 +278,14 @@ export interface SessionInfo {
   messageCount: number;
   firstMessage: string;
   parentSessionId?: string; // set if this session was forked from another
+  /** plan-mode 入口标记：当 session header 的 parentSession 形如 `orchestrator:<orchId>`
+   *  时由 session-reader 归一化到此处，SessionSidebar 据此把该 session 挂到对应
+   *  orchestrator 虚拟根节点下而非显示为顶层条目。普通 fork session 该字段为 undefined。 */
+  orchestratorParentId?: string;
+  /** 是否为计划模式（plan mode）会话。由 session-reader 根据 parentSession marker
+   *  `orchestrator:<orchId>` 推断（与 orchestratorParentId 同源）。SessionItem 据此
+   *  渲染固定的 plan 角标图标，不依赖 name 的 📋 前缀；重命名也不影响识别。 */
+  isPlanMode?: boolean;
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient
    *  SessionInfo objects before the first refresh. Fall back to cwd. */
@@ -291,4 +299,21 @@ export interface SessionContext {
   entryIds: string[]; // parallel to messages — the session entry id for each message
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
+}
+
+// ---- Shared UI types (single source for ChatInput <-> useAgentSession) ----
+
+/** Image attached to a chat message (base64, no data: prefix). */
+export interface AttachedImage {
+  data: string;
+  mimeType: string;
+  previewUrl: string; // object URL for display
+}
+
+/** Imperative handle exposed by ChatInput via forwardRef. */
+export interface ChatInputHandle {
+  insertText: (text: string) => void;
+  insertIfEmpty: (text: string) => void;
+  prependText: (text: string) => void;
+  addImages: (files: File[]) => void;
 }

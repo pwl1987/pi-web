@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import { basename, dirname, extname, join, relative } from "path";
-import {
-  DefaultPackageManager,
-  getAgentDir,
-  SettingsManager,
-  type PackageSource,
-  type ResolvedPaths,
-  type ResolvedResource,
-} from "@earendil-works/pi-coding-agent";
+import type { ResolvedPaths, ResolvedResource } from "@/lib/pi";
+import { getPiAdapter } from "@/lib/pi";
+
+const { DefaultPackageManager, getAgentDir, SettingsManager } = getPiAdapter();
 import type {
   PluginDiagnostic,
   PluginPackageInfo,
@@ -18,6 +14,16 @@ import type {
   PluginScope,
   PluginsResponse,
 } from "@/lib/api-types";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
+import { patchPackageManagerForUninstall } from "@/lib/plugin-package-manager";
+import { isPinned } from "@/lib/recommended-plugins";
+import { getDisabledPackages, keyFor, setPackageDisabled } from "@/lib/plugin-disable";
+import { readPluginMasterState } from "@/lib/plugin-master-switch";
+
+// Mirror install flags onto uninstall so removing pi extensions (which declare
+// @earendil-works/pi-* peers) doesn't fail with ERESOLVE. See module for details.
+patchPackageManagerForUninstall();
 
 export const dynamic = "force-dynamic";
 
@@ -29,65 +35,6 @@ function emptyCounts(): PluginResourceCounts {
 
 function toPluginScope(scope: string): PluginScope {
   return scope === "project" ? "project" : "global";
-}
-
-function keyFor(source: string, scope: PluginScope): string {
-  return `${scope}\0${source}`;
-}
-
-function getPackageSource(entry: PackageSource): string {
-  return typeof entry === "string" ? entry : entry.source;
-}
-
-function isDisabledPackage(entry: PackageSource): boolean {
-  if (typeof entry === "string") return false;
-  return (
-    Array.isArray(entry.extensions) && entry.extensions.length === 0 &&
-    Array.isArray(entry.skills) && entry.skills.length === 0 &&
-    Array.isArray(entry.prompts) && entry.prompts.length === 0 &&
-    Array.isArray(entry.themes) && entry.themes.length === 0
-  );
-}
-
-function getDisabledPackages(settingsManager: SettingsManager): Map<string, boolean> {
-  const disabled = new Map<string, boolean>();
-  for (const entry of settingsManager.getGlobalSettings().packages ?? []) {
-    disabled.set(keyFor(getPackageSource(entry), "global"), isDisabledPackage(entry));
-  }
-  for (const entry of settingsManager.getProjectSettings().packages ?? []) {
-    disabled.set(keyFor(getPackageSource(entry), "project"), isDisabledPackage(entry));
-  }
-  return disabled;
-}
-
-function setPackageDisabled(
-  settingsManager: SettingsManager,
-  source: string,
-  scope: PluginScope,
-  disabled: boolean,
-): boolean {
-  const current = scope === "project"
-    ? settingsManager.getProjectSettings().packages ?? []
-    : settingsManager.getGlobalSettings().packages ?? [];
-  let changed = false;
-  const next = current.map((entry): PackageSource => {
-    if (getPackageSource(entry) !== source) return entry;
-    changed = true;
-    if (disabled) {
-      return {
-        ...(typeof entry === "string" ? { source: entry } : entry),
-        extensions: [],
-        skills: [],
-        prompts: [],
-        themes: [],
-      };
-    }
-    return getPackageSource(entry);
-  });
-  if (!changed) return false;
-  if (scope === "project") settingsManager.setProjectPackages(next);
-  else settingsManager.setPackages(next);
-  return true;
 }
 
 function addCount(counts: PluginResourceCounts, kind: keyof PluginResourceCounts): void {
@@ -167,13 +114,14 @@ function collectResource(
   addCount(totals, kind);
   countsByPackage.set(key, counts);
   const resources = resourcesByPackage.get(key) ?? [];
-  const resourceKind = kind === "extensions"
-    ? "extension"
-    : kind === "skills"
-      ? "skill"
-      : kind === "prompts"
-        ? "prompt"
-        : "theme";
+  const resourceKind =
+    kind === "extensions"
+      ? "extension"
+      : kind === "skills"
+        ? "skill"
+        : kind === "prompts"
+          ? "prompt"
+          : "theme";
   resources.push({
     kind: resourceKind,
     name: getResourceName(resource.path, resourceKind),
@@ -191,10 +139,14 @@ function collectResources(paths: ResolvedPaths): {
   const countsByPackage = new Map<string, PluginResourceCounts>();
   const resourcesByPackage = new Map<string, PluginResourceInfo[]>();
   const totals = emptyCounts();
-  for (const resource of paths.extensions) collectResource(resource, "extensions", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.skills) collectResource(resource, "skills", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.prompts) collectResource(resource, "prompts", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.themes) collectResource(resource, "themes", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.extensions)
+    collectResource(resource, "extensions", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.skills)
+    collectResource(resource, "skills", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.prompts)
+    collectResource(resource, "prompts", countsByPackage, resourcesByPackage, totals);
+  for (const resource of paths.themes)
+    collectResource(resource, "themes", countsByPackage, resourcesByPackage, totals);
   return { countsByPackage, resourcesByPackage, totals };
 }
 
@@ -249,13 +201,20 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
       scope,
       filtered: pkg.filtered,
       disabled,
+      pinned: isPinned(pkg.source),
       installedPath: pkg.installedPath,
       packageName: packageMetadata.packageName,
       version: packageMetadata.version,
       configuredVersion: getConfiguredVersion(pkg.source),
       counts,
       resources,
-      status: disabled ? "disabled" : resourceCount > 0 ? "loaded" : pkg.installedPath ? "installed" : "missing",
+      status: disabled
+        ? "disabled"
+        : resourceCount > 0
+          ? "loaded"
+          : pkg.installedPath
+            ? "installed"
+            : "missing",
     } satisfies PluginPackageInfo;
   });
 
@@ -269,26 +228,41 @@ function readScope(scope: unknown): PluginScope {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd");
-  if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
+  if (!cwd) return errorResponse("cwd required", 400);
 
   try {
     return NextResponse.json(await readPlugins(cwd));
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // POST /api/plugins body: { action, source?, scope?, cwd }
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as {
+    const [body, parseError] = await safeJsonBody<{
       action?: PluginAction;
       source?: string;
       scope?: PluginScope;
       cwd?: string;
-    };
-    if (!body.cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
-    if (!body.action) return NextResponse.json({ error: "action required" }, { status: 400 });
+    }>(req);
+    if (parseError) return parseError;
+    if (!body.cwd) return errorResponse("cwd required", 400);
+    if (!body.action) return errorResponse("action required", 400);
+
+    // L2：插件总开关关闭后，禁止任何会增加插件占用（启用/安装/更新）的操作，
+    // 否则会与总开关的"全局停用"意图漂移。禁用/移除/降级仍允许。
+    if (!readPluginMasterState().enabled) {
+      if (body.action === "enable" || body.action === "install" || body.action === "update") {
+        return NextResponse.json(
+          { error: "插件总开关已关闭，请先在插件面板开启总开关" },
+          { status: 409 },
+        );
+      }
+    }
 
     const settingsManager = SettingsManager.create(body.cwd, getAgentDir());
     const packageManager = new DefaultPackageManager({
@@ -300,27 +274,32 @@ export async function POST(req: Request) {
     const local = readScope(body.scope) === "project";
 
     if (body.action === "install") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       await packageManager.installAndPersist(source, { local });
     } else if (body.action === "remove") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
+      // System-default (pinned) plugins cannot be removed — they are the
+      // bedrock of the pi-web experience and several UI surfaces depend on them.
+      if (isPinned(source)) {
+        return errorResponse(`Cannot remove pinned system-default plugin: ${source}`, 409);
+      }
       await packageManager.removeAndPersist(source, { local });
     } else if (body.action === "update") {
       await packageManager.update(source);
     } else if (body.action === "disable") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       setPackageDisabled(settingsManager, source, readScope(body.scope), true);
       await settingsManager.flush();
     } else if (body.action === "enable") {
-      if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
+      if (!source) return errorResponse("source required", 400);
       setPackageDisabled(settingsManager, source, readScope(body.scope), false);
       await settingsManager.flush();
     } else {
-      return NextResponse.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
+      return errorResponse(`Unsupported action: ${body.action}`, 400);
     }
 
     return NextResponse.json(await readPlugins(body.cwd));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return errorResponse(error instanceof Error ? error.message : String(error), 500);
   }
 }

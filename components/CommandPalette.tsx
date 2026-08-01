@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { ExtensionRuntimeContext, QualifiedAction } from "@/lib/extensions/types";
+import { EmptyState } from "./ui/EmptyState";
 
 interface Props {
   open: boolean;
@@ -23,9 +24,7 @@ export function CommandPalette({ open, onClose, actions, getDisabledReason, cont
     if (!query.trim()) return actions;
     const q = query.toLowerCase();
     return actions.filter(
-      (a) =>
-        a.title.toLowerCase().includes(q) ||
-        a.description?.toLowerCase().includes(q),
+      (a) => a.title.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q),
     );
   }, [actions, query]);
 
@@ -82,7 +81,9 @@ export function CommandPalette({ open, onClose, actions, getDisabledReason, cont
         justifyContent: "center",
         paddingTop: "12vh",
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         style={{
@@ -117,9 +118,9 @@ export function CommandPalette({ open, onClose, actions, getDisabledReason, cont
         />
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: 4 }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: "16px", color: "var(--text-dim)", fontSize: 13, textAlign: "center" }}>
+            <EmptyState padding="16px" fontSize={13} center>
               No commands found
-            </div>
+            </EmptyState>
           ) : (
             filtered.map((action, i) => {
               const disabledReason = getDisabledReason(action, context);

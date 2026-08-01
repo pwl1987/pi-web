@@ -55,10 +55,16 @@ async function loadConfiguredProviders(): Promise<Set<string>> {
 // returns undefined for iterator), use a concrete helper class that safely
 // implements the full Set API surface used by callers.
 class AllConfiguredSet {
-  has(_key: string): boolean { return true; }
-  get size(): number { return Infinity; }
+  has(_key: string): boolean {
+    return true;
+  }
+  get size(): number {
+    return Infinity;
+  }
   // Prevent crashes when code spreads or iterates the set
-  [Symbol.iterator](): IterableIterator<string> { return [].values(); }
+  [Symbol.iterator](): IterableIterator<string> {
+    return [].values();
+  }
 }
 const ALL_CONFIGURED = new AllConfiguredSet() as unknown as Set<string>;
 

@@ -35,11 +35,16 @@ export async function GET(req: Request) {
           // controller already closed
         }
       }, 30_000);
+      heartbeat.unref(); // 不阻止进程优雅退出
 
       const cleanup = () => {
         clearInterval(heartbeat);
         unsubscribe();
-        try { controller.close(); } catch { /* already closed */ }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       };
 
       req.signal?.addEventListener("abort", cleanup);

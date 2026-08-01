@@ -4,6 +4,8 @@ import { isAbsolute, resolve } from "path";
 import { homedir } from "os";
 import { allowFileRoot } from "@/lib/file-access";
 import { getPinnedDirs, addPinnedDir, removePinnedDir } from "@/lib/session-state-store";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 function normalizeCwd(cwd: string): string {
   if (cwd === "~") return homedir();
@@ -16,56 +18,57 @@ export async function GET() {
   try {
     return NextResponse.json({ pinnedDirs: getPinnedDirs() });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // POST /api/pinned-dirs  body: { path: string; alias?: string }
 // Validates the path exists, registers it as an allowed file root, and pins it.
 export async function POST(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as { path?: unknown; alias?: unknown };
+    const [body, parseError] = await safeJsonBody<{ path?: unknown; alias?: unknown }>(req);
+    if (parseError) return parseError;
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
     const alias = typeof body.alias === "string" ? body.alias : undefined;
 
-    if (!rawPath) {
-      return NextResponse.json({ error: "Path is required" }, { status: 400 });
-    }
+    if (!rawPath) return errorResponse("Path is required", 400);
 
     const normalized = normalizeCwd(rawPath);
     try {
       const stat = statSync(normalized);
-      if (!stat.isDirectory()) {
-        return NextResponse.json({ error: `Path is not a directory: ${rawPath}` }, { status: 400 });
-      }
+      if (!stat.isDirectory()) return errorResponse(`Path is not a directory: ${rawPath}`, 400);
     } catch {
-      return NextResponse.json({ error: `Directory does not exist: ${rawPath}` }, { status: 400 });
+      return errorResponse(`Directory does not exist: ${rawPath}`, 400);
     }
 
     allowFileRoot(normalized);
     const pinned = addPinnedDir(normalized, alias);
     return NextResponse.json({ pinnedDir: pinned });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // DELETE /api/pinned-dirs  body: { path: string }
 // Unpins the directory matching `path` (normalized before comparison).
 export async function DELETE(req: Request) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   try {
-    const body = await req.json() as { path?: unknown };
+    const [body, parseError] = await safeJsonBody<{ path?: unknown }>(req);
+    if (parseError) return parseError;
     const rawPath = typeof body.path === "string" ? body.path.trim() : "";
 
-    if (!rawPath) {
-      return NextResponse.json({ error: "Path is required" }, { status: 400 });
-    }
+    if (!rawPath) return errorResponse("Path is required", 400);
 
     const normalized = normalizeCwd(rawPath);
     const removed = removePinnedDir(normalized);
     return NextResponse.json({ removed });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
-

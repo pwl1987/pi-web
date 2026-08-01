@@ -11,6 +11,9 @@
     "url": "https://github.com/agegr/pi-web/issues"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
   "bin": {
     "pi-web": "bin/pi-web.js"
   },
@@ -26,21 +29,41 @@
     "extensions"
   ],
   "scripts": {
-    "dev": "next dev -p 30141",
+    "dev": "next dev -p 30141 --webpack",
     "build": "next build --webpack",
     "start": "next start -p 30141",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit",
     "test": "npm run test:node && vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:node": "node --test --experimental-strip-types lib/*.test.mjs",
+    "test:coverage": "vitest run --coverage",
+    "test:node": "node --test --experimental-strip-types lib/*.test.mjs lib/i18n/index.test.mjs lib/agent-orchestrator/*.test.mjs lib/unified-engine/*.test.mjs lib/prompt-system/*.test.mjs hooks/*.test.mjs bin/*.test.mjs",
+    "ci": "npm run format:check && npm run lint && npm run type-check && npm run test:node && npm run test:coverage",
+    "prepare": "husky || true",
+    "postinstall": "node scripts/postinstall.mjs",
+    "setup": "npm run setup:lsp",
+    "setup:lsp": "node scripts/setup-lsp.mjs",
+    "sync:vendor": "node scripts/sync-vendor.mjs",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
+  },
+  "lint-staged": {
+    "*.{js,mjs,cjs,jsx,ts,tsx}": [
+      "prettier --write",
+      "eslint --fix --no-warn-ignored"
+    ],
+    "*.{json,md,yaml,yml,css}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",
     "@lobehub/icons": "^5.6.0",
-    "@types/react-syntax-highlighter": "^15.5.13",
+    "@tanstack/react-virtual": "^3.14.6",
     "katex": "^0.16.47",
     "mammoth": "^1.12.0",
     "mermaid": "^11.14.0",
@@ -64,11 +87,17 @@
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@vitest/coverage-v8": "^4.1.10",
     "@vitest/ui": "^4.1.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9",
     "jsdom": "^29.1.1",
+    "lint-staged": "^15",
     "postcss": "^8",
+    "prettier": "^3",
     "tailwindcss": "^4.2.2",
     "typescript": "^5",
     "vitest": "^4.1.10"

@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 import { encodeFilePathForApi, getRelativeFilePath, joinFilePath } from "@/lib/file-paths";
@@ -37,14 +43,14 @@ async function fetchEntries(dirPath: string, t: TranslateFn): Promise<FileNode[]
   if (!res.ok) {
     let message = t("file.failedToLoadFiles", { status: res.status });
     try {
-      const data = await res.json() as { error?: string };
+      const data = (await res.json()) as { error?: string };
       if (data.error) message = data.error;
     } catch {
       // ignore non-JSON error bodies
     }
     throw new Error(message);
   }
-  const data = await res.json() as { entries?: FileEntry[] };
+  const data = (await res.json()) as { entries?: FileEntry[] };
   return (data.entries ?? []).map((e) => ({
     name: e.name,
     fullPath: joinFilePath(dirPath, e.name),
@@ -83,19 +89,22 @@ function TreeNode({
   const [loading, setLoading] = useState(false);
   const [hovered, setHovered] = useState(false);
 
-  const loadChildren = useCallback(async (force = false) => {
-    if (loaded && !force) return;
-    setLoading(true);
-    try {
-      const entries = await fetchEntries(node.fullPath, t);
-      setChildren(entries);
-      setLoaded(true);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, [loaded, node.fullPath, t]);
+  const loadChildren = useCallback(
+    async (force = false) => {
+      if (loaded && !force) return;
+      setLoading(true);
+      try {
+        const entries = await fetchEntries(node.fullPath, t);
+        setChildren(entries);
+        setLoaded(true);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loaded, node.fullPath, t],
+  );
 
   // When refreshKey causes a re-render with the same node identity, reload open dirs
   const prevLoadedRef = useRef(loaded);
@@ -119,7 +128,16 @@ function TreeNode({
     } else {
       onOpenFile(node.fullPath, node.name);
     }
-  }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
+  }, [
+    node.isDir,
+    node.fullPath,
+    node.name,
+    loaded,
+    open,
+    loadChildren,
+    onOpenFile,
+    onToggleExpanded,
+  ]);
 
   return (
     <div>
@@ -144,9 +162,19 @@ function TreeNode({
       >
         {node.isDir && (
           <svg
-            width="10" height="10" viewBox="0 0 10 10" fill="none"
-            stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-            style={{ flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.1s" }}
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="var(--text-dim)"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              flexShrink: 0,
+              transform: open ? "rotate(90deg)" : "none",
+              transition: "transform 0.1s",
+            }}
           >
             <polyline points="3 2 7 5 3 8" />
           </svg>
@@ -169,7 +197,15 @@ function TreeNode({
           {node.name}
         </span>
         {loading && (
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round">
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--text-dim)"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
           </svg>
         )}
@@ -201,7 +237,16 @@ function TreeNode({
               whiteSpace: "nowrap",
             }}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="4" />
               <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
             </svg>
@@ -236,7 +281,16 @@ function TreeNode({
               textDecoration: "none",
             }}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
@@ -247,10 +301,30 @@ function TreeNode({
       {node.isDir && open && (
         <div>
           {children.map((child) => (
-            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} onContextMenu={onContextMenu} />
+            <TreeNode
+              key={child.fullPath}
+              node={child}
+              depth={depth + 1}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              onAtMention={onAtMention}
+              expandedPaths={expandedPaths}
+              onToggleExpanded={onToggleExpanded}
+              refreshKey={refreshKey}
+              onContextMenu={onContextMenu}
+            />
           ))}
           {children.length === 0 && loaded && (
-            <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
+            <div
+              style={{
+                paddingLeft: 8 + (depth + 1) * 14,
+                fontSize: 11,
+                color: "var(--text-dim)",
+                height: 22,
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
               {t("file.empty")}
             </div>
           )}
@@ -280,7 +354,9 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
     document.addEventListener("click", close, true);
     document.addEventListener("contextmenu", close, true);
     document.addEventListener("keydown", onKey, true);
@@ -299,7 +375,8 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
   const handleToggleExpanded = useCallback((fullPath: string, open: boolean) => {
     setExpandedPaths((prev) => {
       const next = new Set(prev);
-      if (open) next.add(fullPath); else next.delete(fullPath);
+      if (open) next.add(fullPath);
+      else next.delete(fullPath);
       return next;
     });
   }, []);
@@ -328,11 +405,7 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
   }
 
   if (error) {
-    return (
-      <div style={{ padding: "8px 12px", fontSize: 11, color: "#f87171" }}>
-        {error}
-      </div>
-    );
+    return <div style={{ padding: "8px 12px", fontSize: 11, color: "#f87171" }}>{error}</div>;
   }
 
   return (

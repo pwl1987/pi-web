@@ -7,16 +7,11 @@
 // Location: <agentDir>/pi-web-state.json (alongside sessions/).
 
 import { writeFileSync, readFileSync, existsSync, renameSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import { join, isAbsolute } from "path";
+import { getAgentDir } from "./config-file.ts";
 
 const STATE_FILE = "pi-web-state.json";
 const MAX_ENTRIES = 20;
-
-/** Resolve the pi agent directory (inlined to avoid importing session-reader → pi SDK in tests). */
-function getAgentDir(): string {
-  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-}
 
 export interface ActiveSessionEntry {
   sessionId: string;
@@ -50,7 +45,11 @@ export function loadSessionState(): PiWebState {
     const file = stateFilePath();
     if (!existsSync(file)) return emptyState();
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as { version?: unknown; activeSessions?: unknown; pinnedDirs?: unknown };
+    const parsed = JSON.parse(raw) as {
+      version?: unknown;
+      activeSessions?: unknown;
+      pinnedDirs?: unknown;
+    };
     // Accept both v1 (no pinnedDirs) and v2 (with pinnedDirs); upgrade v1 in place.
     if (parsed.version !== 1 && parsed.version !== 2) {
       return emptyState();
@@ -59,29 +58,48 @@ export function loadSessionState(): PiWebState {
       return emptyState();
     }
     // Upgrade v1 → v2 by adding an empty pinnedDirs array.
-    const pinnedDirs = parsed.version === 2 && Array.isArray(parsed.pinnedDirs)
-      ? (parsed.pinnedDirs as unknown[]).filter(isValidPinnedDir)
-      : [];
-    return { version: 2, activeSessions: (parsed.activeSessions as unknown[]).filter(isValidEntry), pinnedDirs };
+    const pinnedDirs =
+      parsed.version === 2 && Array.isArray(parsed.pinnedDirs)
+        ? (parsed.pinnedDirs as unknown[]).filter(isValidPinnedDir)
+        : [];
+    return {
+      version: 2,
+      activeSessions: (parsed.activeSessions as unknown[]).filter(isValidEntry),
+      pinnedDirs,
+    };
   } catch {
     return emptyState();
   }
 }
 
-function isValidEntry(e: unknown): e is ActiveSessionEntry {
-  if (typeof e !== "object" || e === null) return false;
-  const obj = e as Record<string, unknown>;
-  return typeof obj.sessionId === "string"
-    && typeof obj.lastActive === "number"
-    && typeof obj.toolsDisabled === "boolean";
+/**
+ * 校验路径为安全的绝对路径：非空、无 NUL、平台绝对、且不含有 `..` 段
+ * （防止路径穿越越过被固定的根目录）。
+ */
+function isSafeAbsolutePath(p: unknown): p is string {
+  if (typeof p !== "string" || p.length === 0) return false;
+  if (/[\0]/.test(p)) return false;
+  if (!isAbsolute(p)) return false;
+  if (p.split(/[\\/]/).includes("..")) return false;
+  return true;
 }
 
-function isValidPinnedDir(e: unknown): e is PinnedDir {
+export function isValidEntry(e: unknown): e is ActiveSessionEntry {
   if (typeof e !== "object" || e === null) return false;
   const obj = e as Record<string, unknown>;
-  return typeof obj.path === "string"
-    && typeof obj.pinnedAt === "number"
-    && (obj.alias === undefined || typeof obj.alias === "string");
+  // sessionId 后续用于拼接会话文件路径，拒绝任何可穿越 / 破坏路径连接的字符。
+  if (typeof obj.sessionId !== "string" || !obj.sessionId) return false;
+  if (/[\/\\]|\.\.|\0|\s/.test(obj.sessionId as string)) return false;
+  return typeof obj.lastActive === "number" && typeof obj.toolsDisabled === "boolean";
+}
+
+export function isValidPinnedDir(e: unknown): e is PinnedDir {
+  if (typeof e !== "object" || e === null) return false;
+  const obj = e as Record<string, unknown>;
+  if (!isSafeAbsolutePath(obj.path)) return false;
+  return (
+    typeof obj.pinnedAt === "number" && (obj.alias === undefined || typeof obj.alias === "string")
+  );
 }
 
 /** Atomically write the sidecar (write .tmp then rename to avoid corruption on crash). */
@@ -141,7 +159,10 @@ export function getPinnedDirs(): PinnedDir[] {
  */
 export function addPinnedDir(path: string, alias?: string): PinnedDir {
   const trimmedAlias = alias?.trim();
-  if (!path) return { path, alias: trimmedAlias || undefined, pinnedAt: Date.now() };
+  // 防御：拒绝相对 / 穿越路径，绝不持久化到 sidecar。
+  if (!isSafeAbsolutePath(path)) {
+    return { path, alias: trimmedAlias || undefined, pinnedAt: Date.now() };
+  }
   const state = loadSessionState();
   const now = Date.now();
   const existing = state.pinnedDirs.find((d) => d.path === path);

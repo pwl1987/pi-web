@@ -1,30 +1,24 @@
 import { NextResponse } from "next/server";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { resolveSessionPath, getSessionHeaderCached } from "@/lib/session-reader";
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { ALLOWED_AGENT_COMMANDS } from "@/lib/allowed-commands";
+import { validateCsrf } from "@/lib/csrf";
+import { errorResponse, safeJsonBody } from "@/lib/api-utils";
 
 // POST /api/agent/[id] - Send a command to an existing session
-const ALLOWED_AGENT_COMMANDS = new Set([
-  "prompt", "abort", "get_state", "fork", "navigate_tree",
-  "compact", "set_model", "set_thinking_level", "set_session_name",
-  "get_session_stats", "get_last_assistant_text", "set_auto_compaction",
-  "clear_queue", "steer", "follow_up", "get_tools", "get_commands",
-  "set_tools", "reload", "abort_compaction",
-  "extension_ui_response", "extension_ui_input", "set_auto_retry",
-]);
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
+
   const { id } = await params;
 
   try {
-    const body = await req.json() as { type: string; [key: string]: unknown };
+    const [body, parseError] = await safeJsonBody<{ type: string; [key: string]: unknown }>(req);
+    if (parseError) return parseError;
 
-    if (!ALLOWED_AGENT_COMMANDS.has(body.type)) {
-      return NextResponse.json({ error: `unknown command: ${body.type}` }, { status: 400 });
-    }
+    if (!ALLOWED_AGENT_COMMANDS.has(body.type))
+      return errorResponse(`unknown command: ${body.type}`, 400);
 
     // Fast path: already-running session
     const existing = getRpcSession(id);
@@ -34,26 +28,21 @@ export async function POST(
     }
 
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
+    if (!filePath) return errorResponse("Session not found", 404);
 
-    const cwd = SessionManager.open(filePath).getHeader()?.cwd ?? process.cwd();
+    const cwd = (getSessionHeaderCached(filePath)?.cwd as string) ?? process.cwd();
 
     const { session } = await startRpcSession(id, filePath, cwd);
     const result = await session.send(body);
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
 // GET /api/agent/[id] - Get current agent state
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   try {
@@ -62,9 +51,37 @@ export async function GET(
       return NextResponse.json({ running: false });
     }
 
-    const state = await session.send({ type: "get_state" });
+    // Race get_state against a timeout. get_state can hang (agent mid-
+    // construction, a blocking extension binding) and this endpoint is polled
+    // by the client's reconcile loop, so a stalled fetch must not wedge the
+    // loop or keep the Node event loop alive. On timeout or rejection we report
+    // running with no state and a timedOut flag, so the client keeps its
+    // current UI and retries on the next poll instead of prematurely finishing
+    // a run it can't confirm has ended.
+    const GET_STATE_TIMEOUT_MS = 5_000;
+    const state = await new Promise<unknown>((resolve) => {
+      const timer = setTimeout(() => resolve({ timedOut: true }), GET_STATE_TIMEOUT_MS);
+      // Don't keep the event loop alive (and block graceful exit) if get_state
+      // resolves first and the timer is still pending.
+      timer.unref?.();
+      session.send({ type: "get_state" }).then(
+        (s) => {
+          clearTimeout(timer);
+          resolve(s);
+        },
+        (err) => {
+          clearTimeout(timer);
+          // Unknown phase on error — assume still running and let the client retry.
+          resolve({ timedOut: true, error: String(err) });
+        },
+      );
+    });
+
+    if (state && typeof state === "object" && "timedOut" in state) {
+      return NextResponse.json({ running: true, state: null, timedOut: true });
+    }
     return NextResponse.json({ running: true, state });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -1,0 +1,22 @@
+# EditorConfig — https://editorconfig.org
+# Keeps editor behavior consistent across IDEs before Prettier runs on write.
+# Values mirror .prettierrc so WYSIWYG while typing.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.{md,mdx}]
+# Markdown: preserve trailing two spaces (significant line break) and let
+# sentences breathe — Prettier's proseWrap handles wrapping separately.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab

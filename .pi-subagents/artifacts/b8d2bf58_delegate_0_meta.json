@@ -12,9 +12,7 @@
     "turns": 3
   },
   "model": "minimax-cn/MiniMax-M3",
-  "attemptedModels": [
-    "minimax-cn/MiniMax-M3"
-  ],
+  "attemptedModels": ["minimax-cn/MiniMax-M3"],
   "modelAttempts": [
     {
       "model": "minimax-cn/MiniMax-M3",

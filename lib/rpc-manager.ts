@@ -1,16 +1,15 @@
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
+import { readFileSync, writeFileSync, renameSync } from "fs";
+import { getPiAdapter } from "./pi";
 import { createDefaultExtensionTheme } from "./extension-theme";
-import { cacheSessionPath, resolveSessionPath } from "./session-reader";
+import { cacheSessionPath, resolveSessionPath, getSessionHeaderCached } from "./session-reader";
 import { loadSessionState, recordActiveSession } from "./session-state-store";
-import {
-  getRegistry,
-  getLocks,
-  notifyRunningChange,
-} from "./session-registry";
-import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import { getRegistry, getLocks, notifyRunningChange, countAliveSessions } from "./session-registry";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
+import type { SlashCommandInfo } from "./pi";
 import type { ExtensionUiRequest, ExtensionUiResponse, ExtensionWidgetItem } from "./types";
+import { getAgentsMdModular } from "@/lib/prompt-modules-state";
+import { composeModularAgentsMdSystemPrompt } from "@/lib/prompt-system/agents-md-modules";
 
 // ============================================================================
 // Types
@@ -52,7 +51,10 @@ type ExtensionCommandContextActionsLike = {
   waitForIdle: () => Promise<void>;
   newSession: () => Promise<{ cancelled: boolean }>;
   fork: () => Promise<{ cancelled: boolean }>;
-  navigateTree: (targetId: string, options?: { summarize?: boolean }) => Promise<{ cancelled: boolean }>;
+  navigateTree: (
+    targetId: string,
+    options?: { summarize?: boolean },
+  ) => Promise<{ cancelled: boolean }>;
   switchSession: () => Promise<{ cancelled: boolean }>;
   reload: () => Promise<void>;
 };
@@ -60,6 +62,27 @@ type ExtensionCommandContextActionsLike = {
 type ExtensionBindingOptions = {
   forceEmptySystemPrompt?: boolean;
 };
+
+/**
+ * Idle-timeout options for AgentSessionWrapper.
+ *
+ * `idleTimeoutMs` is exposed (and shortened in tests) so the lifecycle can be
+ * exercised without waiting 10 real minutes. The prompt-running pause logic
+ * (see resetIdleTimer) is independent of the duration.
+ */
+export interface AgentSessionWrapperOptions {
+  idleTimeoutMs?: number;
+  /** P5：idle 硬上限覆盖（测试可缩短），默认 HARD_IDLE_MAX_MS。 */
+  hardIdleMaxMs?: number;
+}
+
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+// P5：idle 硬上限。handleIdleTimeout 在 prompt 运行时无限重排 idle timer，
+// 永不回收；若 prompt 卡死/死循环，wrapper 永不销毁导致资源泄漏。硬上限 timer
+// 无论是否 running 都会兜底 destroy，作为最后防线。12h 默认，可由
+// PI_WEB_HARD_IDLE_MAX_MS 覆盖（人工拍板容量）。
+const HARD_IDLE_MAX_MS = Number(process.env.PI_WEB_HARD_IDLE_MAX_MS ?? 12 * 60 * 60 * 1000);
 
 const CODING_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
@@ -94,14 +117,20 @@ export class AgentSessionWrapper {
   private forceEmptySystemPrompt = false;
   private unsubscribe: (() => void) | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private hardLimitTimer: ReturnType<typeof setTimeout> | null = null;
+  private createdAt = Date.now();
   private onDestroyCallback: (() => void) | null = null;
   private _alive = true;
+  private readonly idleTimeoutMs: number;
+  private readonly hardIdleMaxMs: number;
   private readonly defaultExtensionTheme: ReturnType<typeof createDefaultExtensionTheme>;
 
   readonly inner: AgentSessionLike;
 
-  constructor(inner: AgentSessionLike) {
+  constructor(inner: AgentSessionLike, options?: AgentSessionWrapperOptions) {
     this.inner = inner;
+    this.idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.hardIdleMaxMs = options?.hardIdleMaxMs ?? HARD_IDLE_MAX_MS;
     // Extensions written for pi's TUI assume the `theme` argument to
     // `ctx.ui.custom((tui, theme, …) => …)` is a real Theme instance.
     // Without one, `theme.bold(text)` etc. crash inside the extension's
@@ -117,6 +146,42 @@ export class AgentSessionWrapper {
 
   get sessionFile(): string {
     return this.inner.sessionFile ?? "";
+  }
+
+  /**
+   * 改写 session 文件 header line 的 parentSession 字段。
+   * 典型用法：plan-mode 创建的 pi session 入口设 marker = `orchestrator:<orchId>`，
+   * session-reader 在 listAllSessions 解析时识别该前缀，归一化为 orchestratorParentId。
+   * 实现：读首行（header）、改 parentSession、原子 tmp+rename 回写。
+   * parentSession 在 pi 里仅用于显示元数据（参见 AGENTS.md），不会破坏聊天内容。
+   * 空字符串视为清空 marker。文件缺失或 header 损坏时抛错（路由层会包装为 ok=false）。
+   */
+  setSessionParent(parentSession: string): void {
+    const filePath = this.inner.sessionFile;
+    if (!filePath) throw new Error("Session has no file path; cannot set parentSession");
+    let raw: string;
+    try {
+      raw = readFileSync(filePath, "utf8");
+    } catch (e) {
+      throw new Error(`failed to read session file: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const newlineIdx = raw.indexOf("\n");
+    if (newlineIdx < 0) throw new Error("Session file has no header line");
+    let header: Record<string, unknown>;
+    try {
+      header = JSON.parse(raw.slice(0, newlineIdx)) as Record<string, unknown>;
+    } catch (e) {
+      throw new Error(
+        `session header is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    if (parentSession) header.parentSession = parentSession;
+    else delete header.parentSession;
+    const newHeader = JSON.stringify(header);
+    const rest = raw.slice(newlineIdx);
+    const tmp = `${filePath}.parent.tmp`;
+    writeFileSync(tmp, newHeader + rest, "utf8");
+    renameSync(tmp, filePath);
   }
 
   isAlive(): boolean {
@@ -136,6 +201,12 @@ export class AgentSessionWrapper {
       notifyRunningChange();
     });
     this.resetIdleTimer();
+    // P5：idle 硬上限兜底。即使 prompt 卡死导致 handleIdleTimeout 无限重排，
+    // 此 timer 也会在 HARD_IDLE_MAX_MS 后无条件 destroy，防止 wrapper 永不回收。
+    if (this.hardLimitTimer) clearTimeout(this.hardLimitTimer);
+    this.hardLimitTimer = setTimeout(() => {
+      if (this._alive) this.destroy();
+    }, this.hardIdleMaxMs);
     notifyRunningChange();
   }
 
@@ -146,7 +217,10 @@ export class AgentSessionWrapper {
 
   beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
     void this.ensureExtensionsBound(options).catch((err) => {
-      console.error("[pi-web] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
+      console.error(
+        "[pi-web] failed to dispatch session_start to extensions:",
+        err instanceof Error ? err.message : err,
+      );
     });
   }
 
@@ -174,26 +248,30 @@ export class AgentSessionWrapper {
           uiContext,
           mode: "rpc",
           commandContextActions: this.createExtensionCommandContextActions(),
-          shutdownHandler: () => this.emit({
-            type: "extension_ui_request",
-            id: randomUUID(),
-            method: "notify",
-            notifyType: "warning",
-            message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
-          }),
-          onError: (error) => this.emit({
-            type: "extension_error",
-            extensionPath: error.extensionPath,
-            event: error.event,
-            error: error.error,
-          }),
+          shutdownHandler: () =>
+            this.emit({
+              type: "extension_ui_request",
+              id: randomUUID(),
+              method: "notify",
+              notifyType: "warning",
+              message: "Extension requested shutdown, but shutdown is not supported in pi-web.",
+            }),
+          onError: (error) =>
+            this.emit({
+              type: "extension_error",
+              extensionPath: error.extensionPath,
+              event: error.event,
+              error: error.error,
+            }),
         });
       } else {
         this.inner.extensionRunner.setUIContext?.(uiContext, "rpc");
       }
       this.extensionsBound = true;
       this.applyForcedEmptySystemPrompt();
-      console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
+      console.warn(
+        `[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`,
+      );
     })().catch((err) => {
       this.extensionBindingError = err;
       throw err;
@@ -239,7 +317,22 @@ export class AgentSessionWrapper {
 
   private resetIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => this.destroy(), 10 * 60 * 1000);
+    this.idleTimer = setTimeout(() => this.handleIdleTimeout(), this.idleTimeoutMs);
+  }
+
+  /**
+   * Idle-timeout handler. A prompt can stream silently (long thinking block,
+   * hung provider, slow tool) for longer than the idle timeout without emitting
+   * any event to reset the timer. Destroying mid-prompt leaves an orphaned
+   * inner.prompt promise that then fires callbacks on a dead wrapper. Instead,
+   * while a prompt is running, reschedule rather than destroy.
+   */
+  private handleIdleTimeout(): void {
+    if (this.promptRunning) {
+      this.idleTimer = setTimeout(() => this.handleIdleTimeout(), this.idleTimeoutMs);
+      return;
+    }
+    this.destroy();
   }
 
   onEvent(listener: EventListener): () => void {
@@ -263,27 +356,41 @@ export class AgentSessionWrapper {
     switch (type) {
       case "prompt": {
         // Fire and forget — events come via subscribe
-        const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        const promptImages = command.images as
+          Array<{ type: "image"; data: string; mimeType: string }> | undefined;
         const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
         this.promptRunning = true;
         notifyRunningChange();
-        this.inner.prompt(command.message as string, {
-          ...(promptImages?.length ? { images: promptImages } : {}),
-          ...(streamingBehavior ? { streamingBehavior } : {}),
-          source: "rpc",
-        }).then(() => {
-          this.promptRunning = false;
-          if (!streamingBehavior) this.emit({ type: "prompt_done" });
-          notifyRunningChange();
-        }).catch((error) => {
-          this.promptRunning = false;
-          this.emit({
-            type: "prompt_error",
-            errorMessage: error instanceof Error ? error.message : String(error),
+        this.inner
+          .prompt(command.message as string, {
+            ...(promptImages?.length ? { images: promptImages } : {}),
+            ...(streamingBehavior ? { streamingBehavior } : {}),
+            source: "rpc",
+          })
+          .then(() => {
+            // The wrapper may have been destroyed (idle timeout, explicit
+            // close, fork) while this prompt was in flight. Drop the callback
+            // — emitting prompt_done / notifyRunningChange on a dead wrapper
+            // surfaces as ghost state in the UI and re-enters a torn-down
+            // session registry.
+            if (!this._alive) return;
+            this.promptRunning = false;
+            // Resume the idle timer now that no prompt is running.
+            this.resetIdleTimer();
+            if (!streamingBehavior) this.emit({ type: "prompt_done" });
+            notifyRunningChange();
+          })
+          .catch((error) => {
+            if (!this._alive) return;
+            this.promptRunning = false;
+            this.resetIdleTimer();
+            this.emit({
+              type: "prompt_error",
+              errorMessage: error instanceof Error ? error.message : String(error),
+            });
+            if (!streamingBehavior) this.emit({ type: "prompt_done" });
+            notifyRunningChange();
           });
-          if (!streamingBehavior) this.emit({ type: "prompt_done" });
-          notifyRunningChange();
-        });
         return null;
       }
 
@@ -310,12 +417,22 @@ export class AgentSessionWrapper {
             followUp: [...this.inner.getFollowUpMessages()],
           },
           contextUsage: contextUsage
-            ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
+            ? {
+                percent: contextUsage.percent,
+                contextWindow: contextUsage.contextWindow,
+                tokens: contextUsage.tokens,
+              }
             : null,
           systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
           extensionStatuses: this.getExtensionStatuses(),
           extensionWidgets: this.getExtensionWidgets(),
+          // Pending UI requests (dialogs / custom panels / widgets / status)
+          // the server is still awaiting a response for. The client's reconcile
+          // poll re-applies these so a missed SSE event auto-recovers without a
+          // manual page refresh (e.g. the rpiv-ask-user-question questionnaire
+          // or the rpiv-todo overlay popping into the conversation).
+          pendingUiRequests: this.getPendingUiRequests() as ExtensionUiRequest[],
         };
       }
 
@@ -330,6 +447,17 @@ export class AgentSessionWrapper {
 
       case "fork": {
         const entryId = command.entryId as string;
+
+        // L9 修复：若当前会话正在运行（prompt 进行中 / streaming / compaction），
+        // 必须先干净地 abort 当前 run，再派生 fork。否则旧会话的 SDK 状态与
+        // 会话文件可能停留在「进行中 run 中途」，新 fork 会从不一致的检查点
+        // 派生，导致文件状态不一致、丢失进行中 run 的边界错乱。
+        // 复用 destroy() 内的 abort 语义，但此处 await 完成再继续，确保停止彻底。
+        if (this.promptRunning || this.inner.isStreaming || this.inner.isCompacting) {
+          await this.withFinalRunningNotification(() => this.inner.abort());
+          this.promptRunning = false;
+        }
+
         const sessionManager = this.inner.sessionManager;
         const currentSessionFile = this.inner.sessionFile;
 
@@ -344,18 +472,23 @@ export class AgentSessionWrapper {
 
         if (!entry.parentId) {
           // Fork before the first message: create an empty session linked to this one
-          const newManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
+          const newManager = getPiAdapter().SessionManager.create(
+            sessionManager.getCwd(),
+            sessionDir,
+          );
           newManager.newSession({ parentSession: currentSessionFile });
           newSessionFile = newManager.getSessionFile() as string;
         } else {
           // Fork after some history: copy path up to (but not including) the fork point
-          const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
+          const sourceManager = getPiAdapter().SessionManager.open(currentSessionFile, sessionDir);
           const forkedPath = sourceManager.createBranchedSession(entry.parentId);
           if (!forkedPath) throw new Error("Failed to create forked session");
           newSessionFile = forkedPath;
         }
 
-        const newSessionId = SessionManager.open(newSessionFile, sessionDir).getSessionId();
+        const newSessionId = getPiAdapter()
+          .SessionManager.open(newSessionFile, sessionDir)
+          .getSessionId();
         cacheSessionPath(newSessionId, newSessionFile);
         this.destroy();
         return { cancelled: false, newSessionId };
@@ -372,7 +505,12 @@ export class AgentSessionWrapper {
         // setThinkingLevel clamps xhigh→high for models where supportsXhigh()===false.
         // If the model has DeepSeek thinking compat (reasoningEffortMap maps xhigh→max),
         // force the state back so the compat layer can use it correctly.
-        if (level === "xhigh" && (this.inner.model as { compat?: { thinkingFormat?: string } } | null)?.compat?.thinkingFormat === "deepseek" && this.inner.agent?.state) {
+        if (
+          level === "xhigh" &&
+          (this.inner.model as { compat?: { thinkingFormat?: string } } | null)?.compat
+            ?.thinkingFormat === "deepseek" &&
+          this.inner.agent?.state
+        ) {
           this.inner.agent.state.thinkingLevel = "xhigh";
         }
         return null;
@@ -380,7 +518,7 @@ export class AgentSessionWrapper {
 
       case "compact": {
         const result = await this.withFinalRunningNotification(() =>
-          this.inner.compact(command.customInstructions as string | undefined)
+          this.inner.compact(command.customInstructions as string | undefined),
         );
         return result;
       }
@@ -415,14 +553,22 @@ export class AgentSessionWrapper {
       }
 
       case "steer": {
-        const steerImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        await this.inner.steer(command.message as string, steerImages?.length ? steerImages : undefined);
+        const steerImages = command.images as
+          Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        await this.inner.steer(
+          command.message as string,
+          steerImages?.length ? steerImages : undefined,
+        );
         return null;
       }
 
       case "follow_up": {
-        const followImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        await this.inner.followUp(command.message as string, followImages?.length ? followImages : undefined);
+        const followImages = command.images as
+          Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        await this.inner.followUp(
+          command.message as string,
+          followImages?.length ? followImages : undefined,
+        );
         return null;
       }
 
@@ -517,7 +663,15 @@ export class AgentSessionWrapper {
     if (!this._alive) return;
     this._alive = false;
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.hardLimitTimer) clearTimeout(this.hardLimitTimer);
+    this.hardLimitTimer = null;
     this.unsubscribe?.();
+    // Abort an in-flight prompt so the inner SDK stops work on a session the
+    // web client has torn down. Fire-and-forget: the prompt's .then/.catch
+    // guards below drop callbacks once _alive is false.
+    if (this.promptRunning) {
+      void Promise.resolve(this.inner.abort?.()).catch(() => {});
+    }
     for (const pending of this.pendingUiResponses.values()) pending.cancel();
     for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
     this.pendingUiResponses.clear();
@@ -540,6 +694,10 @@ export class AgentSessionWrapper {
     return Array.from(this.extensionWidgets.values());
   }
 
+  private getPendingUiRequests(): AgentEvent[] {
+    return Array.from(this.pendingUiRequests.values());
+  }
+
   private getCustomUiWidth(options: unknown): number {
     if (!options || typeof options !== "object") return 92;
     const overlayOptions = (options as { overlayOptions?: unknown }).overlayOptions;
@@ -556,7 +714,9 @@ export class AgentSessionWrapper {
     try {
       lines = custom.component.render(custom.width);
     } catch (error) {
-      lines = [`Extension custom UI render failed: ${error instanceof Error ? error.message : String(error)}`];
+      lines = [
+        `Extension custom UI render failed: ${error instanceof Error ? error.message : String(error)}`,
+      ];
     }
     const event = {
       type: "extension_ui_request",
@@ -606,10 +766,7 @@ export class AgentSessionWrapper {
     }
   }
 
-  private requestExtensionCustomUi<T>(
-    factory: unknown,
-    options?: unknown,
-  ): Promise<T> {
+  private requestExtensionCustomUi<T>(factory: unknown, options?: unknown): Promise<T> {
     if (typeof factory !== "function") return Promise.resolve(undefined as T);
 
     const id = randomUUID();
@@ -627,7 +784,11 @@ export class AgentSessionWrapper {
       Promise.resolve()
         .then(() => factory(tui, this.defaultExtensionTheme, undefined, done))
         .then((component) => {
-          if (!component || typeof component !== "object" || typeof (component as CustomUiComponent).render !== "function") {
+          if (
+            !component ||
+            typeof component !== "object" ||
+            typeof (component as CustomUiComponent).render !== "function"
+          ) {
             resolve(undefined as T);
             return;
           }
@@ -698,34 +859,53 @@ export class AgentSessionWrapper {
   private createExtensionUiContext(): ExtensionUiContextLike {
     const theme = this.defaultExtensionTheme;
     return {
-      select: (title, options, opts) => this.requestExtensionUi(
-        { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        undefined,
-        (response) => "value" in response ? response.value : undefined,
-        opts?.timeout,
-        opts?.signal,
-      ),
-      confirm: (title, message, opts) => this.requestExtensionUi(
-        { method: "confirm", title, message, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        false,
-        (response) => "confirmed" in response ? response.confirmed : false,
-        opts?.timeout,
-        opts?.signal,
-      ),
-      input: (title, placeholder, opts) => this.requestExtensionUi(
-        { method: "input", title, ...(placeholder !== undefined ? { placeholder } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        undefined,
-        (response) => "value" in response ? response.value : undefined,
-        opts?.timeout,
-        opts?.signal,
-      ),
-      editor: (title, prefill, opts) => this.requestExtensionUi(
-        { method: "editor", title, ...(prefill !== undefined ? { prefill } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
-        undefined,
-        (response) => "value" in response ? response.value : undefined,
-        opts?.timeout,
-        opts?.signal,
-      ),
+      select: (title, options, opts) =>
+        this.requestExtensionUi(
+          { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+          undefined,
+          (response) => ("value" in response ? response.value : undefined),
+          opts?.timeout,
+          opts?.signal,
+        ),
+      confirm: (title, message, opts) =>
+        this.requestExtensionUi(
+          {
+            method: "confirm",
+            title,
+            message,
+            ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+          },
+          false,
+          (response) => ("confirmed" in response ? response.confirmed : false),
+          opts?.timeout,
+          opts?.signal,
+        ),
+      input: (title, placeholder, opts) =>
+        this.requestExtensionUi(
+          {
+            method: "input",
+            title,
+            ...(placeholder !== undefined ? { placeholder } : {}),
+            ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+          },
+          undefined,
+          (response) => ("value" in response ? response.value : undefined),
+          opts?.timeout,
+          opts?.signal,
+        ),
+      editor: (title, prefill, opts) =>
+        this.requestExtensionUi(
+          {
+            method: "editor",
+            title,
+            ...(prefill !== undefined ? { prefill } : {}),
+            ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+          },
+          undefined,
+          (response) => ("value" in response ? response.value : undefined),
+          opts?.timeout,
+          opts?.signal,
+        ),
       notify: (message, type) => {
         this.emit({
           type: "extension_ui_request",
@@ -781,7 +961,8 @@ export class AgentSessionWrapper {
           title,
         });
       },
-      custom: <T = unknown>(factory: unknown, options?: unknown) => this.requestExtensionCustomUi<T>(factory, options),
+      custom: <T = unknown>(factory: unknown, options?: unknown) =>
+        this.requestExtensionCustomUi<T>(factory, options),
       pasteToEditor: (text) => {
         this.emit({
           type: "extension_ui_request",
@@ -802,10 +983,15 @@ export class AgentSessionWrapper {
       addAutocompleteProvider: () => {},
       setEditorComponent: () => {},
       getEditorComponent: () => undefined,
-      get theme() { return theme; },
+      get theme() {
+        return theme;
+      },
       getAllThemes: () => [],
       getTheme: () => undefined,
-      setTheme: () => ({ success: false, error: "Theme switching is not supported in pi-web extension UI yet" }),
+      setTheme: () => ({
+        success: false,
+        error: "Theme switching is not supported in pi-web extension UI yet",
+      }),
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
     };
@@ -841,6 +1027,24 @@ export class AgentSessionWrapper {
 // ============================================================================
 // Session registry (extracted to session-registry.ts for testability)
 // ============================================================================
+
+// P6：并发上限信号量。进程内常驻的完整 AgentSession 内存/CPU 开销大，无上限时
+// 攻击者枚举不同 id 并发 startRpcSession 可耗尽资源（OOM/外部 LLM 配额打满）。
+// 默认 8 并发，可由 PI_WEB_MAX_CONCURRENT_SESSIONS 覆盖；PI_WEB_DISABLE_CONCURRENCY_LIMIT=1
+// 降级关闭（仿 S1/S2，防本地联调误伤）。超额时抛 SessionLimitError（statusCode=429）。
+const MAX_CONCURRENT_SESSIONS = Number(process.env.PI_WEB_MAX_CONCURRENT_SESSIONS ?? 8);
+const CONCURRENCY_LIMIT_ENABLED = process.env.PI_WEB_DISABLE_CONCURRENCY_LIMIT !== "1";
+
+/** P6：并发超限错误，路由层 errorResponse 识别 statusCode 返回 429。 */
+export class SessionLimitError extends Error {
+  readonly statusCode = 429;
+  constructor(
+    message = `Too many concurrent sessions (max ${MAX_CONCURRENT_SESSIONS}); retry later`,
+  ) {
+    super(message);
+    this.name = "SessionLimitError";
+  }
+}
 // getRegistry, getLocks, getRpcSession, subscribeRunningSessions,
 // notifyRunningChange are imported from ./session-registry.
 // AgentSessionWrapper satisfies SessionHandle structurally.
@@ -879,24 +1083,33 @@ export async function startRpcSession(
   sessionId: string,
   sessionFile: string,
   cwd: string,
-  toolNames?: string[]
+  toolNames?: string[],
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   ensureRegistryInitialized();
   const registry = getRegistry();
   const locks = getLocks();
 
   const existing = registry.get(sessionId);
-  if (existing?.isAlive()) return { session: existing as AgentSessionWrapper, realSessionId: sessionId };
+  if (existing?.isAlive())
+    return { session: existing as AgentSessionWrapper, realSessionId: sessionId };
 
   const inflight = locks.get(sessionId);
   if (inflight) return inflight as Promise<{ session: AgentSessionWrapper; realSessionId: string }>;
 
+  // P6：并发上限信号量。existing/inflight 已命中则上方早退（复用不计入新增并发）；
+  // 到此处说明确需新建会话，检查当前存活会话数。注意：此检查在 starting IIFE
+  // 执行前同步进行，避免昂贵的 createAgentSessionServices 已完成才拒绝。
+  // 降级开关 PI_WEB_DISABLE_CONCURRENCY_LIMIT=1 时跳过（本地联调/受信环境）。
+  if (CONCURRENCY_LIMIT_ENABLED && countAliveSessions() >= MAX_CONCURRENT_SESSIONS) {
+    throw new SessionLimitError();
+  }
+
   const starting = (async () => {
-    const agentDir = getAgentDir();
+    const agentDir = getPiAdapter().agentDir;
 
     const sessionManager = sessionFile
-      ? SessionManager.open(sessionFile, undefined)
-      : SessionManager.create(cwd, undefined);
+      ? getPiAdapter().SessionManager.open(sessionFile, undefined)
+      : getPiAdapter().SessionManager.create(cwd, undefined);
 
     // Determine which tools to pass based on requested toolNames.
     // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
@@ -914,8 +1127,8 @@ export async function startRpcSession(
 
     // Build services first so extension-registered providers are available
     // before the SDK restores the saved model from the session file.
-    const services = await createAgentSessionServices({ cwd, agentDir });
-    const { session: inner } = await createAgentSessionFromServices({
+    const services = await getPiAdapter().createAgentSessionServices({ cwd, agentDir });
+    const { session: inner } = await getPiAdapter().createAgentSessionFromServices({
       services,
       sessionManager,
       ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
@@ -935,11 +1148,41 @@ export async function startRpcSession(
     if (toolNames?.length === 0) {
       wrapper.setForceEmptySystemPrompt(true);
     }
+
+    // AGENTS.md modular 总闸（默认关）：开启时按模块开关+选择裁剪 coding-agent
+    // 系统提示词中的 AGENTS.md 片段，减少 Token。仅在 SDK 已构建完整提示词时生效，
+    // 仅替换 AGENTS.md 注入段，保留 SYSTEM.md/APPEND_SYSTEM.md/SKILLS.md/工具约束等。
+    // 失败一律回退 SDK 原样，绝不阻断会话。
+    if (getAgentsMdModular()) {
+      try {
+        const base = inner.agent.state?.systemPrompt ?? "";
+        if (base) {
+          const merged = composeModularAgentsMdSystemPrompt({ cwd, baseSystemPrompt: base });
+          if (merged && merged.trim() && inner.agent.state) {
+            inner.agent.state.systemPrompt = merged;
+          }
+        }
+      } catch {
+        // 回退 SDK 默认系统提示词
+      }
+    }
     wrapper.start();
 
     const realSessionId = inner.sessionId as string;
     const realSessionFile = inner.sessionFile as string | undefined;
     if (realSessionFile) cacheSessionPath(realSessionId, realSessionFile);
+
+    // Guard against a duplicate-session race: the input `sessionId` for a new
+    // session is a one-time temp key, while the lock is keyed on it. A
+    // concurrent caller that already knows the realSessionId (e.g. events + POST
+    // racing on a freshly-created session) could pass both the registry and the
+    // lock checks under that temp key and build a second wrapper for the same
+    // real session. If one already won, discard ours and return the winner.
+    const raced = registry.get(realSessionId);
+    if (raced && raced !== wrapper && raced.isAlive()) {
+      wrapper.destroy();
+      return { session: raced as AgentSessionWrapper, realSessionId };
+    }
 
     wrapper.onDestroy(() => registry.delete(realSessionId));
     registry.set(realSessionId, wrapper);
@@ -969,15 +1212,13 @@ let restoreStarted = false;
 export async function restoreActiveSessions(): Promise<void> {
   const state = loadSessionState();
   // Only pre-warm the 5 most recent — avoids heavy I/O on startup.
-  const recent = [...state.activeSessions]
-    .sort((a, b) => b.lastActive - a.lastActive)
-    .slice(0, 5);
+  const recent = [...state.activeSessions].sort((a, b) => b.lastActive - a.lastActive).slice(0, 5);
 
   for (const entry of recent) {
     try {
       const filePath = await resolveSessionPath(entry.sessionId);
       if (!filePath) continue; // session deleted from disk — skip
-      const cwd = SessionManager.open(filePath).getHeader()?.cwd;
+      const cwd = getSessionHeaderCached(filePath)?.cwd as string;
       if (!cwd) continue;
       // toolNames=undefined lets the SDK restore the saved tool set from .jsonl;
       // we re-apply toolsDisabled separately via setForceEmptySystemPrompt.
