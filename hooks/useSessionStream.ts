@@ -47,6 +47,7 @@ import { getAgentRuntimeStore } from "@/lib/agent-runtime-store";
 import { reportUserStatus } from "@/lib/constraints";
 import { getAgentEventBus } from "@/lib/extensions/event-bus";
 import { csrfHeaders } from "@/lib/csrf-client";
+import { nextReconnectDelay, RECONNECT_BASE_MS } from "@/lib/sse-backoff";
 import type {
   UseAgentSessionOptions,
   SessionData,
@@ -231,8 +232,10 @@ export function useSessionStream(opts: UseAgentSessionOptions) {
 
   const eventSourceRef = useRef<EventSource | null>(null);
   // Tracked so a pending SSE reconnect scheduled by onerror can be cancelled on
-  // unmount — otherwise a 1s timer could open a new EventSource after teardown.
+  // unmount — otherwise a backoff timer could open a new EventSource after teardown.
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 重连延迟（指数退避、封顶），每次失败翻倍，成功连接后复位到基准。
+  const reconnectDelayRef = useRef(RECONNECT_BASE_MS);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   const agentRunningRef = useRef(false);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
@@ -487,7 +490,10 @@ export function useSessionStream(opts: UseAgentSessionOptions) {
       es.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data) as AgentEvent;
-          if (event.type === "connected") settle("connected");
+          if (event.type === "connected") {
+            reconnectDelayRef.current = RECONNECT_BASE_MS;
+            settle("connected");
+          }
           handleAgentEventRef.current?.(event);
         } catch {
           // ignore
@@ -502,10 +508,12 @@ export function useSessionStream(opts: UseAgentSessionOptions) {
           if (eventSourceRef.current === es && agentRunningRef.current) {
             eventSourceRef.current = null;
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            const delayMs = reconnectDelayRef.current;
+            reconnectDelayRef.current = nextReconnectDelay(delayMs);
             reconnectTimerRef.current = setTimeout(() => {
               reconnectTimerRef.current = null;
               if (agentRunningRef.current) void connectEvents(sid);
-            }, 1000);
+            }, delayMs);
           }
         }
         // Recoverable errors (CONNECTING): let EventSource auto-reconnect.

@@ -582,6 +582,7 @@ export const zh = {
   "chat.noMatches": "无匹配",
   "chat.confirm": "确认",
   "chat.submit": "提交",
+  "chat.dropFilesTooLarge": "已忽略 {count} 个过大文件（单文件上限 25MB）",
 
   // ----- BranchNavigator.tsx -----
   "branch.branches": "分支",

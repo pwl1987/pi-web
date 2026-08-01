@@ -497,6 +497,13 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     [onContextUsageChange],
   );
 
+  const [dropError, setDropError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!dropError) return;
+    const id = setTimeout(() => setDropError(null), 4000);
+    return () => clearTimeout(id);
+  }, [dropError]);
+
   const onDrop = useCallback(
     (files: File[]) => {
       if (agentRunning) return;
@@ -505,8 +512,11 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
     [agentRunning, chatInputRef],
   );
 
-  const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } =
-    useDragDrop(onDrop);
+  const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop({
+    onDrop,
+    maxFileSize: 25 * 1024 * 1024,
+    onReject: (rejected) => setDropError(t("chat.dropFilesTooLarge", { count: rejected.length })),
+  });
 
   const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const messageRefs = useMessageRefs(visibleMessages.length);
@@ -1211,6 +1221,12 @@ export const ChatWindow = forwardRef<ChatWindowHandle, Props>(function ChatWindo
               <line x1="87.5" y1="66.5" x2="85.4" y2="68.6" />
             </g>
           </svg>
+        </div>
+      )}
+
+      {dropError && (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-[rgba(220,38,38,0.95)] px-3 py-1.5 text-sm font-medium text-white shadow-lg">
+          {dropError}
         </div>
       )}
 

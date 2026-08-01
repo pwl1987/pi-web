@@ -587,6 +587,7 @@ export const en = {
   "chat.noMatches": "No matches",
   "chat.confirm": "Confirm",
   "chat.submit": "Submit",
+  "chat.dropFilesTooLarge": "Ignored {count} oversized file(s) (25MB per-file limit)",
 
   // ----- BranchNavigator.tsx -----
   "branch.branches": "Branches",

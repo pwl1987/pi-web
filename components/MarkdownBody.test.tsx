@@ -70,4 +70,13 @@ describe("P2: MarkdownBody 渲染缓存", () => {
     first.unmount();
     second.unmount();
   });
+
+  it("外部链接渲染为 target=_blank 且带 rel=noopener noreferrer", () => {
+    const { container } = render(<MarkdownBody>{"[example](https://example.com)"}</MarkdownBody>);
+    const a = container.querySelector("a");
+    expect(a).not.toBeNull();
+    expect(a?.getAttribute("href")).toBe("https://example.com");
+    expect(a?.getAttribute("target")).toBe("_blank");
+    expect(a?.getAttribute("rel")).toBe("noopener noreferrer");
+  });
 });

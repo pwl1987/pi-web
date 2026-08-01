@@ -103,6 +103,15 @@ export const MarkdownBody = memo(function MarkdownBody({
         const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
         const openFile = onOpenFile;
         if (!filePath || !openFile) {
+          // 外部链接（http/https/mailto）在新标签打开并加 noopener，防止反向标签劫持。
+          const isExternal = !!href && (/^https?:\/\//i.test(href) || /^mailto:/i.test(href));
+          if (isExternal) {
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                {children}
+              </a>
+            );
+          }
           return (
             <a href={href} {...props}>
               {children}

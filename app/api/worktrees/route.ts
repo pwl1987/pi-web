@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "fs";
 import { addWorktree, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
+import { isValidGitRefName } from "@/lib/git-ref";
 import { allowFileRoot, getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { validateCsrf } from "@/lib/csrf";
 import { errorResponse, safeJsonBody } from "@/lib/api-utils";
@@ -57,11 +58,14 @@ export async function POST(req: Request) {
     if (!body.cwd || typeof body.cwd !== "string") return errorResponse("cwd is required", 400);
     if (!body.branch || typeof body.branch !== "string")
       return errorResponse("branch is required", 400);
+    const branch = body.branch.trim();
+    // 防御：分支名走保守白名单，拒绝空白 / 穿越 / 非法字符，防止命令注入式 ref。
+    if (!isValidGitRefName(branch)) return errorResponse("Invalid branch name", 400);
     const denied = await checkCwdAllowed(body.cwd);
     if (denied) return denied;
     if (!existsSync(body.cwd)) return errorResponse(`Directory does not exist: ${body.cwd}`, 400);
 
-    const result = await addWorktree(body.cwd, body.branch);
+    const result = await addWorktree(body.cwd, branch);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

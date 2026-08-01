@@ -72,7 +72,7 @@ export async function GET(req: Request) {
     // Unstaged changes (worktree vs index).
     let unstaged = { added: 0, deleted: 0 };
     try {
-      unstaged = sumNumstat(await git(cwd, ["diff", "--numstat"]));
+      unstaged = sumNumstat(await git(cwd, ["diff", "--numstat", "--", "."]));
     } catch {
       /* no changes or error */
     }
@@ -80,7 +80,7 @@ export async function GET(req: Request) {
     // Staged changes (index vs HEAD).
     let staged = { added: 0, deleted: 0 };
     try {
-      staged = sumNumstat(await git(cwd, ["diff", "--cached", "--numstat"]));
+      staged = sumNumstat(await git(cwd, ["diff", "--cached", "--numstat", "--", "."]));
     } catch {
       /* no changes or error */
     }
@@ -90,7 +90,7 @@ export async function GET(req: Request) {
     let stagedCount = 0;
     let untracked = 0;
     try {
-      const status = await git(cwd, ["status", "--porcelain"]);
+      const status = await git(cwd, ["status", "--porcelain", "--", "."]);
       for (const line of status.split("\n")) {
         if (line.length < 2) continue;
         const x = line[0];

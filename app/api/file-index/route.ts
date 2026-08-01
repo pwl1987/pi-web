@@ -2,11 +2,11 @@ import { type NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
-import path from "path";
 import { getAllowedFileRoots, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
 import { buildEntriesFromFiles, filterFileEntries, type FileIndexEntry } from "@/lib/file-fuzzy";
 import { errorResponse } from "@/lib/api-utils";
 import { IGNORED_NAMES, IGNORED_SUFFIXES } from "@/lib/api-shared";
+import { walkDirectory } from "@/lib/file-walk";
 
 const execFileAsync = promisify(execFile);
 
@@ -14,8 +14,6 @@ const execFileAsync = promisify(execFile);
 const MAX_FILES = 5000;
 /** Hard caps on the full in-memory listing that ?q= searches against */
 const GIT_HARD_CAP = 200_000;
-const WALK_HARD_CAP = 50_000;
-const MAX_WALK_DEPTH = 8;
 const MAX_QUERY_LENGTH = 500;
 const CACHE_TTL_MS = 10_000;
 const CACHE_MAX_ENTRIES = 20;
@@ -64,38 +62,6 @@ async function listWithGit(cwd: string): Promise<FileListing | null> {
   }
 }
 
-function listWithWalk(cwd: string): FileListing {
-  const files: string[] = [];
-  // BFS so shallow files win when the cap truncates the listing.
-  const queue: Array<{ abs: string; rel: string; depth: number }> = [
-    { abs: cwd, rel: "", depth: 0 },
-  ];
-  while (queue.length > 0) {
-    const { abs, rel, depth } = queue.shift()!;
-    let dirents: fs.Dirent[];
-    try {
-      dirents = fs.readdirSync(abs, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const d of dirents) {
-      if (IGNORED_NAMES.has(d.name) || IGNORED_SUFFIXES.some((s) => d.name.endsWith(s))) continue;
-      const childRel = rel ? `${rel}/${d.name}` : d.name;
-      if (d.isDirectory()) {
-        if (depth + 1 <= MAX_WALK_DEPTH) {
-          queue.push({ abs: path.join(abs, d.name), rel: childRel, depth: depth + 1 });
-        }
-      } else if (d.isFile()) {
-        if (files.length >= WALK_HARD_CAP) {
-          return { files, hardTruncated: true };
-        }
-        files.push(childRel);
-      }
-    }
-  }
-  return { files, hardTruncated: false };
-}
-
 // GET /api/file-index?cwd=/abs/path[&q=query]
 // Without q: { files: string[] (relative to cwd, capped at MAX_FILES),
 // truncated: boolean } — the client-side index for local filtering.
@@ -126,7 +92,9 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     let cached = cache.get(cwd);
     if (!cached || cached.expiresAt <= now) {
-      const listing = (await listWithGit(cwd)) ?? listWithWalk(cwd);
+      const listing =
+        (await listWithGit(cwd)) ??
+        walkDirectory(cwd, { ignoredNames: IGNORED_NAMES, ignoredSuffixes: IGNORED_SUFFIXES });
       for (const [key, entry] of cache) {
         if (entry.expiresAt <= now) cache.delete(key);
       }
