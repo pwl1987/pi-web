@@ -128,7 +128,7 @@
 ### 严重 · 性能架构（读多写少放大）
 
 - **P1 session-reader 全量枚举无分页**（`lib/session-reader.ts`）：✅ **已落地（2026-08-01，`0a740b9`）** — `listAllSessions` 支持 `{limit,offset}` 切片 + `listAllSessionsUnpaged` 全量别名；`/api/sessions` GET 支持 `?limit=&offset=`，返回 `{sessions,total,hasMore,runningSessionIds}`，仅显式传 limit 才切片（旧前端未传 limit 仍全量，向后兼容）。
-- **P2 markdown 重渲染无 memo/缓存**（`components/MarkdownBody.tsx`）：建议 `React.memo` + 渲染结果缓存；影响首屏，需评估。（仍开放，独立 PR）
+- **P2 markdown 重渲染无 memo/缓存**（`components/MarkdownBody.tsx`）：✅ **已落地（2026-08-01，P2 commit）** — 组件已 `memo` + `components`/`normalizedMarkdown` 缓存；新增**模块级渲染缓存**（键=`isDark|isStreaming|normalizedMarkdown`，LRU 上限 200），相同 markdown 仅 `react-markdown` 解析一次，命中复用已生成 React 元素（跨挂载点安全）；`__markdownCacheStats` 暴露命中/miss/size 供测试与可观测。
 - **P4 对账每 15s 全量拉取无去重**（hooks/useAgentSession.ts）：✅ **已落地（2026-08-01，`0a740b9`）** — 文件列表走 `lib/file-cache.ts` 短缓存（mtime + 1.5s TTL 失效），减少 `readdirSync/statSync` 重复；`files/[...path]` list/meta 走缓存；会话侧去重由分页 + 缓存协同降低全量拉取压力。
 
 ## 4. 更新后的 Top 10 风险（按业务影响排序）
@@ -325,20 +325,20 @@ S1 网关仅作统一前置防线拦截未授权访问；端点自身的危险�
 
 ## 10. 对抗性评审终极状态（截至 2026-08-01）
 
-| 风险                             | 严重度 | 状态                                                                 | 落地提交/说明 |
-| -------------------------------- | ------ | -------------------------------------------------------------------- | ------------- |
-| S1 无认证/归属                   | 阻塞   | ✅ 已落地（网关+客户端+启动注入+L10 收敛）                           | `959fbb0`     |
-| S2 CSRF 非 prod 失效             | 严重   | ✅ 已落地（默认全环境开 + `PI_WEB_DISABLE_CSRF=1` 降级）             | `a9ab1f6`     |
-| S3 mcp-config/test 任意命令      | 严重   | ✅ 已落地（命令白名单）                                              | 见 §9.1       |
-| S4 任意包安装                    | 严重   | ✅ 已落地（包名白名单+--ignore-scripts）                             | 见 §9.2       |
-| S5 扩展 symlink 加载             | 严重   | ✅ 已落地（受信根校验）+ 第2轮 CSP                                   | 见 §9.3       |
-| P1/P2/P4 分页/缓存/去重          | 严重   | ✅ 已落地（P1 分页 `0a740b9`、P4 file-cache `0a740b9`；P2 仍开放）   | `0a740b9`     |
-| P5/P6 idle 硬上限/并发 429       | 严重   | ✅ 已落地（HARD_IDLE_MAX_MS 兜底销毁 + MAX_CONCURRENT_SESSIONS=429） | `1695f31e`    |
-| L3 re-parent 绝对路径外键        | 严重   | ✅ 已落地（相对键+渐进迁移器）                                       | `bb27bc6`     |
-| L7 SSE 断连不 abort              | 严重   | ✅ 已落地（cleanup 时 `session.send({type:"abort"})`）               | `a9ab1f6`     |
-| L8 重复发送不幂等                | 严重   | ✅ 已落地（同步 `agentRunningRef` 守卫防快速双击）                   | `15d8474`     |
-| L9 fork running 直接 destroy     | 严重   | ✅ 已落地（fork 前先 `abort` 再派生）                                | `c0be63e2`    |
-| L10 无归属校验                   | 严重   | ✅ 已落地（S1 网关 + 文件受信根收敛）                                | 并入 S1 §8.3  |
-| 文件新-1 sessionReference 越权读 | 严重   | ✅ 已落地（受信根收敛）                                              | S1 §8.3       |
+| 风险                             | 严重度 | 状态                                                                               | 落地提交/说明 |
+| -------------------------------- | ------ | ---------------------------------------------------------------------------------- | ------------- |
+| S1 无认证/归属                   | 阻塞   | ✅ 已落地（网关+客户端+启动注入+L10 收敛）                                         | `959fbb0`     |
+| S2 CSRF 非 prod 失效             | 严重   | ✅ 已落地（默认全环境开 + `PI_WEB_DISABLE_CSRF=1` 降级）                           | `a9ab1f6`     |
+| S3 mcp-config/test 任意命令      | 严重   | ✅ 已落地（命令白名单）                                                            | 见 §9.1       |
+| S4 任意包安装                    | 严重   | ✅ 已落地（包名白名单+--ignore-scripts）                                           | 见 §9.2       |
+| S5 扩展 symlink 加载             | 严重   | ✅ 已落地（受信根校验）+ 第2轮 CSP                                                 | 见 §9.3       |
+| P1/P2/P4 分页/缓存/去重          | 严重   | ✅ 已落地（P1 分页 `0a740b9`、P4 file-cache `0a740b9`、P2 markdown 渲染缓存 `P2`） | `0a740b9`+P2  |
+| P5/P6 idle 硬上限/并发 429       | 严重   | ✅ 已落地（HARD_IDLE_MAX_MS 兜底销毁 + MAX_CONCURRENT_SESSIONS=429）               | `1695f31e`    |
+| L3 re-parent 绝对路径外键        | 严重   | ✅ 已落地（相对键+渐进迁移器）                                                     | `bb27bc6`     |
+| L7 SSE 断连不 abort              | 严重   | ✅ 已落地（cleanup 时 `session.send({type:"abort"})`）                             | `a9ab1f6`     |
+| L8 重复发送不幂等                | 严重   | ✅ 已落地（同步 `agentRunningRef` 守卫防快速双击）                                 | `15d8474`     |
+| L9 fork running 直接 destroy     | 严重   | ✅ 已落地（fork 前先 `abort` 再派生）                                              | `c0be63e2`    |
+| L10 无归属校验                   | 严重   | ✅ 已落地（S1 网关 + 文件受信根收敛）                                              | 并入 S1 §8.3  |
+| 文件新-1 sessionReference 越权读 | 严重   | ✅ 已落地（受信根收敛）                                                            | S1 §8.3       |
 
-> 阻塞项 S1 已消除；P5/P6（idle 硬上限/并发 429）、L7–L9（SSE abort/重复发送幂等/fork abort 派生）均已落地；L3/P1/P4 已落地（`bb27bc6`/`0a740b9`）。**剩余开放严重项仅 P2**（markdown 重渲染无 memo/缓存，影响首屏，独立 PR 推进）。
+> 阻塞项 S1 已消除；S1–S5、L1–L2、L7–L10、L3、P1/P4/P5/P6、P2（markdown 渲染缓存）**全部严重项已落地**（2026-08-01 收官）。对抗性评审回退清单开放项清零。

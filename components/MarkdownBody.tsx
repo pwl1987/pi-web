@@ -26,6 +26,42 @@ interface MarkdownBodyProps {
   onOpenFile?: (filePath: string) => void;
 }
 
+// ============================================================================
+// P2：相同 markdown 文本的渲染结果缓存（避免 react-markdown 重复解析）
+//   - 键 = `isDark|isStreaming|normalizedMarkdown`；命中直接复用已生成的 React 元素
+//   - LRU 上限约束内存（长会话/大量消息场景防止无限增长）
+//   - isStreaming 进入键：流式态与完成态解析结果分开缓存，保证流式增量正确
+//   - 渲染元素是不可变描述，跨挂载点复用安全；react-markdown 仅在 miss 时解析一次
+// ============================================================================
+const MARKDOWN_CACHE_LIMIT = 200;
+
+const markdownCache = new Map<string, React.ReactElement>();
+const markdownCacheStats = { hits: 0, misses: 0 };
+
+function cacheKey(isDark: boolean, isStreaming: boolean, markdown: string): string {
+  return `${isDark ? "1" : "0"}|${isStreaming ? "1" : "0"}|${markdown}`;
+}
+
+/**
+ * P2 渲染缓存统计（测试与可观测性用）。生产无副作用。
+ */
+export const __markdownCacheStats = {
+  get hits() {
+    return markdownCacheStats.hits;
+  },
+  get misses() {
+    return markdownCacheStats.misses;
+  },
+  get size() {
+    return markdownCache.size;
+  },
+  reset() {
+    markdownCacheStats.hits = 0;
+    markdownCacheStats.misses = 0;
+    markdownCache.clear();
+  },
+};
+
 // react-syntax-highlighter (and its Prism style tables) is large and only
 // needed once a fenced code block is actually rendered. Load it lazily inside
 // the code-block component so it stays out of the initial client chunk.
@@ -36,6 +72,7 @@ export const MarkdownBody = memo(function MarkdownBody({
   cwd,
   onOpenFile,
 }: MarkdownBodyProps) {
+  const { isDark } = useTheme();
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
 
   // Recreating `components` every render forces ReactMarkdown to re-parse even
@@ -99,8 +136,15 @@ export const MarkdownBody = memo(function MarkdownBody({
     [cwd, onOpenFile, isStreaming],
   );
 
-  return (
-    <div className={["markdown-body", className].filter(Boolean).join(" ")}>
+  // P2：相同 (markdown, isDark, isStreaming) 直接复用已解析的 React 元素，
+  // 跳过 react-markdown 重复解析。命中走缓存，未命中解析后写入（LRU 淘汰最旧）。
+  const key = cacheKey(isDark, !!isStreaming, normalizedMarkdown);
+  let rendered = markdownCache.get(key);
+  if (rendered) {
+    markdownCacheStats.hits++;
+  } else {
+    markdownCacheStats.misses++;
+    rendered = (
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}
@@ -108,8 +152,16 @@ export const MarkdownBody = memo(function MarkdownBody({
       >
         {normalizedMarkdown}
       </ReactMarkdown>
-    </div>
-  );
+    );
+    markdownCache.set(key, rendered);
+    if (markdownCache.size > MARKDOWN_CACHE_LIMIT) {
+      // 淘汰最旧条目（Map 保持插入顺序）
+      const oldest = markdownCache.keys().next().value;
+      if (oldest !== undefined) markdownCache.delete(oldest);
+    }
+  }
+
+  return <div className={["markdown-body", className].filter(Boolean).join(" ")}>{rendered}</div>;
 });
 
 function normalizeDisplayMath(markdown: string): string {
