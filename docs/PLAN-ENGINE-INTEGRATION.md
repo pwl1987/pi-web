@@ -1,6 +1,6 @@
 # 计划栏 + 引擎栏：上游友好的「接入工作」方案
 
-> 状态：方案定稿，待实施
+> 状态：✅ 已实施（P0/P1/P2 全部落地，详见 [PANELS-UX-WALKTHROUGH.md](./PANELS-UX-WALKTHROUGH.md)）
 > 目的：在不改动上游 pi、merge 零冲突的前提下，把 Plan（孤岛）接通、Prompt（死功能）接通、Engine（通电但有 bug）修好。
 > 前置调研：[`PLAN-ENGINE-PANEL-ANALYSIS.md`](./PLAN-ENGINE-PANEL-ANALYSIS.md)（诊断）、[`PROMPTS-PANEL-PLAN.md`](./PROMPTS-PANEL-PLAN.md)（提示词栏接通+重构）
 > 上游约束：见 [`UPSTREAM-SYNC.md`](./UPSTREAM-SYNC.md)——改动只在「我们独有文件」，漂移时加 `// —— 跟随上游适配` 注释。

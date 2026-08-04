@@ -1,6 +1,6 @@
 # 提示词栏（PromptsConfig）：模块化系统提示词接通与重构计划
 
-> 状态：规划完成，待实施
+> 状态：✅ 阶段 0（接通）+ 阶段 1（面板重构）已实施；阶段 2（自定义提示词文件）有意延后（待定存储格式）
 > 关联文件：`components/PromptsConfig.tsx`、`lib/prompt-system/*`、`lib/prompt-modules-state.ts`、`lib/rpc-manager.ts`、`lib/i18n/ours-messages.ts`、`app/globals.css`
 > 上游同步约束：见 [`docs/UPSTREAM-SYNC.md`](./UPSTREAM-SYNC.md)
 

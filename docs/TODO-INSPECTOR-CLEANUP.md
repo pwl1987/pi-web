@@ -1,6 +1,6 @@
 # 待办/概览清理与 Git 面板归一：方案定稿
 
-> 状态：方案定稿；**P-1（window.React 基础设施修复）单独立项先行**
+> 状态：✅ P-1/P0/P1/P2 已实施（window.React 修复、inspector 改造、TodoPanel 重塑、跳转通道、TodoBadge 接回顶栏、数据源统一）；P3 部分（i18n 已补，`task-row-clicked` 视觉断言测试待补）
 > 目的：消除 Todo/Inspector 的功能重复、死按钮、未接通能力；归一 Git 面板（解决 inspector 与 git-status 扩展的三方冲突）；接通任务点击跳转；接回 TodoBadge；**修复浏览器侧扩展加载链路的根本缺陷**。全程上游友好（零共享核心改动）。
 > 关联：[`PANELS-UX-WALKTHROUGH.md`](./PANELS-UX-WALKTHROUGH.md)、[`PLAN-ENGINE-INTEGRATION.md`](./PLAN-ENGINE-INTEGRATION.md)、[`UPSTREAM-SYNC.md`](./UPSTREAM-SYNC.md)
 > 上游约束：改动只在「pi-web 独有文件」，漂移时加 `// —— 跟随上游适配` 注释。
